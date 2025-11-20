@@ -41,7 +41,8 @@ class ProxyConnector:
 
         # SOCKS proxy connection
         proxy = Proxy.from_url(self.proxy_url)
-        sock = await proxy.connect(dest_host=host, dest_port=port)
+        # Increase timeout for proxy connection to handle large payloads/slow handshakes
+        sock = await proxy.connect(dest_host=host, dest_port=port, timeout=120)
         if ssl is None:
             reader, writer = await asyncio.open_connection(
                 host=None,

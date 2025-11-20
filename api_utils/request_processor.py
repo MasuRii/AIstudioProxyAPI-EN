@@ -499,6 +499,10 @@ async def _process_request_refactored(
     )
     
     page = context['page']
+    # Inject Request ID into headers for Proxy correlation
+    if page:
+        await page.set_extra_http_headers({"X-Request-ID": req_id})
+
     submit_button_locator = page.locator(SUBMIT_BUTTON_SELECTOR) if page else None
     completion_event = None
     

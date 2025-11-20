@@ -22,8 +22,14 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None) -> A
 
     # Enhanced timeout settings for thinking models
     empty_count = 0
-    max_empty_retries = 900  # Increased to 90 seconds (900 * 0.1s)
-    initial_wait_limit = int(timeout * 10)
+    # Dynamic timeout calculation: Ensure loop persists at least as long as the calculated timeout
+    # Minimum 3000 iterations (300s) or timeout * 10 (timeout is in seconds, loop sleep is 0.1s)
+    dynamic_retries = int(timeout * 10)
+    max_empty_retries = max(3000, dynamic_retries)
+    initial_wait_limit = dynamic_retries # TTFB should match the dynamic timeout
+    
+    logger.info(f"[{req_id}] Stream Loop Config: Max Empty Retries={max_empty_retries}, TTFB Limit={initial_wait_limit}")
+
     data_received = False
     has_content = False
     received_items_count = 0
@@ -67,49 +73,62 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None) -> A
                 received_items_count += 1
                 logger.debug(f"[{req_id}] 接收到流数据[#{received_items_count}]: {type(data)} - {str(data)[:200]}...")
 
+                # Identify and parse data
+                parsed_item = None
                 if isinstance(data, str):
                     try:
-                        parsed_data = json.loads(data)
-                        if parsed_data.get("done") is True:
-                            body = parsed_data.get("body", "")
-                            reason = parsed_data.get("reason", "")
-                            if body or reason:
-                                has_content = True
-                            logger.info(f"[{req_id}] 接收到JSON格式的完成标志 (body长度:{len(body)}, reason长度:{len(reason)}, 已收到项目数:{received_items_count})")
-                            if not has_content and received_items_count == 1 and not stale_done_ignored:
-                                logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
-                                stale_done_ignored = True
-                                continue
-                            yield parsed_data
-                            break
-                        else:
-                            body = parsed_data.get("body", "")
-                            reason = parsed_data.get("reason", "")
-                            if body or reason:
-                                has_content = True
-                            stale_done_ignored = False
-                            yield parsed_data
+                        parsed_item = json.loads(data)
                     except json.JSONDecodeError:
-                        logger.debug(f"[{req_id}] 返回非JSON字符串数据")
+                        logger.debug(f"[{req_id}] Received non-JSON string data, yielding raw.")
                         has_content = True
-                        stale_done_ignored = False
                         yield data
+                        continue
+                elif isinstance(data, dict):
+                    parsed_item = data
+                
+                # Filter by Request ID if present (Zombie Stream Protection)
+                if parsed_item and isinstance(parsed_item, dict):
+                    item_req_id = parsed_item.get("req_id")
+                    
+                    # If item has a req_id and it doesn't match current req_id
+                    if item_req_id and item_req_id != req_id and item_req_id != "unknown":
+                        logger.warning(f"[{req_id}] 🛑 Dropped Zombie/Cross-talk data packet intended for [{item_req_id}]")
+                        # Decrement received count as this wasn't for us
+                        received_items_count -= 1
+                        # Do NOT reset empty_count here, or we might loop forever on zombie data
+                        # Actually, if we pulled it, it's gone from queue.
+                        continue
+                    
+                    # Unwrap 'data' if it exists (new format)
+                    if "data" in parsed_item:
+                        real_data = parsed_item["data"]
+                    else:
+                        real_data = parsed_item # Old format fallback
                 else:
-                    yield data
-                    if isinstance(data, dict):
-                        body = data.get("body", "")
-                        reason = data.get("reason", "")
-                        if body or reason:
-                            has_content = True
-                        if data.get("done") is True:
-                            logger.info(f"[{req_id}] 接收到字典格式的完成标志 (body长度:{len(body)}, reason长度:{len(reason)}, 已收到项目数:{received_items_count})")
-                            if not has_content and received_items_count == 1 and not stale_done_ignored:
-                                logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
-                                stale_done_ignored = True
-                                continue
-                            break
-                        else:
-                            stale_done_ignored = False
+                    real_data = data
+
+                # Process the actual payload
+                if isinstance(real_data, dict):
+                    body = real_data.get("body", "")
+                    reason = real_data.get("reason", "")
+                    if body or reason:
+                        has_content = True
+                    
+                    if real_data.get("done") is True:
+                        logger.info(f"[{req_id}] Received DONE signal (body_len:{len(body)}, reason_len:{len(reason)}, items:{received_items_count})")
+                        if not has_content and received_items_count == 1 and not stale_done_ignored:
+                            logger.warning(f"[{req_id}] ⚠️ Received DONE with no content on first item. Likely stale data. Ignoring...")
+                            stale_done_ignored = True
+                            continue
+                        yield real_data
+                        break
+                    else:
+                        stale_done_ignored = False
+                        yield real_data
+                else:
+                    # Fallback for non-dict data (rare)
+                    has_content = True
+                    yield real_data
             except (queue.Empty, asyncio.QueueEmpty):
                 empty_count += 1
 

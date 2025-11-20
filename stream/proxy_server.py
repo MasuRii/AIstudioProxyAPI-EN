@@ -230,10 +230,11 @@ class ProxyServer:
         client_buffer = bytearray()
         server_buffer = bytearray()
         should_sniff = False
+        current_req_id = "unknown"
 
         # Parse HTTP headers from client
         async def _process_client_data():
-            nonlocal client_buffer, should_sniff
+            nonlocal client_buffer, should_sniff, current_req_id
             
             try:
                 while True:
@@ -252,6 +253,17 @@ class ProxyServer:
                         # Parse request line and headers
                         lines = headers_data.split(b'\r\n')
                         request_line = lines[0].decode('utf-8')
+
+                        # Extract X-Request-ID
+                        for line in lines[1:]:
+                            if b':' in line:
+                                try:
+                                    k, v = line.decode('utf-8').split(':', 1)
+                                    if k.strip().lower() == 'x-request-id':
+                                        current_req_id = v.strip()
+                                        break
+                                except Exception:
+                                    pass
                         
                         try:
                             method, path, _ = request_line.split(' ')
@@ -265,6 +277,7 @@ class ProxyServer:
                         # Check if we should intercept this request
                         if 'GenerateContent' in path:
                             should_sniff = True
+                            self.logger.info(f"[{current_req_id}] Sniffing request to {path}")
                             # Process the request body
                             processed_body = await self.interceptor.process_request(
                                 body_data, host, path
@@ -287,6 +300,11 @@ class ProxyServer:
                         client_buffer.clear()
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer processing client data.")
+            except ssl.SSLError as ssl_err:
+                if "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(ssl_err):
+                    self.logger.debug(f"SSL Close Notify ignored (Client): {ssl_err}")
+                else:
+                    self.logger.error(f"SSL Error processing client data: {ssl_err}")
             except Exception as e:
                 if getattr(e, 'winerror', None) == 10054:
                     self.logger.debug("Connection reset by peer (WinError 10054) processing client data.")
@@ -297,7 +315,7 @@ class ProxyServer:
         
         # Parse HTTP headers from server
         async def _process_server_data():
-            nonlocal server_buffer, should_sniff
+            nonlocal server_buffer, should_sniff, current_req_id
             
             try:
                 while True:
@@ -334,7 +352,12 @@ class ProxyServer:
                                 )
 
                                 if self.queue is not None:
-                                    self.queue.put(json.dumps(resp))
+                                    # Tag with Request ID
+                                    queue_item = {
+                                        "req_id": current_req_id,
+                                        "data": resp
+                                    }
+                                    self.queue.put(json.dumps(queue_item))
                             except Exception as e:
                                 # --- FIX: Log the unused exception variable ---
                                 self.logger.error(f"Error during response interception: {e}")
@@ -345,6 +368,11 @@ class ProxyServer:
                         server_buffer.clear()
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer processing server data.")
+            except ssl.SSLError as ssl_err:
+                if "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(ssl_err):
+                    self.logger.debug(f"SSL Close Notify ignored (Server): {ssl_err}")
+                else:
+                    self.logger.error(f"SSL Error processing server data: {ssl_err}")
             except Exception as e:
                 if getattr(e, 'winerror', None) == 10054:
                     self.logger.debug("Connection reset by peer (WinError 10054) processing server data.")
