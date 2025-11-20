@@ -21,6 +21,13 @@ UPLOAD_BUTTON_SELECTOR = 'button[aria-label^="Insert assets"]'
 RESPONSE_CONTAINER_SELECTOR = "ms-chat-turn .chat-turn-container.model"
 RESPONSE_TEXT_SELECTOR = "ms-cmark-node.cmark-node"
 
+# --- Function Calling Selectors ---
+# Selector to find the function call bubble/block in the chat stream
+# This is a best-guess based on typical AI Studio DOM structure for function calls
+FUNCTION_CALL_BLOCK_SELECTOR = "ms-function-call-block, .function-call-container" 
+# Selector to find the arguments/code within the function call block
+FUNCTION_CALL_PRE_SELECTOR = "pre"
+
 # --- 加载和状态选择器 ---
 LOADING_SPINNER_SELECTOR = 'button[aria-label="Run"].run-button svg .stoppable-spinner'
 OVERLAY_SELECTOR = ".mat-mdc-dialog-inner-container"

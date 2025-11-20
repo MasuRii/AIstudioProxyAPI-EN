@@ -45,6 +45,7 @@ from .response_generators import gen_sse_from_aux_stream, gen_sse_from_playwrigh
 from .response_payloads import build_chat_completion_response_json
 from .model_switching import analyze_model_requirements as ms_analyze, handle_model_switching as ms_switch, handle_parameter_cache as ms_param_cache
 from .page_response import locate_response_elements
+from .tool_converter import convert_to_gemini_schema
 
 from .common_utils import random_id as _random_id
 from .client_connection import (
@@ -397,12 +398,27 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
     else:
         # 使用PageController获取响应
         page_controller = PageController(page, logger, req_id)
-        final_content = await page_controller.get_response(check_client_disconnected, prompt_length, timeout=timeout)
+        response_data = await page_controller.get_response(check_client_disconnected, prompt_length, timeout=timeout)
         
-        # 计算token使用统计
+        final_content = ""
+        tool_calls = None
+        finish_reason_val = "stop"
+
+        if isinstance(response_data, list):
+            # It's a list of tool calls
+            tool_calls = response_data
+            finish_reason_val = "tool_calls"
+            final_content = None # Content is null for tool calls usually
+            logger.info(f"[{req_id}] Playwright 模式检测到工具调用: {len(tool_calls)}")
+        else:
+            # It's a string content
+            final_content = response_data
+
+        # 计算token使用统计 (Approximate for tool calls)
+        content_for_usage = final_content if final_content else json.dumps(tool_calls) if tool_calls else ""
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
-            final_content,
+            content_for_usage,
             ""  # Playwright模式没有reasoning content
         )
         logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
@@ -410,7 +426,10 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         # 统一使用构造器生成 OpenAI 兼容响应
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
         message_payload = {"role": "assistant", "content": final_content}
-        finish_reason_val = "stop"
+        
+        if tool_calls:
+            message_payload["tool_calls"] = tool_calls
+
         response_payload = build_chat_completion_response_json(
             req_id,
             model_name_for_json,
@@ -593,6 +612,18 @@ async def _process_request_refactored(
             context['parsed_model_list'],
             check_client_disconnected
         )
+
+        # Native Function Calling Setup
+        tools = getattr(request, 'tools', None)
+        # Always set declarations if tools list is present (even if empty, to clear)
+        # Or strictly if it's a list.
+        if isinstance(tools, list):
+            tools_json = convert_to_gemini_schema(tools)
+            await page_controller.set_function_declarations(tools_json, check_client_disconnected)
+        else:
+             # Optional: Clear tools if none provided?
+             # For now, only set if explicitly provided to avoid clearing if user didn't intend to change
+             pass
 
         # 优化：在提交提示前再次检查客户端连接，避免不必要的后台请求
         check_client_disconnected("提交提示前最终检查")

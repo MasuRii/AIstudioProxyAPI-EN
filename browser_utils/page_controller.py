@@ -55,6 +55,7 @@ from .operations import (
     _wait_for_response_completion,
     check_quota_limit,
     save_error_snapshot,
+    extract_function_call_from_page,
 )
 from .thinking_normalizer import format_directive_log, normalize_reasoning_effort
 
@@ -571,6 +572,103 @@ class PageController:
             )
             if isinstance(e, ClientDisconnectedError):
                 raise
+
+    async def set_function_declarations(
+        self, tools_json: str, check_client_disconnected: Callable
+    ):
+        """
+        Manually interacts with the AI Studio UI to set function definitions.
+        """
+        self.logger.info(f"[{self.req_id}] Setting function declarations...")
+
+        try:
+            # Ensure tools panel is expanded first, as function calling toggle might be there
+            await self._ensure_tools_panel_expanded(check_client_disconnected)
+
+            # 1. Handle the Toggle Switch
+            # Selector based on: <mat-slide-toggle ... class="function-calling-toggle ...">
+            toggle_btn = self.page.locator('.function-calling-toggle button[role="switch"]')
+
+            # Check if toggle exists (it might be hidden or model doesn't support it)
+            # Use a short timeout check
+            if await toggle_btn.count() > 0:
+                try:
+                    await expect_async(toggle_btn).to_be_visible(timeout=2000)
+                    is_checked = await toggle_btn.get_attribute("aria-checked") == "true"
+                    if not is_checked:
+                        self.logger.info(f"[{self.req_id}] Enabling Function Calling toggle...")
+                        await toggle_btn.click()
+                        # Wait for the toggle to animate/activate
+                        await self.page.wait_for_timeout(1000)
+                except Exception:
+                    # Toggle might be present but not visible or interactable, log warning but proceed
+                    pass
+
+            # 2. Click the "Edit" button
+            # Selector: <button ... class="edit-function-declarations-button ...">
+            edit_btn = self.page.locator("button.edit-function-declarations-button")
+            if await edit_btn.count() == 0:
+                # Fallback or alternative selector check could go here
+                self.logger.warning(f"[{self.req_id}] 'Edit function declarations' button not found.")
+                return
+
+            await expect_async(edit_btn).to_be_visible(timeout=5000)
+            await edit_btn.click()
+
+            # 3. Wait for Dialog
+            # Selector: <ms-edit-function-declarations-dialog ...>
+            dialog = self.page.locator("ms-edit-function-declarations-dialog")
+            await expect_async(dialog).to_be_visible(timeout=5000)
+
+            # 4. Switch to "Code Editor" Tab
+            # Selector logic: Find button inside tab group with specific text
+            code_editor_tab = dialog.locator(
+                'div[role="tablist"] button[role="tab"]', has_text="Code Editor"
+            )
+
+            # Check if it's already selected to avoid unnecessary clicks
+            if await code_editor_tab.count() > 0:
+                is_tab_selected = (
+                    await code_editor_tab.get_attribute("aria-selected") == "true"
+                )
+                if not is_tab_selected:
+                    await code_editor_tab.click()
+                    await self.page.wait_for_timeout(500)
+            else:
+                self.logger.warning(
+                    f"[{self.req_id}] 'Code Editor' tab not found in dialog."
+                )
+
+            # 5. Input the JSON into the Text Area
+            # Selector: <ms-text-editor ...> <textarea ...>
+            textarea = dialog.locator("ms-text-editor textarea")
+            if await textarea.count() > 0:
+                await textarea.click()
+                await textarea.fill(tools_json)
+            else:
+                self.logger.warning(
+                    f"[{self.req_id}] Textarea not found in Code Editor."
+                )
+
+            # 6. Click Save
+            # Selector: Dialog actions -> Save button
+            # <button ... class="ms-button-primary"> Save </button>
+            save_btn = dialog.locator(
+                ".mat-mdc-dialog-actions button.ms-button-primary"
+            ).filter(has_text="Save")
+            await save_btn.click()
+
+            # 7. Wait for Dialog to close
+            await expect_async(dialog).to_be_hidden(timeout=5000)
+
+            self.logger.info(
+                f"[{self.req_id}] Successfully updated function declarations via native UI."
+            )
+
+        except Exception as e:
+            self.logger.error(f"[{self.req_id}] Failed to set function declarations: {e}")
+            await save_error_snapshot(f"set_function_declarations_error_{self.req_id}")
+            # Depending on severity, might want to raise or fallback
 
     async def _ensure_tools_panel_expanded(self, check_client_disconnected: Callable):
         """确保包含高级工具（URL上下文、思考预算等）的面板是展开的。"""
@@ -2033,8 +2131,13 @@ class PageController:
             self.logger.warning(f"[{self.req_id}] 组合键提交失败: {combo_err}")
             return False
 
-    async def get_response(self, check_client_disconnected: Callable, prompt_length: int, timeout: Optional[float] = None) -> str:
-        """获取响应内容。"""
+    async def get_response(
+        self,
+        check_client_disconnected: Callable,
+        prompt_length: int,
+        timeout: Optional[float] = None,
+    ) -> Any:
+        """获取响应内容。可能是文本(str)或工具调用列表(list)。"""
         self.logger.info(f"[{self.req_id}] 等待并获取响应...")
 
         try:
@@ -2042,13 +2145,19 @@ class PageController:
             response_container_locator = self.page.locator(
                 RESPONSE_CONTAINER_SELECTOR
             ).last
-            response_element_locator = response_container_locator.locator(
-                RESPONSE_TEXT_SELECTOR
-            )
 
-            self.logger.info(f"[{self.req_id}] 等待响应元素附加到DOM...")
-            await expect_async(response_element_locator).to_be_attached(timeout=90000)
-            await self._check_disconnect(check_client_disconnected, "获取响应 - 响应元素已附加")
+            # 宽松检查：可能是文本响应，也可能是Function Call Block
+            # 只要容器出现了，就开始等待完成
+            try:
+                await expect_async(response_container_locator).to_be_visible(
+                    timeout=90000
+                )
+            except Exception:
+                self.logger.warning(
+                    f"[{self.req_id}] 等待响应容器可见超时，可能已存在或结构不同。"
+                )
+
+            await self._check_disconnect(check_client_disconnected, "获取响应 - 容器可见后")
 
             # 等待响应完成
             submit_button_locator = self.page.locator(SUBMIT_BUTTON_SELECTOR)
@@ -2065,7 +2174,7 @@ class PageController:
                 check_client_disconnected,
                 None,
                 prompt_length=prompt_length,
-                timeout=timeout
+                timeout=timeout,
             )
 
             if not completion_detected:
@@ -2073,7 +2182,15 @@ class PageController:
             else:
                 self.logger.info(f"[{self.req_id}] ✅ 响应完成检测成功")
 
-            # 获取最终响应内容
+            # 1. Check for Function Call FIRST
+            tool_calls = await extract_function_call_from_page(self.page, self.req_id)
+            if tool_calls:
+                self.logger.info(
+                    f"[{self.req_id}] Detected tool calls: {len(tool_calls)}"
+                )
+                return tool_calls
+
+            # 2. Fallback to Text Content
             final_content = await _get_final_response_content(
                 self.page, self.req_id, check_client_disconnected
             )
@@ -2084,7 +2201,9 @@ class PageController:
                 # 不抛出异常，返回空内容让上层处理
                 return ""
 
-            self.logger.info(f"[{self.req_id}] ✅ 成功获取响应内容 ({len(final_content)} chars)")
+            self.logger.info(
+                f"[{self.req_id}] ✅ 成功获取响应内容 ({len(final_content)} chars)"
+            )
             return final_content
 
         except Exception as e:

@@ -19,7 +19,10 @@ from config import (
     CLICK_TIMEOUT_MS,
     RESPONSE_COMPLETION_TIMEOUT,
     INITIAL_WAIT_MS_BEFORE_POLLING,
+    FUNCTION_CALL_BLOCK_SELECTOR,
+    FUNCTION_CALL_PRE_SELECTOR,
 )
+from api_utils.common_utils import random_id
 from models import ClientDisconnectedError, QuotaExceededError
 
 logger = logging.getLogger("AIStudioProxyServer")
@@ -835,4 +838,178 @@ async def _get_final_response_content(
     
     logger.error(f"[{req_id}] (Helper GetContent) 所有获取响应内容的方法均失败。")
     await save_error_snapshot(f"get_content_all_methods_failed_{req_id}")
-    return None 
+    return None
+
+async def extract_function_call_from_page(page: AsyncPage, req_id: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Attempts to extract function call details from the page using selectors.
+    Returns a list of tool call objects (OpenAI format) or None.
+    """
+    logger.info(f"[{req_id}] (Helper) Checking for function calls in DOM...")
+    try:
+        # Locate the function call container
+        # We look for the last one, assuming it corresponds to the latest response
+        function_block = page.locator(FUNCTION_CALL_BLOCK_SELECTOR).last
+        
+        if await function_block.count() == 0:
+            return None
+            
+        if not await function_block.is_visible(timeout=1000):
+            return None
+            
+        logger.info(f"[{req_id}] Found visible function call block.")
+        
+        # Extract the code block containing the function call details
+        # Usually formatted as: function_name(args)
+        # Or inside a pre block
+        code_block = function_block.locator(FUNCTION_CALL_PRE_SELECTOR)
+        if await code_block.count() > 0:
+            raw_text = await code_block.inner_text()
+        else:
+            # Fallback: get all text from the block
+            raw_text = await function_block.inner_text()
+            
+        if not raw_text:
+            logger.warning(f"[{req_id}] Function call block found but empty text.")
+            return None
+            
+        logger.info(f"[{req_id}] Raw function call text: {raw_text[:100]}...")
+        
+        # Parse the raw text
+        # Expected formats:
+        # 1. name({"arg": "val"})
+        # 2. name(arg="val") - Python style (might need parsing)
+        # 3. JSON object directly
+        
+        # For now, let's try a simple regex to extract name and JSON args
+        # Pattern: name(args)
+        match = re.match(r"^([a-zA-Z0-9_]+)\s*\((.*)\)\s*$", raw_text.strip(), re.DOTALL)
+        
+        tool_calls = []
+        if match:
+            fn_name = match.group(1)
+            args_str = match.group(2)
+            
+            # Try to parse args as JSON
+            try:
+                args_json = json.loads(args_str)
+                args_clean = json.dumps(args_json)
+            except json.JSONDecodeError:
+                # If not JSON, might be Python kwargs or simple string
+                # For safety, wrap in a string if it looks like a simple value, or leave as string
+                logger.warning(f"[{req_id}] Could not parse arguments as JSON: {args_str[:50]}...")
+                args_clean = json.dumps({"raw_arguments": args_str})
+
+            tool_calls.append({
+                "id": f"call_{random_id()}",
+                "type": "function",
+                "function": {
+                    "name": fn_name,
+                    "arguments": args_clean
+                }
+            })
+        else:
+            # Try to find just JSON
+            try:
+                # Check if the whole text is a JSON object which might be the args
+                # But we need a name. If text is just JSON, we might not know the name unless it's in the block title
+                # This is a fallback/heuristic
+                pass
+            except Exception:
+                pass
+                
+        if tool_calls:
+            logger.info(f"[{req_id}] Successfully extracted {len(tool_calls)} tool calls.")
+            return tool_calls
+            
+    except Exception as e:
+        logger.error(f"[{req_id}] Error extracting function call: {e}")
+        
+    return None
+
+async def extract_function_call_from_page(page: AsyncPage, req_id: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Attempts to extract function call details from the page using selectors.
+    Returns a list of tool call objects (OpenAI format) or None.
+    """
+    logger.info(f"[{req_id}] (Helper) Checking for function calls in DOM...")
+    try:
+        # Locate the function call container
+        # We look for the last one, assuming it corresponds to the latest response
+        function_block = page.locator(FUNCTION_CALL_BLOCK_SELECTOR).last
+        
+        if await function_block.count() == 0:
+            return None
+            
+        if not await function_block.is_visible(timeout=1000):
+            return None
+            
+        logger.info(f"[{req_id}] Found visible function call block.")
+        
+        # Extract the code block containing the function call details
+        # Usually formatted as: function_name(args)
+        # Or inside a pre block
+        code_block = function_block.locator(FUNCTION_CALL_PRE_SELECTOR)
+        if await code_block.count() > 0:
+            raw_text = await code_block.inner_text()
+        else:
+            # Fallback: get all text from the block
+            raw_text = await function_block.inner_text()
+            
+        if not raw_text:
+            logger.warning(f"[{req_id}] Function call block found but empty text.")
+            return None
+            
+        logger.info(f"[{req_id}] Raw function call text: {raw_text[:100]}...")
+        
+        # Parse the raw text
+        # Expected formats:
+        # 1. name({"arg": "val"})
+        # 2. name(arg="val") - Python style (might need parsing)
+        # 3. JSON object directly
+        
+        # For now, let's try a simple regex to extract name and JSON args
+        # Pattern: name(args)
+        match = re.match(r"^([a-zA-Z0-9_]+)\s*\((.*)\)\s*$", raw_text.strip(), re.DOTALL)
+        
+        tool_calls = []
+        if match:
+            fn_name = match.group(1)
+            args_str = match.group(2)
+            
+            # Try to parse args as JSON
+            try:
+                args_json = json.loads(args_str)
+                args_clean = json.dumps(args_json)
+            except json.JSONDecodeError:
+                # If not JSON, might be Python kwargs or simple string
+                # For safety, wrap in a string if it looks like a simple value, or leave as string
+                logger.warning(f"[{req_id}] Could not parse arguments as JSON: {args_str[:50]}...")
+                args_clean = json.dumps({"raw_arguments": args_str})
+
+            tool_calls.append({
+                "id": f"call_{random_id()}",
+                "type": "function",
+                "function": {
+                    "name": fn_name,
+                    "arguments": args_clean
+                }
+            })
+        else:
+            # Try to find just JSON
+            try:
+                # Check if the whole text is a JSON object which might be the args
+                # But we need a name. If text is just JSON, we might not know the name unless it's in the block title
+                # This is a fallback/heuristic
+                pass
+            except Exception:
+                pass
+                
+        if tool_calls:
+            logger.info(f"[{req_id}] Successfully extracted {len(tool_calls)} tool calls.")
+            return tool_calls
+            
+    except Exception as e:
+        logger.error(f"[{req_id}] Error extracting function call: {e}")
+        
+    return None

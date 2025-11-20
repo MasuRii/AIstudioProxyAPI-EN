@@ -64,41 +64,10 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
     processed_system_message_indices = set()
     files_list: List[str] = []  # 收集需要上传的本地文件路径（图片、视频、PDF等）
 
-    # 若声明了可用工具，先在提示前注入工具目录，帮助模型知晓可用函数（内部适配，不影响外部协议）
-    if isinstance(tools, list) and len(tools) > 0:
-        try:
-            tool_lines: List[str] = ["可用工具目录:"]
-            for t in tools:
-                name = None
-                params_schema = None
-                if isinstance(t, dict):
-                    fn = t.get('function') if 'function' in t else t
-                    if isinstance(fn, dict):
-                        name = fn.get('name') or t.get('name')
-                        params_schema = fn.get('parameters')
-                    else:
-                        name = t.get('name')
-                if name:
-                    tool_lines.append(f"- 函数: {name}")
-                    if params_schema:
-                        try:
-                            tool_lines.append(f"  参数模式: {json.dumps(params_schema, ensure_ascii=False)}")
-                        except Exception:
-                            pass
-            if tool_choice:
-                # 明确要求或提示可调用的函数名
-                chosen_name = None
-                if isinstance(tool_choice, dict):
-                    fn = tool_choice.get('function') if tool_choice else None
-                    if isinstance(fn, dict):
-                        chosen_name = fn.get('name')
-                elif isinstance(tool_choice, str) and tool_choice.lower() not in ('auto', 'none', 'no', 'off', 'required', 'any'):
-                    chosen_name = tool_choice
-                if chosen_name:
-                    tool_lines.append(f"建议优先使用函数: {chosen_name}")
-            combined_parts.append("\n".join(tool_lines) + "\n---\n")
-        except Exception:
-            pass
+    # [DEPRECATED] Pure text tool definition injection
+    # Now using Native Function Calling (set_function_declarations via UI)
+    # We no longer inject tool definitions as text to avoid confusion.
+    pass
 
     # 处理系统消息
     for i, msg in enumerate(messages):
