@@ -57,15 +57,17 @@ USE_URL_CONTEXT_SELECTOR = 'button[aria-label="Browse the url context"]'
 
 # --- 思考模式相关选择器 ---
 # 思考过程内容容器 (Thinking Content)
-THINKING_CONTAINER_SELECTOR = "ms-thought-accordion, [data-testid*='thinking'], [data-testid*='reasoning']"
-THINKING_HEADER_SELECTOR = "ms-thought-accordion .header, [data-testid*='thinking'] .header, [data-testid*='reasoning'] .header"
-THINKING_CONTENT_SELECTOR = "ms-thought-accordion .content, ms-thought-accordion .markdown-content, [data-testid*='thinking'] .content, [data-testid*='reasoning'] .content, [data-testid*='thinking'] .markdown-content, [data-testid*='reasoning'] .markdown-content"
+THINKING_CONTAINER_SELECTOR = "ms-thought-accordion, ms-thought-chunk, [data-testid*='thinking'], [data-testid*='reasoning']"
+THINKING_HEADER_SELECTOR = "ms-thought-accordion .header, ms-thought-chunk .header, [data-testid*='thinking'] .header, [data-testid*='reasoning'] .header"
+# [FIX-12] Updated to include ms-thought-chunk .mat-expansion-panel-body
+THINKING_CONTENT_SELECTOR = "ms-thought-chunk .mat-expansion-panel-body, ms-thought-accordion .content, ms-thought-accordion .markdown-content, [data-testid*='thinking'] .content, [data-testid*='reasoning'] .content"
 # 兼容性选择器：有时候 thinking block 可能只是一个带有特定 class 的 div
 THINKING_DIV_SELECTOR = "div.thinking-process, div.reasoning-process, [class*='thinking'], [class*='reasoning'], [class*='analysis']"
 # 新增：AI Studio 最新版的 thinking 块选择器
-THINKING_ACCORDION_SELECTOR = "ms-thought-accordion, [data-testid*='accordion'], [class*='accordion'][data-testid*='thinking'], [class*='accordion'][class*='thinking']"
+THINKING_ACCORDION_SELECTOR = "ms-thought-accordion, ms-thought-chunk, [data-testid*='accordion'], [class*='accordion'][data-testid*='thinking'], [class*='accordion'][class*='thinking']"
 # 最终响应内容选择器 (Excluding Thinking)
-FINAL_RESPONSE_SELECTOR = "ms-cmark-node.cmark-node:not(ms-thought-accordion .content), [data-testid*='response'], [class*='response-content'], .chat-response"
+# [FIX-12] Updated to target ms-text-chunk and exclude thinking components
+FINAL_RESPONSE_SELECTOR = "ms-text-chunk:not(:has(ms-thought-chunk)), ms-cmark-node.cmark-node:not(ms-thought-accordion .content):not(ms-thought-chunk .mat-expansion-panel-body), [data-testid*='response'], [class*='response-content'], .chat-response"
 # 仅针对回答部分的明确选择器 (AI Studio Update)
 ANSWER_TEXT_SELECTOR = "ms-cmark-node.cmark-node"
 

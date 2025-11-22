@@ -1,9 +1,14 @@
 import asyncio
 import json
+import re
 from typing import Any, AsyncGenerator
 
 
 from typing import Any, AsyncGenerator, Optional, Callable
+
+# Universal Pattern: Detects the start of XML tags (<name...) or Code Blocks (```)
+# This signals that the model has stopped "thinking" and started "outputting".
+STRUCTURE_BOUNDARY = re.compile(r'(?:^|\n)\s*(<[a-zA-Z_]+|```)')
 
 async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None) -> AsyncGenerator[Any, None]:
     """Enhanced stream response handler with UI-based generation active checks.
@@ -35,6 +40,9 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
     accumulated_body = ""
     accumulated_reason_len = 0
+    
+    # [FIX-11] Flag to track if we have forcefully switched to body mode
+    force_body_mode = False
 
     # Enhanced timeout settings for thinking models
     empty_count = 0
@@ -122,6 +130,31 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 if isinstance(data, str):
                     try:
                         parsed_data = json.loads(data)
+                        
+                        # [FIX-11] Generic Content Boundary Detector
+                        # Logic: Determine if this is Thinking or Body based on content structure
+                        p_reason = parsed_data.get("reason", "")
+                        p_body = parsed_data.get("body", "")
+                        
+                        if force_body_mode:
+                            # We already detected a boundary, treat all reason as body
+                            if p_reason:
+                                parsed_data["body"] = p_body + p_reason
+                                parsed_data["reason"] = ""
+                        elif p_reason:
+                             # Check for boundary in thinking content
+                             match = STRUCTURE_BOUNDARY.search(p_reason)
+                             if match:
+                                 logger.info(f"[{req_id}] 🔄 Detected Structural Boundary ('{match.group(1)}'). Switching to Body.")
+                                 split_idx = match.start()
+                                 
+                                 thought_part = p_reason[:split_idx]
+                                 body_part = p_reason[split_idx:]
+                                 
+                                 parsed_data["reason"] = thought_part
+                                 parsed_data["body"] = p_body + body_part
+                                 force_body_mode = True
+
                         if parsed_data.get("done") is True:
                             body = parsed_data.get("body", "")
                             reason = parsed_data.get("reason", "")
@@ -201,12 +234,36 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         stale_done_ignored = False
                         yield data
                 else:
-                    yield data
+                    # Handle Dict data with same boundary logic
                     if isinstance(data, dict):
+                        # [FIX-11] Generic Content Boundary Detector
+                        p_reason = data.get("reason", "")
+                        p_body = data.get("body", "")
+                        
+                        if force_body_mode:
+                            if p_reason:
+                                data["body"] = p_body + p_reason
+                                data["reason"] = ""
+                        elif p_reason:
+                             match = STRUCTURE_BOUNDARY.search(p_reason)
+                             if match:
+                                 logger.info(f"[{req_id}] 🔄 Detected Structural Boundary ('{match.group(1)}'). Switching to Body.")
+                                 split_idx = match.start()
+                                 
+                                 thought_part = p_reason[:split_idx]
+                                 body_part = p_reason[split_idx:]
+                                 
+                                 data["reason"] = thought_part
+                                 data["body"] = p_body + body_part
+                                 force_body_mode = True
+
                         body = data.get("body", "")
                         reason = data.get("reason", "")
                         if body or reason:
                             has_content = True
+                        
+                        yield data
+                        
                         if data.get("done") is True:
                             logger.info(f"[{req_id}] 接收到字典格式的完成标志 (body长度:{len(body)}, reason长度:{len(reason)}, 已收到项目数:{received_items_count})")
                             if not has_content and received_items_count == 1 and not stale_done_ignored:
