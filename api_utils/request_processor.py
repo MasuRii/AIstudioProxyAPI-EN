@@ -225,24 +225,19 @@ async def _handle_auxiliary_stream_response(
     check_client_disconnected: Callable,
     timeout: float,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
-    """辅助流响应处理路径：负责将 STREAM_QUEUE 的数据转换为 OpenAI 兼容 SSE/JSON。
-
-    - 流式模式：返回 StreamingResponse，逐步推送 delta 与最终 usage。
-    - 非流式模式：聚合最终内容与函数调用，返回 JSONResponse。
-    """
+    """辅助流响应处理路径"""
     from server import logger
     
     is_streaming = request.stream
     current_ai_studio_model_id = context.get('current_ai_studio_model_id')
     
-    # 兼容旧逻辑的随机ID函数移除，统一使用 _random_id()
-
     if is_streaming:
         try:
             completion_event = Event()
-            # 使用生成器作为响应体，交由 FastAPI 进行 SSE 推送
-            # 使用生成器作为响应体，交由 FastAPI 进行 SSE 推送
             page = context['page']
+            
+            # [FIXED] Removed duplicate call.
+            # Ensure we use the one that passes 'page=page'
             stream_gen_func = gen_sse_from_aux_stream(
                 req_id,
                 request,
@@ -250,16 +245,9 @@ async def _handle_auxiliary_stream_response(
                 check_client_disconnected,
                 completion_event,
                 timeout=timeout,
-                page=page,
+                page=page,  # <--- CRITICAL: This enables the auto-scroll logic in stream.py
             )
-            stream_gen_func = gen_sse_from_aux_stream(
-                req_id,
-                request,
-                current_ai_studio_model_id or MODEL_NAME,
-                check_client_disconnected,
-                completion_event,
-                timeout=timeout,
-            )
+            
             if not result_future.done():
                 result_future.set_result(StreamingResponse(stream_gen_func, media_type="text/event-stream"))
             else:
@@ -270,24 +258,24 @@ async def _handle_auxiliary_stream_response(
 
         except Exception as e:
             logger.error(f"[{req_id}] 从队列获取流式数据时出错: {e}", exc_info=True)
-        page = context['page']
-        # 非流式：消费辅助队列的最终结果并组装 JSON 响应
-        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
-            if completion_event and not completion_event.is_set():
-                completion_event.set()
+            # Fallback to non-streaming if stream setup fails...
+            page = context['page']
+            async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
+                if completion_event and not completion_event.is_set():
+                    completion_event.set()
             raise
 
-    else:  # 非流式
+    else:  # Non-streaming logic
         content = None
         reasoning_content = None
         functions = None
         final_data_from_aux_stream = None
 
-        # 非流式：消费辅助队列的最终结果并组装 JSON 响应
-        async for raw_data in use_stream_response(req_id, check_client_disconnected=check_client_disconnected):
+        # Pass page here too for non-streaming requests so they don't time out
+        page = context['page']
+        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
             check_client_disconnected(f"非流式辅助流 - 循环中 ({req_id}): ")
             
-            # 确保 data 是字典类型
             if isinstance(raw_data, str):
                 try:
                     data = json.loads(raw_data)
@@ -297,12 +285,9 @@ async def _handle_auxiliary_stream_response(
             elif isinstance(raw_data, dict):
                 data = raw_data
             else:
-                logger.warning(f"[{req_id}] 非流式未知数据类型: {type(raw_data)}")
                 continue
             
-            # 确保数据是字典类型
             if not isinstance(data, dict):
-                logger.warning(f"[{req_id}] 非流式数据不是字典类型: {data}")
                 continue
                 
             final_data_from_aux_stream = data
@@ -312,6 +297,7 @@ async def _handle_auxiliary_stream_response(
                 functions = data.get("function")
                 break
         
+        # ... (Rest of non-streaming logic remains unchanged) ...
         if final_data_from_aux_stream and final_data_from_aux_stream.get("reason") == "internal_timeout":
             logger.error(f"[{req_id}] 非流式请求通过辅助流失败: 内部超时")
             raise HTTPException(status_code=502, detail=f"[{req_id}] 辅助流处理错误 (内部超时)")

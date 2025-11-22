@@ -17,6 +17,11 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     from server import STREAM_QUEUE, logger
     from models import ClientDisconnectedError, QuotaExceededError
     from config.global_state import GlobalState
+    from config import (
+        SCROLL_CONTAINER_SELECTOR,
+        CHAT_SESSION_CONTENT_SELECTOR,
+        LAST_CHAT_TURN_SELECTOR,
+    )
     import queue
 
     if STREAM_QUEUE is None:
@@ -62,6 +67,37 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
     try:
         while True:
+            # [FIX-SCROLL] Active Viewport Tracking (Auto-Scroll)
+            # Force the viewport to the bottom to prevent DOM virtualization from unloading elements
+            if page:
+                try:
+                    await page.evaluate("""([scrollSel, contentSel, lastTurnSel]) => {
+                        // 1. Target the specific AI Studio scroll container (Primary)
+                        const scrollContainer = document.querySelector(scrollSel);
+                        if (scrollContainer) {
+                            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                        }
+
+                        // 2. Target the specific chat turn container (Backup)
+                        const sessionContent = document.querySelector(contentSel);
+                        if (sessionContent) {
+                             // Some versions might scroll this wrapper instead
+                             sessionContent.scrollTop = sessionContent.scrollHeight;
+                        }
+                        
+                        // 3. Force the absolute last turn into view (Crucial for Virtual Scroll)
+                        // This tells the virtualizer "I am looking at the bottom, please render these elements"
+                        const lastTurn = document.querySelector(lastTurnSel);
+                        if (lastTurn) {
+                            lastTurn.scrollIntoView({behavior: "instant", block: "end"});
+                        }
+                        
+                        // 4. Generic Window scroll (Safety net)
+                        window.scrollTo(0, document.body.scrollHeight);
+                    }""", [SCROLL_CONTAINER_SELECTOR, CHAT_SESSION_CONTENT_SELECTOR, LAST_CHAT_TURN_SELECTOR])
+                except Exception:
+                    pass
+
             # [ROBUST-02] Check for Quota Exceeded
             if GlobalState.IS_QUOTA_EXCEEDED:
                 logger.warning(f"[{req_id}] ⛔ Quota detected during wait loop. Aborting request immediately.")

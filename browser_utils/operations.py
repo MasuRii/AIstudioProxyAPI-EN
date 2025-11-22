@@ -20,6 +20,9 @@ from config import (
     CLICK_TIMEOUT_MS,
     RESPONSE_COMPLETION_TIMEOUT,
     INITIAL_WAIT_MS_BEFORE_POLLING,
+    SCROLL_CONTAINER_SELECTOR,
+    CHAT_SESSION_CONTENT_SELECTOR,
+    LAST_CHAT_TURN_SELECTOR,
 )
 from config.global_state import GlobalState
 from models import ClientDisconnectedError, QuotaExceededError
@@ -62,22 +65,33 @@ async def get_raw_text_content(response_element: Locator, previous_text: str, re
     raw_text = previous_text
     try:
         await response_element.wait_for(state='attached', timeout=1000)
+        
+        # [FIX-SELECTOR] Ensure element is in viewport for DOM virtualization
+        try:
+            await response_element.scroll_into_view_if_needed(timeout=1000)
+        except Exception:
+            pass
+
         pre_element = response_element.locator('pre').last
         pre_found_and_visible = False
         try:
             await pre_element.wait_for(state='visible', timeout=250)
             pre_found_and_visible = True
-        except PlaywrightAsyncError: 
+        except PlaywrightAsyncError:
             pass
         
         if pre_found_and_visible:
             try:
+                # [FIX-SELECTOR] Ensure pre element is in viewport
+                await pre_element.scroll_into_view_if_needed(timeout=500)
                 raw_text = await pre_element.inner_text(timeout=500)
             except PlaywrightAsyncError as pre_err:
                 if DEBUG_LOGS_ENABLED:
                     logger.debug(f"[{req_id}] (获取原始文本) 获取 pre 元素内部文本失败: {pre_err}")
         else:
             try:
+                # [FIX-SELECTOR] Ensure response element is in viewport
+                await response_element.scroll_into_view_if_needed(timeout=500)
                 raw_text = await response_element.inner_text(timeout=500)
             except PlaywrightAsyncError as e_parent:
                 if DEBUG_LOGS_ENABLED:
@@ -743,6 +757,36 @@ async def _wait_for_response_completion(
     current_timeout_seconds = timeout_seconds
 
     while True:
+        # [FIX-SCROLL] Active Viewport Tracking (Auto-Scroll)
+        # Force the viewport to the bottom to prevent DOM virtualization from unloading elements
+        try:
+            await page.evaluate("""([scrollSel, contentSel, lastTurnSel]) => {
+                // 1. Target the specific AI Studio scroll container (Primary)
+                const scrollContainer = document.querySelector(scrollSel);
+                if (scrollContainer) {
+                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                }
+
+                // 2. Target the specific chat turn container (Backup)
+                const sessionContent = document.querySelector(contentSel);
+                if (sessionContent) {
+                     // Some versions might scroll this wrapper instead
+                     sessionContent.scrollTop = sessionContent.scrollHeight;
+                }
+                
+                // 3. Force the absolute last turn into view (Crucial for Virtual Scroll)
+                // This tells the virtualizer "I am looking at the bottom, please render these elements"
+                const lastTurn = document.querySelector(lastTurnSel);
+                if (lastTurn) {
+                    lastTurn.scrollIntoView({behavior: "instant", block: "end"});
+                }
+                
+                // 4. Generic Window scroll (Safety net)
+                window.scrollTo(0, document.body.scrollHeight);
+            }""", [SCROLL_CONTAINER_SELECTOR, CHAT_SESSION_CONTENT_SELECTOR, LAST_CHAT_TURN_SELECTOR])
+        except Exception:
+            pass
+
         # A. Check for Quota Error (You already did this ✅)
         await check_quota_limit(page, req_id)
 

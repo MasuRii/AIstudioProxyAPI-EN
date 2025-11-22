@@ -80,3 +80,8 @@ THINKING_LEVEL_OPTION_HIGH_SELECTOR = '[role="listbox"][aria-label="Thinking Lev
 GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR = (
     'div[data-test-id="searchAsAToolTooltip"] mat-slide-toggle button'
 )
+
+# --- 滚动相关选择器 ---
+SCROLL_CONTAINER_SELECTOR = "ms-autoscroll-container"
+CHAT_SESSION_CONTENT_SELECTOR = ".chat-session-content"
+LAST_CHAT_TURN_SELECTOR = "ms-chat-turn:last-of-type"
