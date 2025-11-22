@@ -85,7 +85,9 @@ async def gen_sse_from_aux_stream(
             if body:
                 full_body_content = body
 
+            # Enhanced content sequencing: Send thinking first, then body content
             if len(reason) > last_reason_pos:
+                reason_delta = reason[last_reason_pos:]
                 output = {
                     "id": chat_completion_id,
                     "object": "chat.completion.chunk",
@@ -96,55 +98,92 @@ async def gen_sse_from_aux_stream(
                         "delta": {
                             "role": "assistant",
                             "content": None,
-                            "reasoning_content": reason[last_reason_pos:],
+                            "reasoning_content": reason_delta,
                         },
                         "finish_reason": None,
                         "native_finish_reason": None,
                     }],
                 }
                 last_reason_pos = len(reason)
+                logger.debug(f"[{req_id}] 🧠 Sent reasoning content: {len(reason_delta)} chars")
                 yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
+            # Smart body content sequencing - only send after thinking is complete
             if len(body) > last_body_pos:
+                body_delta = body[last_body_pos:]
                 finish_reason_val = None
                 if done:
                     finish_reason_val = "stop"
 
-                delta_content = {"role": "assistant", "content": body[last_body_pos:]}
-                choice_item = {
-                    "index": 0,
-                    "delta": delta_content,
-                    "finish_reason": finish_reason_val,
-                    "native_finish_reason": finish_reason_val,
-                }
+                # Only send body content if we have substantial body content or we're done
+                should_send_body = len(body_delta) > 0 and (
+                    len(full_reasoning_content) == 0 or  # No thinking content, safe to send
+                    last_reason_pos >= len(reason)       # Thinking content is up to date
+                )
+                
+                if should_send_body:
+                    delta_content = {"role": "assistant", "content": body_delta}
+                    choice_item = {
+                        "index": 0,
+                        "delta": delta_content,
+                        "finish_reason": finish_reason_val,
+                        "native_finish_reason": finish_reason_val,
+                    }
 
-                if done and function and len(function) > 0:
-                    tool_calls_list = []
-                    for func_idx, function_call_data in enumerate(function):
-                        tool_calls_list.append({
-                            "id": f"call_{random_id()}",
-                            "index": func_idx,
-                            "type": "function",
-                            "function": {
-                                "name": function_call_data["name"],
-                                "arguments": json.dumps(function_call_data["params"]),
-                            },
-                        })
-                    delta_content["tool_calls"] = tool_calls_list
-                    choice_item["finish_reason"] = "tool_calls"
-                    choice_item["native_finish_reason"] = "tool_calls"
-                    delta_content["content"] = None
+                    if done and function and len(function) > 0:
+                        tool_calls_list = []
+                        for func_idx, function_call_data in enumerate(function):
+                            tool_calls_list.append({
+                                "id": f"call_{random_id()}",
+                                "index": func_idx,
+                                "type": "function",
+                                "function": {
+                                    "name": function_call_data["name"],
+                                    "arguments": json.dumps(function_call_data["params"]),
+                                },
+                            })
+                        delta_content["tool_calls"] = tool_calls_list
+                        choice_item["finish_reason"] = "tool_calls"
+                        choice_item["native_finish_reason"] = "tool_calls"
+                        delta_content["content"] = None
 
-                output = {
-                    "id": chat_completion_id,
-                    "object": "chat.completion.chunk",
-                    "model": model_name_for_stream,
-                    "created": created_timestamp,
-                    "choices": [choice_item],
-                }
-                last_body_pos = len(body)
-                yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                    output = {
+                        "id": chat_completion_id,
+                        "object": "chat.completion.chunk",
+                        "model": model_name_for_stream,
+                        "created": created_timestamp,
+                        "choices": [choice_item],
+                    }
+                    last_body_pos = len(body)
+                    logger.debug(f"[{req_id}] 📝 Sent body content: {len(body_delta)} chars")
+                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                else:
+                    # Accumulate body content for later transmission
+                    logger.debug(f"[{req_id}] ⏸️ Holding body content ({len(body_delta)} chars) until thinking complete")
             elif done:
+                # Enhanced body content flushing when thinking is complete
+                if len(full_body_content) > last_body_pos:
+                    # Flush any remaining body content
+                    remaining_body = full_body_content[last_body_pos:]
+                    if remaining_body:
+                        logger.info(f"[{req_id}] 📨 Flushing accumulated body content: {len(remaining_body)} chars")
+                        delta_content = {"role": "assistant", "content": remaining_body}
+                        choice_item = {
+                            "index": 0,
+                            "delta": delta_content,
+                            "finish_reason": None,
+                            "native_finish_reason": None,
+                        }
+                        output = {
+                            "id": chat_completion_id,
+                            "object": "chat.completion.chunk",
+                            "model": model_name_for_stream,
+                            "created": created_timestamp,
+                            "choices": [choice_item],
+                        }
+                        yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
+                        last_body_pos = len(full_body_content)
+                
                 # [FIX-07] Client Compatibility Fallback (The "Saved You" Fix)
                 # 如果到最后 body 还是空的，但有思考内容，强制填充 body 以防止客户端报错
                 if len(full_body_content) == 0 and len(full_reasoning_content) > 0:

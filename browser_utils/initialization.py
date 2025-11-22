@@ -468,8 +468,11 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
         if temp_context:
             try:
                 logger.info(f"   尝试关闭临时的浏览器上下文 due to initialization error.")
-                await temp_context.close()
+                # [ID-04] Optimize Browser Lifecycle Management: Add timeout to context close
+                await asyncio.wait_for(temp_context.close(), timeout=2.0)
                 logger.info("   ✅ 临时浏览器上下文已关闭。")
+            except asyncio.TimeoutError:
+                logger.warning("   🚨 [ID-04] 浏览器上下文关闭超时 (2s), 跳过强制关闭以加快关闭速度.")
             except Exception as close_err:
                  logger.warning(f"   ⚠️ 关闭临时浏览器上下文时出错: {close_err}")
         from .operations import save_error_snapshot
@@ -484,8 +487,11 @@ async def _close_page_logic():
     logger.info("--- 运行页面逻辑关闭 --- ")
     if server.page_instance and not server.page_instance.is_closed():
         try:
-            await server.page_instance.close()
+            # [ID-04] Optimize Browser Lifecycle Management: 2-second timeout for graceful close
+            await asyncio.wait_for(server.page_instance.close(), timeout=2.0)
             logger.info("   ✅ 页面已关闭")
+        except asyncio.TimeoutError:
+            logger.warning("   🚨 [ID-04] 浏览器页面关闭超时 (2s), 跳过强制关闭以加快关闭速度.")
         except PlaywrightAsyncError as pw_err:
             logger.warning(f"   ⚠️ 关闭页面时出现Playwright错误: {pw_err}")
         except asyncio.TimeoutError as timeout_err:

@@ -90,9 +90,17 @@ async def perform_auth_rotation() -> bool:
     4. Starts the Browser (New Session).
     5. Releases Lock.
     """
+    
+    # [OBS-04] Explicit Rotation Logging with Visual Separators
+    logger.info("♻️ =========================================")
+    logger.info("♻️ INITIATING AUTH ROTATION")
+    logger.info("♻️ =========================================")
+    
     # Avoid re-entry if already rotating
     if not GlobalState.AUTH_ROTATION_LOCK.is_set():
         logger.info("⚠️ Rotation already in progress (Lock is set). Skipping duplicate trigger.")
+        logger.info("♻️ Rotation skipped - already in progress")
+        logger.info("♻️ =========================================")
         return True
 
     # [FINAL-02] Depletion Guard Check
@@ -103,6 +111,8 @@ async def perform_auth_rotation() -> bool:
     
     if len(_ROTATION_TIMESTAMPS) >= _ROTATION_LIMIT_COUNT:
         logger.critical("🚨 CRITICAL: TOO MANY ROTATIONS! All accounts may be exhausted. Stopping Browser & Locking API.")
+        logger.critical("♻️ ROTATION ABORTED - System Exhausted")
+        logger.critical("♻️ =========================================")
         
         # Stop everything
         if server.page_instance:
@@ -124,8 +134,7 @@ async def perform_auth_rotation() -> bool:
 
     # Record this attempt
     _ROTATION_TIMESTAMPS.append(current_time)
-
-    logger.info("🔄 Starting Auth Profile Rotation (Full Browser Restart)...")
+    logger.info(f"🔄 Rotation attempt #{len(_ROTATION_TIMESTAMPS)} in current window")
     
     # 1. Block new requests
     GlobalState.AUTH_ROTATION_LOCK.clear()
@@ -159,12 +168,19 @@ async def perform_auth_rotation() -> bool:
             server.is_playwright_ready = False
 
         # 3. Select next profile
+        logger.info("🔍 Selecting next auth profile...")
         next_profile_path = _get_next_profile()
         if not next_profile_path:
             logger.critical("❌ Rotation Failed: No available auth profiles found!")
+            logger.critical("♻️ ROTATION FAILED - No profiles available")
+            logger.critical("♻️ =========================================")
             return False
             
-        logger.info(f"👉 Selected next profile: {os.path.basename(next_profile_path)}")
+        old_profile = getattr(server, 'current_auth_profile_path', 'unknown')
+        new_profile_name = os.path.basename(next_profile_path)
+        old_profile_name = os.path.basename(old_profile) if old_profile != 'unknown' else 'unknown'
+        
+        logger.info(f"👉 Rotating: {old_profile_name} → {new_profile_name}")
         _USED_PROFILES_HISTORY[next_profile_path] = time.time()
         
         # Update global state for the new profile path so initialization picks it up
@@ -173,7 +189,7 @@ async def perform_auth_rotation() -> bool:
         os.environ['ACTIVE_AUTH_JSON_PATH'] = next_profile_path
 
         # 4. Start Browser
-        logger.info("🚀 Restarting Browser...")
+        logger.info("🚀 Restarting Browser with new profile...")
         from api_utils.app import _initialize_browser_and_page
         
         # We need to re-initialize playwright and browser
@@ -187,19 +203,29 @@ async def perform_auth_rotation() -> bool:
                 
                 # Reset Quota Status
                 GlobalState.reset_quota_status()
+                logger.info("♻️ ROTATION SUCCESSFUL")
+                logger.info("♻️ =========================================")
                 return True
             else:
                 logger.error("❌ Browser started but page is not ready.")
+                logger.error("♻️ ROTATION FAILED - Page not ready")
+                logger.error("♻️ =========================================")
                 return False
         except Exception as start_err:
              logger.error(f"❌ Failed to restart browser: {start_err}")
+             logger.error("♻️ ROTATION FAILED - Browser restart error")
+             logger.error("♻️ =========================================")
              return False
 
     except Exception as e:
         logger.error(f"❌ Unexpected error during auth rotation: {e}", exc_info=True)
+        logger.error("♻️ ROTATION FAILED - Unexpected error")
+        logger.error("♻️ =========================================")
         return False
         
     finally:
         # 5. Release lock
         GlobalState.AUTH_ROTATION_LOCK.set()
         logger.info("🔓 Request processing unlocked.")
+        logger.info("♻️ Rotation flow completed")
+        logger.info("♻️ =========================================")

@@ -6,9 +6,23 @@ from typing import Any, AsyncGenerator
 
 from typing import Any, AsyncGenerator, Optional, Callable
 
-# Universal Pattern: Detects the start of XML tags (<name...) or Code Blocks (```)
-# This signals that the model has stopped "thinking" and started "outputting".
-STRUCTURE_BOUNDARY = re.compile(r'(?:^|\n)\s*(<[a-zA-Z_]+|```)')
+# Enhanced Boundary Detection: More precise patterns to avoid false positives
+# These patterns specifically indicate genuine content transitions, not internal structure
+STRUCTURE_BOUNDARY = re.compile(r'(?:^|\n)\s*(?:```[a-zA-Z]*\n|<[a-zA-Z_]+\s+[^>]*>|<[a-zA-Z_]+>|<[a-zA-Z_]+>)')
+CODE_BLOCK_START = re.compile(r'(?:^|\n)\s*```[a-zA-Z]*\n')
+XML_TAG_START = re.compile(r'(?:^|\n)\s*(?:<[a-zA-Z_]+\s+[^>]*>|<[a-zA-Z_]+>|<[a-zA-Z_]+>)')
+
+# Content transition indicators - more sophisticated patterns
+CONTENT_TRANSITION_MARKERS = [
+    r'(?:^|\n)\s*```[a-zA-Z]*\n',           # Start of named code block
+    r'(?:^|\n)\s*<[a-zA-Z_]+\s+[^>]*>',     # XML tag with attributes (likely real content)
+    r'(?:^|\n)\s*<[a-zA-Z_]+>',              # Simple XML tag (context-dependent)
+    r'(?:^|\n)\s*<[a-zA-Z_]+>',        # HTML-escaped XML tag
+    r'(?:^|\n)\s*[:\-]\s*',                  # List indicators or formatting
+    r'(?:^|\n)\s*\*\s+',                     # Bullet points
+    r'(?:^|\n)\s*\d+\.\s+',                  # Numbered lists
+]
+CONTENT_TRANSITION_REGEX = re.compile('|'.join(CONTENT_TRANSITION_MARKERS))
 
 async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None) -> AsyncGenerator[Any, None]:
     """Enhanced stream response handler with UI-based generation active checks.
@@ -40,6 +54,9 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
     accumulated_body = ""
     accumulated_reason_len = 0
+    total_reason_processed = 0
+    total_body_processed = 0
+    boundary_transitions = 0
     
     # [FIX-11] Flag to track if we have forcefully switched to body mode
     force_body_mode = False
@@ -131,8 +148,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     try:
                         parsed_data = json.loads(data)
                         
-                        # [FIX-11] Generic Content Boundary Detector
-                        # Logic: Determine if this is Thinking or Body based on content structure
+                        # Enhanced Content Boundary Detection with Smart Sequencing
                         p_reason = parsed_data.get("reason", "")
                         p_body = parsed_data.get("body", "")
                         
@@ -141,34 +157,66 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                             if p_reason:
                                 parsed_data["body"] = p_body + p_reason
                                 parsed_data["reason"] = ""
+                                logger.debug(f"[{req_id}] 🔄 Forced body mode: moved {len(p_reason)} chars from reason to body")
                         elif p_reason:
-                             # Check for boundary in thinking content
-                             match = STRUCTURE_BOUNDARY.search(p_reason)
-                             if match:
-                                 logger.info(f"[{req_id}] 🔄 Detected Structural Boundary ('{match.group(1)}'). Switching to Body.")
-                                 split_idx = match.start()
+                             # Enhanced boundary detection with content analysis
+                             boundary_match = CONTENT_TRANSITION_REGEX.search(p_reason)
+                             if boundary_match:
+                                 boundary_text = boundary_match.group(0)
+                                 logger.info(f"[{req_id}] 🔄 Detected Content Transition: '{boundary_text.strip()}'. Analyzing transition context...")
                                  
-                                 thought_part = p_reason[:split_idx]
-                                 body_part = p_reason[split_idx:]
+                                 split_idx = boundary_match.start()
+                                 thought_part = p_reason[:split_idx].rstrip()
+                                 transition_part = p_reason[split_idx:len(boundary_match.group(0))] + p_reason[len(boundary_match.group(0)):]
                                  
-                                 parsed_data["reason"] = thought_part
-                                 parsed_data["body"] = p_body + body_part
-                                 force_body_mode = True
+                                 logger.info(f"[{req_id}] 📊 Boundary Analysis: Thought={len(thought_part)} chars, Transition={len(transition_part)} chars, ExistingBody={len(p_body)} chars")
+                                 
+                                 # Smart content analysis: only transition if there's substantial thinking content
+                                 # and the boundary seems genuine (not internal structure)
+                                 has_substantial_thought = len(thought_part) > 10
+                                 has_no_internal_transitions = CONTENT_TRANSITION_REGEX.search(thought_part) is None
+                                 
+                                 should_transition = (
+                                     has_substantial_thought or  # At least 10 chars of genuine thinking
+                                     has_no_internal_transitions  # No internal transitions in thinking
+                                 )
+                                 
+                                 if not should_transition:
+                                     logger.debug(f"[{req_id}] 🚫 Transition REJECTED. SubstantialThought: {has_substantial_thought}, NoInternalTransitions: {has_no_internal_transitions}")
+                                     logger.debug(f"[{req_id}]    Thought Part Preview: {thought_part[-50:]!r}")
+
+                                 if should_transition:
+                                     parsed_data["reason"] = thought_part
+                                     parsed_data["body"] = p_body + transition_part
+                                     force_body_mode = True
+                                     boundary_transitions += 1
+                                     logger.info(f"[{req_id}] ✅ Transitioning to body mode. Final: Reason={len(thought_part)}, Body={len(p_body + transition_part)}")
+                                 else:
+                                     logger.debug(f"[{req_id}] ⏸️ Skipping transition - boundary appears to be internal structure")
+                                     # Keep everything in reason to avoid false transitions
 
                         if parsed_data.get("done") is True:
                             body = parsed_data.get("body", "")
                             reason = parsed_data.get("reason", "")
+                            
+                            # Update totals with detailed logging
+                            body_increment = len(body)
+                            reason_increment = len(reason)
                             accumulated_body += body
                             accumulated_reason_len += len(reason)
+                            total_body_processed += body_increment
+                            total_reason_processed += reason_increment
+                            boundary_transitions += 1 if force_body_mode else 0
                             
                             if body or reason:
                                 has_content = True
-                            logger.info(f"[{req_id}] 接收到JSON格式的完成标志 (body长度:{len(body)}, reason长度:{len(reason)}, 已收到项目数:{received_items_count})")
+                            
+                            logger.info(f"[{req_id}] 📊 JSON完成状态: Body={len(body)} (+{body_increment}), Reason={len(reason)} (+{reason_increment}), Total: Body={len(accumulated_body)}, Reason={accumulated_reason_len}, Transitions={boundary_transitions}")
                             
                             # [FIX-06] Thinking-to-Answer Handover Protocol
                             # 检测是否只输出了思考过程而没有正文 (Thinking > 0, Body == 0)
                             if accumulated_reason_len > 0 and len(accumulated_body) == 0:
-                                logger.info(f"[{req_id}] ⚠️ 检测到 Thinking-Only 响应 (Reason: {accumulated_reason_len}, Body: 0)。启动 DOM Body-Wait 协议...")
+                                logger.info(f"[{req_id}] ⚠️ 检测到 Thinking-Only 响应 (Total Reason: {accumulated_reason_len}, Body: 0)。启动 DOM Body-Wait 协议...")
                                 
                                 try:
                                     if page:
@@ -202,6 +250,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                                                     }
                                                     yield new_chunk
                                                     accumulated_body += final_text_to_yield
+                                                    total_body_processed += len(final_text_to_yield)
                                                     dom_body_found = True
                                                     break
                                         
@@ -221,12 +270,23 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         else:
                             body = parsed_data.get("body", "")
                             reason = parsed_data.get("reason", "")
+                            
+                            # Update totals with detailed logging
+                            body_increment = len(body)
+                            reason_increment = len(reason)
                             accumulated_body += body
                             accumulated_reason_len += len(reason)
+                            total_body_processed += body_increment
+                            total_reason_processed += reason_increment
                             
                             if body or reason:
                                 has_content = True
                             stale_done_ignored = False
+                            
+                            # Log significant content updates
+                            if body_increment > 0 or reason_increment > 0:
+                                logger.debug(f"[{req_id}] 📝 数据增量: Body +{body_increment}, Reason +{reason_increment}, 状态: ForceBody={force_body_mode}")
+                            
                             yield parsed_data
                     except json.JSONDecodeError:
                         logger.debug(f"[{req_id}] 返回非JSON字符串数据")
@@ -234,9 +294,8 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         stale_done_ignored = False
                         yield data
                 else:
-                    # Handle Dict data with same boundary logic
+                    # Handle Dict data with enhanced boundary logic
                     if isinstance(data, dict):
-                        # [FIX-11] Generic Content Boundary Detector
                         p_reason = data.get("reason", "")
                         p_body = data.get("body", "")
                         
@@ -244,18 +303,39 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                             if p_reason:
                                 data["body"] = p_body + p_reason
                                 data["reason"] = ""
+                                logger.debug(f"[{req_id}] 🔄 Dict forced body mode: moved {len(p_reason)} chars from reason to body")
                         elif p_reason:
-                             match = STRUCTURE_BOUNDARY.search(p_reason)
-                             if match:
-                                 logger.info(f"[{req_id}] 🔄 Detected Structural Boundary ('{match.group(1)}'). Switching to Body.")
-                                 split_idx = match.start()
+                             # Enhanced boundary detection for dict data
+                             boundary_match = CONTENT_TRANSITION_REGEX.search(p_reason)
+                             if boundary_match:
+                                 boundary_text = boundary_match.group(0)
+                                 logger.info(f"[{req_id}] 🔄 Dict Content Transition: '{boundary_text.strip()}'. Analyzing...")
                                  
-                                 thought_part = p_reason[:split_idx]
-                                 body_part = p_reason[split_idx:]
+                                 split_idx = boundary_match.start()
+                                 thought_part = p_reason[:split_idx].rstrip()
+                                 transition_part = p_reason[split_idx:len(boundary_match.group(0))] + p_reason[len(boundary_match.group(0)):]
                                  
-                                 data["reason"] = thought_part
-                                 data["body"] = p_body + body_part
-                                 force_body_mode = True
+                                 has_substantial_thought = len(thought_part) > 10
+                                 has_no_internal_transitions = CONTENT_TRANSITION_REGEX.search(thought_part) is None
+                                 
+                                 should_transition = (
+                                     has_substantial_thought or
+                                     has_no_internal_transitions
+                                 )
+                                 
+                                 if not should_transition:
+                                     logger.debug(f"[{req_id}] 🚫 Dict Transition REJECTED. SubstantialThought: {has_substantial_thought}, NoInternalTransitions: {has_no_internal_transitions}")
+                                     logger.debug(f"[{req_id}]    Thought Part Preview: {thought_part[-50:]!r}")
+
+                                 if should_transition:
+                                     data["reason"] = thought_part
+                                     data["body"] = p_body + transition_part
+                                     force_body_mode = True
+                                     boundary_transitions += 1
+                                     logger.info(f"[{req_id}] ✅ Dict transition to body mode. Final: Reason={len(thought_part)}, Body={len(p_body + transition_part)}")
+                                 else:
+                                     logger.debug(f"[{req_id}] ⏸️ Dict skipping transition - boundary appears internal")
+                                     # Keep everything in reason to avoid false transitions
 
                         body = data.get("body", "")
                         reason = data.get("reason", "")
@@ -344,8 +424,12 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
         raise
     finally:
         logger.info(
-            f"[{req_id}] 流响应使用完成，数据接收状态: {data_received}, 有内容: {has_content}, 收到项目数: {received_items_count}, "
-            f"曾忽略空done: {stale_done_ignored}. 开始清理队列..."
+            f"[{req_id}] ✅ 流响应使用完成统计:\n"
+            f"  📊 数据接收: {data_received}, 有内容: {has_content}, 收到项目数: {received_items_count}\n"
+            f"  📝 内容统计: Body={total_body_processed} chars, Reason={total_reason_processed} chars\n"
+            f"  🔄 边界转换: {boundary_transitions} 次, 强制Body模式: {force_body_mode}\n"
+            f"  ⏱️ 超时处理: 忽略空done={stale_done_ignored}, 初始等待限制={initial_wait_limit}\n"
+            f"  🧹 开始清理队列..."
         )
         # Trigger queue cleanup to prevent residual data
         await clear_stream_queue()

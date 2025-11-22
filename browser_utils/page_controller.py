@@ -741,7 +741,18 @@ class PageController:
 
         try:
             toggle_locator = self.page.locator(toggle_selector)
-            await expect_async(toggle_locator).to_be_visible(timeout=5000)
+
+            # [Robustness] 检查可见性，如果不可见且期望为关闭，则直接返回
+            try:
+                await expect_async(toggle_locator).to_be_visible(timeout=3000)
+            except Exception:
+                if not should_be_checked:
+                    self.logger.info(f"[{self.req_id}] 'Thinking Budget' 开关不可见，假定已禁用/不适用。")
+                    return
+                else:
+                    self.logger.warning(f"[{self.req_id}] ⚠️ 'Thinking Budget' 开关不可见，无法执行开启操作。")
+                    return
+
             try:
                 await toggle_locator.scroll_into_view_if_needed()
             except Exception:
@@ -2671,7 +2682,7 @@ class PageController:
                         // 尝试获取语言标识
                         let lang = '';
                         const classList = cb.className || '';
-                        const match = classList.match(/language-(\w+)/);
+                        const match = classList.match(/language-(\\w+)/);
                         if (match) lang = match[1];
                         
                         // 如果内部有 code 标签，优先取 code 的内容

@@ -491,6 +491,12 @@ async def _handle_initial_model_state_and_storage(page: AsyncPage):
                 logger.error(f"   判定需要刷新和存储更新: {reason_for_reload}")
         
         if needs_reload_and_storage_update:
+            # [ID-01] Implement Global Shutdown Circuit Breaker
+            from config.global_state import GlobalState
+            if GlobalState.IS_SHUTTING_DOWN.is_set():
+                logger.info("🛑 Shutdown in progress. Skipping browser reload logic (Circuit Breaker).")
+                return
+
             logger.info(f"   执行刷新和存储更新流程，原因: {reason_for_reload}")
             logger.info("   步骤 1: 调用 _set_model_from_page_display(set_storage=True) 更新 localStorage 和全局模型 ID...")
             await _set_model_from_page_display(page, set_storage=True)

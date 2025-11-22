@@ -878,12 +878,33 @@ async def _wait_for_response_completion(
     """等待响应完成"""
     from playwright.async_api import TimeoutError
     
-    # 1. Dynamic Timeout
+    # [FIX-03] Dynamic TTFB Timeout - Rotation Aware
     if timeout is None:
-        # Fallback to old logic if timeout is not provided, but use the safer 1000 chars/sec
-        timeout_seconds = 5 + (prompt_length / 1000.0)
+        # Base calculation: 5s + 1s per 1000 chars (safer than before)
+        base_timeout_seconds = 5 + (prompt_length / 1000.0)
+        
+        # Rotation-aware adjustments
+        if GlobalState.IS_QUOTA_EXCEEDED:
+            # During rotation, extend timeout significantly
+            # Account for browser restart time (~10-15s) + model initialization
+            rotation_overhead = 20  # 20 second overhead for rotation
+            timeout_seconds = max(base_timeout_seconds + rotation_overhead, 30)  # Minimum 30s during rotation
+            logger.info(f"[{req_id}] (WaitV3) Rotation detected - applying extended timeout: {timeout_seconds:.2f}s")
+        else:
+            # Normal operation - use calculated timeout with reasonable bounds
+            timeout_seconds = max(base_timeout_seconds, 10)  # Minimum 10s for complex prompts
+            timeout_seconds = min(timeout_seconds, 120)  # Maximum 2 minutes
+            
+            # Add extra time for large prompts (more complex responses)
+            if prompt_length > 5000:  # Large prompts often need more time
+                timeout_seconds *= 1.5
+                logger.info(f"[{req_id}] (WaitV3) Large prompt detected - extending timeout by 50%: {timeout_seconds:.2f}s")
     else:
+        # User-provided timeout - respect it but add rotation awareness
         timeout_seconds = timeout
+        if GlobalState.IS_QUOTA_EXCEEDED and timeout_seconds < 30:
+            timeout_seconds = 30  # Ensure minimum timeout during rotation
+            logger.info(f"[{req_id}] (WaitV3) Rotation detected - enforcing minimum timeout: {timeout_seconds:.2f}s")
     
     timeout_ms = timeout_seconds * 1000
 

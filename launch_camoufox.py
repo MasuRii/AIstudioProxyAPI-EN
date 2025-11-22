@@ -1,5 +1,26 @@
 #!/usr/bin/env python3
 # launch_camoufox.py
+import asyncio
+import sys
+import subprocess
+import time
+import re
+import os
+import signal
+import atexit
+import argparse
+import select
+import traceback
+import json
+import threading
+import queue
+import logging
+import logging.handlers
+import socket
+import platform
+import shutil
+#!/usr/bin/env python3
+# launch_camoufox.py
 import sys
 import subprocess
 import time
@@ -173,8 +194,18 @@ def cleanup():
                     camoufox_proc.terminate()
             else:
                 if sys.platform == "win32":
-                    logger.info(f"Sending termination request to process tree (PID: {pid})")
-                    subprocess.call(['taskkill', '/T', '/PID', str(pid)])
+                    logger.info(f"🔥 [ID-02] Windows Force-Kill Strategy: Using immediate /F /T for process tree (PID: {pid})")
+                    # [ID-02] Enhanced Windows Force-Kill: Immediate /F /T without grace period
+                    result = subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if result.returncode == 0:
+                        logger.info(f"  ✅ Successfully force-killed Camoufox process tree via taskkill.")
+                    else:
+                        logger.warning(f"  ⚠️ Taskkill /F /T returned code {result.returncode}: {result.stderr.strip()}")
+                        # Fallback: try regular terminate
+                        camoufox_proc.terminate()
                 else:
                     logger.info(f"  Sending SIGTERM to Camoufox (PID: {pid})...")
                     camoufox_proc.terminate()
@@ -192,8 +223,16 @@ def cleanup():
                     camoufox_proc.kill()
             else:
                 if sys.platform == "win32":
-                    logger.info(f"  Force killing Camoufox process tree (PID: {pid})")
-                    subprocess.call(['taskkill', '/F', '/T', '/PID', str(pid)])
+                    logger.info(f"  🔥 [ID-02] Fallback: Force killing Camoufox process tree (PID: {pid})")
+                    # [ID-02] Enhanced fallback force-kill with better error handling
+                    result = subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True, text=True, timeout=3
+                    )
+                    if result.returncode == 0:
+                        logger.info(f"  ✅ Fallback: Successfully force-killed Camoufox process tree.")
+                    else:
+                        logger.warning(f"  ⚠️ Fallback taskkill failed (code {result.returncode}): {result.stderr.strip()}")
                 else:
                     camoufox_proc.kill()
             try:
@@ -218,7 +257,10 @@ def cleanup():
 
 atexit.register(cleanup)
 def signal_handler(sig, frame):
-    logger.info(f"Received signal {signal.Signals(sig).name} ({sig}). Initiating exit procedure...")
+    from config.global_state import GlobalState
+    logger.info(f"Received signal {signal.Signals(sig).name} ({sig}). Setting IS_SHUTTING_DOWN event...")
+    GlobalState.IS_SHUTTING_DOWN.set()
+    logger.info("Initiating exit procedure...")
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
@@ -1125,12 +1167,63 @@ if __name__ == "__main__":
 
     if not args.exit_on_auth_save:
         try:
-            uvicorn.run(
+            # [ID-03] Enhanced Uvicorn Signal Handling with async task cancellation
+            from config.global_state import GlobalState
+            
+            # Create custom server config to control signal handling
+            server_config = uvicorn.Config(
                 app,
                 host="0.0.0.0",
                 port=args.server_port,
-                log_config=None
+                log_config=None,
+                access_log=False
             )
+
+            # [ID-03] Custom Server to prevent Uvicorn from overriding signal handlers
+            class CustomUvicornServer(uvicorn.Server):
+                def install_signal_handlers(self):
+                    # We handle signals ourselves
+                    pass
+
+            server = CustomUvicornServer(server_config)
+            
+            # Install custom signal handlers that cancel asyncio tasks
+            def install_custom_signal_handlers():
+                """Install custom signal handlers for immediate asyncio task cancellation"""
+                import signal
+                
+                def signal_handler(signum, frame):
+                    logger.info(f"[ID-03] 🚨 Received signal {signum}. Setting shutdown event and cancelling tasks...")
+                    GlobalState.IS_SHUTTING_DOWN.set()
+                    
+                    # Cancel all asyncio tasks immediately
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Get all tasks except the current one
+                            tasks = [t for t in asyncio.all_tasks(loop) if not t.done() and t is not asyncio.current_task()]
+                            logger.info(f"[ID-03] Cancelling {len(tasks)} asyncio tasks...")
+                            for task in tasks:
+                                task.cancel()
+                            # Give tasks a brief moment to acknowledge cancellation
+                            asyncio.gather(*tasks, return_exceptions=True)
+                    except Exception as e:
+                        logger.warning(f"[ID-03] Error cancelling asyncio tasks: {e}")
+                    
+                    # Force server to exit
+                    server.should_exit = True
+                    logger.info("[ID-03] Uvicorn server exit requested.")
+                
+                # Install handlers for SIGINT and SIGTERM
+                signal.signal(signal.SIGINT, signal_handler)
+                signal.signal(signal.SIGTERM, signal_handler)
+                logger.info("[ID-03] Custom signal handlers installed for immediate shutdown.")
+            
+            # Install our custom handlers
+            install_custom_signal_handlers()
+            
+            # Run server with enhanced shutdown handling
+            server.run()
             logger.info("Uvicorn server stopped.")
         except SystemExit as e_sysexit:
             logger.info(f"Uvicorn or subsystem exited via sys.exit({e_sysexit.code}).")

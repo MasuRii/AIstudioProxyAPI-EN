@@ -348,7 +348,7 @@ async def _handle_auxiliary_stream_response(
 
         if not result_future.done():
             result_future.set_result(JSONResponse(content=response_payload))
-        return None
+        return response_payload
 
 
 async def _handle_playwright_response(req_id: str, request: ChatCompletionRequest, page: AsyncPage,
@@ -439,9 +439,18 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         )
         
         if not result_future.done():
+            from server import logger
+            logger.info(f"[{req_id}] [DEBUG] Setting non-stream result on future. Payload keys: {list(response_payload.keys())}")
+            if "choices" in response_payload and len(response_payload["choices"]) > 0:
+                 content_len = len(response_payload["choices"][0]["message"].get("content", "") or "")
+                 logger.info(f"[{req_id}] [DEBUG] Payload content length: {content_len}")
+            
             result_future.set_result(JSONResponse(content=response_payload))
+        else:
+            from server import logger
+            logger.warning(f"[{req_id}] [DEBUG] Could not set result, future already done/cancelled.")
         
-        return None
+        return response_payload
 
 
 async def _cleanup_request_resources(req_id: str, disconnect_check_task: Optional[asyncio.Task], 
@@ -640,8 +649,15 @@ async def _process_request_refactored(
         )
         
         if response_result:
-            completion_event, _, _ = response_result
-        
+            # [FIX] Handle dictionary return (non-streaming payload)
+            if isinstance(response_result, dict):
+                return response_result, submit_button_locator, check_client_disconnected
+            
+            # Handle tuple return (streaming event/loc/checker)
+            if isinstance(response_result, tuple):
+                completion_event, _, _ = response_result
+                return completion_event, submit_button_locator, check_client_disconnected
+
         return completion_event, submit_button_locator, check_client_disconnected
         
     except ClientDisconnectedError as disco_err:

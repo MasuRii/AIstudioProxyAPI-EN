@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 import logging
 
@@ -18,6 +19,10 @@ class GlobalState:
     
     # Global Event to signal Quota Exceeded immediately
     QUOTA_EXCEEDED_EVENT = asyncio.Event()
+
+    # Global Shutdown Event (Thread-safe for signal handlers)
+    # Used to circuit-break logic during aggressive shutdown
+    IS_SHUTTING_DOWN = threading.Event()
 
     def __new__(cls):
         if cls._instance is None:
