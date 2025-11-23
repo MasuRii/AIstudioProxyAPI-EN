@@ -9,6 +9,7 @@ from ..dependencies import (
     get_page_instance,
     get_parsed_model_list,
     get_excluded_model_ids,
+    ensure_request_lock
 )
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
@@ -22,7 +23,8 @@ async def list_models(
     model_list_fetch_event: Event = Depends(get_model_list_fetch_event),
     page_instance: AsyncPage = Depends(get_page_instance),
     parsed_model_list: List[Dict[str, Any]] = Depends(get_parsed_model_list),
-    excluded_model_ids: Set[str] = Depends(get_excluded_model_ids)
+    excluded_model_ids: Set[str] = Depends(get_excluded_model_ids),
+    _lock: None = Depends(ensure_request_lock)
 ):
     logger.info("[API] 收到 /v1/models 请求。")
 

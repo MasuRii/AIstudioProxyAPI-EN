@@ -40,6 +40,7 @@ from .utils import (
     calculate_usage_stats,
     maybe_execute_tools,
 )
+from api_utils.utils_ext.usage_tracker import increment_profile_usage
 from browser_utils.page_controller import PageController
 from .context_types import RequestContext
 from .response_generators import gen_sse_from_aux_stream, gen_sse_from_playwright
@@ -334,6 +335,15 @@ async def _handle_auxiliary_stream_response(
             content or "",
             reasoning_content,
         )
+        
+        # Update global token count
+        total_tokens = usage_stats.get("total_tokens", 0)
+        GlobalState.increment_token_count(total_tokens)
+
+        # Update profile usage stats
+        import server
+        if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
+            await increment_profile_usage(server.current_auth_profile_path, total_tokens)
 
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -417,6 +427,15 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
             reasoning_content
         )
         logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
+        
+        # Update global token count
+        total_tokens = usage_stats.get("total_tokens", 0)
+        GlobalState.increment_token_count(total_tokens)
+
+        # Update profile usage stats
+        import server
+        if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
+            await increment_profile_usage(server.current_auth_profile_path, total_tokens)
 
         # 统一使用构造器生成 OpenAI 兼容响应
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
@@ -676,7 +695,7 @@ async def _process_request_refactored(
         # We let the Watchdog handle the rotation to ensure the flag is managed correctly.
         # We simply ensure the flag is set (in case it wasn't already) and return 503.
         if not GlobalState.IS_QUOTA_EXCEEDED:
-             GlobalState.set_quota_exceeded()
+             GlobalState.set_quota_exceeded(message=str(quota_err))
             
         if not result_future.done():
             result_future.set_exception(

@@ -119,6 +119,121 @@ class TestStopTheWorldProtocol(unittest.TestCase):
         # If rotation is already in progress, subsequent attempts should be skipped
         pass
 
+class TestAuthRotationLogic(unittest.TestCase):
+    """Test the core logic of the auth rotation function"""
+
+    def setUp(self):
+        """Clear rotation timestamps before each test."""
+        from browser_utils import auth_rotation
+        auth_rotation._ROTATION_TIMESTAMPS.clear()
+
+    @patch('os.path.exists')
+    @patch('browser_utils.auth_rotation.save_cooldown_profiles')
+    @patch('browser_utils.auth_rotation._perform_canary_test')
+    @patch('browser_utils.auth_rotation._get_next_profile')
+    @patch('browser_utils.auth_rotation.GlobalState')
+    @patch('browser_utils.auth_rotation.server')
+    @patch('browser_utils.auth_rotation.time.time')
+    def test_successful_rotation(self, mock_time, mock_server, mock_global_state, mock_get_profile, mock_canary_test, mock_save_cooldown, mock_exists):
+        """Test a standard successful auth rotation."""
+        async def run_test():
+            # Arrange
+            mock_time.return_value = time.time()
+            mock_exists.return_value = True
+            mock_server.page_instance = AsyncMock()
+            mock_server.page_instance.is_closed.return_value = False
+            mock_server.page_instance.context = AsyncMock()
+            mock_server.current_auth_profile_path = "profiles/old.json"
+
+            mock_get_profile.return_value = "profiles/new.json"
+            mock_canary_test.return_value = True
+            
+            mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
+            mock_global_state.AUTH_ROTATION_LOCK.set()
+            mock_global_state.last_error_type = 'QUOTA'
+            mock_global_state.queued_request_count = 1
+            
+            # Act
+            result = await perform_auth_rotation()
+
+            # Assert
+            self.assertTrue(result)
+            mock_get_profile.assert_called_once()
+            mock_canary_test.assert_called_once()
+            mock_global_state.reset_quota_status.assert_called_once()
+            self.assertTrue(mock_global_state.AUTH_ROTATION_LOCK.is_set())
+            self.assertEqual(mock_save_cooldown.call_count, 1)
+
+        asyncio.run(run_test())
+
+    @patch('os.path.exists')
+    @patch('browser_utils.auth_rotation.save_cooldown_profiles')
+    @patch('browser_utils.auth_rotation._perform_canary_test')
+    @patch('browser_utils.auth_rotation._get_next_profile')
+    @patch('browser_utils.auth_rotation.GlobalState')
+    @patch('browser_utils.auth_rotation.server')
+    @patch('browser_utils.auth_rotation.time.time')
+    def test_rotation_fails_after_max_retries(self, mock_time, mock_server, mock_global_state, mock_get_profile, mock_canary_test, mock_save_cooldown, mock_exists):
+        """Test that rotation fails if no healthy profile is found after max retries."""
+        async def run_test():
+            # Arrange
+            mock_time.return_value = time.time()
+            mock_exists.return_value = True
+            mock_server.page_instance = AsyncMock()
+            mock_server.page_instance.is_closed.return_value = False
+            mock_server.page_instance.context = AsyncMock()
+            mock_server.current_auth_profile_path = "profiles/old.json"
+
+            mock_get_profile.side_effect = [f"profiles/new_{i}.json" for i in range(5)]
+            mock_canary_test.return_value = False
+            
+            mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
+            mock_global_state.AUTH_ROTATION_LOCK.set()
+            mock_global_state.last_error_type = 'QUOTA'
+            mock_global_state.queued_request_count = 1
+
+            # Act
+            result = await perform_auth_rotation()
+
+            # Assert
+            self.assertFalse(result)
+            self.assertEqual(mock_get_profile.call_count, 5)
+            self.assertEqual(mock_canary_test.call_count, 5)
+            self.assertTrue(mock_global_state.AUTH_ROTATION_LOCK.is_set())
+            self.assertEqual(mock_save_cooldown.call_count, 6)
+
+        asyncio.run(run_test())
+
+    @patch('browser_utils.auth_rotation.GlobalState')
+    @patch('browser_utils.auth_rotation.server')
+    @patch('browser_utils.auth_rotation.time.time')
+    def test_depletion_guard_stops_rotation(self, mock_time, mock_server, mock_global_state):
+        """Test that the depletion guard prevents rotation if too many attempts occurred recently."""
+        async def run_test():
+            # Arrange
+            from browser_utils import auth_rotation
+            current_time = time.time()
+            mock_time.return_value = current_time
+            auth_rotation._ROTATION_TIMESTAMPS.extend([current_time - i for i in range(4)])
+            
+            mock_server.page_instance = AsyncMock()
+            mock_server.browser_instance = AsyncMock()
+            
+            mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
+            mock_global_state.AUTH_ROTATION_LOCK.set()
+            mock_global_state.queued_request_count = 1
+
+            # Act
+            result = await perform_auth_rotation()
+
+            # Assert
+            self.assertFalse(result)
+            mock_server.page_instance.close.assert_called_once()
+            mock_server.browser_instance.close.assert_called_once()
+            self.assertFalse(mock_global_state.AUTH_ROTATION_LOCK.is_set())
+
+        asyncio.run(run_test())
+
 class TestIntegrationScenarios(unittest.TestCase):
     """Integration tests for complete rotation flow"""
     
@@ -157,6 +272,7 @@ def run_tests():
         TestRotationLogging,
         TestDynamicTimeout,
         TestStopTheWorldProtocol,
+        TestAuthRotationLogic,
         TestIntegrationScenarios
     ]
     

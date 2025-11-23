@@ -4,7 +4,7 @@ import time
 import logging
 from asyncio import Queue, Future
 from fastapi import Depends, HTTPException, Request
-from ..dependencies import get_logger, get_request_queue, get_server_state, get_worker_task
+from ..dependencies import get_logger, get_request_queue, get_server_state, get_worker_task, ensure_request_lock
 from config import RESPONSE_COMPLETION_TIMEOUT
 from config.global_state import GlobalState
 from models import ChatCompletionRequest
@@ -20,14 +20,11 @@ async def chat_completions(
     logger: logging.Logger = Depends(get_logger),
     request_queue: Queue = Depends(get_request_queue),
     server_state: dict = Depends(get_server_state),
-    worker_task = Depends(get_worker_task)
+    worker_task = Depends(get_worker_task),
+    _lock: None = Depends(ensure_request_lock)
 ) -> JSONResponse:
     req_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=7))
     logger.info(f"[{req_id}] 收到 /v1/chat/completions 请求 (Stream={request.stream})")
-
-    if GlobalState.IS_QUOTA_EXCEEDED:
-        logger.warning(f"[{req_id}] ⛔ Rejected incoming request due to active Quota Lock.")
-        raise HTTPException(status_code=503, detail={"error": "Quota exceeded. System is rotating credentials. Please retry in a few seconds."})
 
     launch_mode = get_environment_variable('LAUNCH_MODE', 'unknown')
     browser_page_critical = launch_mode != "direct_debug_no_browser"

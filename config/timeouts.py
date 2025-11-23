@@ -36,5 +36,11 @@ CLIPBOARD_READ_TIMEOUT_MS = int(os.environ.get('CLIPBOARD_READ_TIMEOUT_MS', '300
 # --- 元素等待超时 ---
 WAIT_FOR_ELEMENT_TIMEOUT_MS = int(os.environ.get('WAIT_FOR_ELEMENT_TIMEOUT_MS', '10000'))  # Timeout for waiting for elements like overlays
 
+# --- 自适应冷却时间配置 (Adaptive Cooldowns) ---
+# Rate Limit (429) - 较短的冷却时间 (默认 5 分钟)
+RATE_LIMIT_COOLDOWN_SECONDS = int(os.environ.get('RATE_LIMIT_COOLDOWN_SECONDS', '300'))
+# Quota Exceeded (Resource Exhausted) - 较长的冷却时间 (默认 4 小时)
+QUOTA_EXCEEDED_COOLDOWN_SECONDS = int(os.environ.get('QUOTA_EXCEEDED_COOLDOWN_SECONDS', '14400'))
+
 # --- 流相关配置 ---
 PSEUDO_STREAM_DELAY = float(os.environ.get('PSEUDO_STREAM_DELAY', '0.01'))

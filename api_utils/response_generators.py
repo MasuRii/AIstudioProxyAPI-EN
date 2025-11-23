@@ -12,6 +12,7 @@ from config import CHAT_COMPLETION_ID_PREFIX
 from config.global_state import GlobalState
 from .utils import use_stream_response, calculate_usage_stats, generate_sse_chunk, generate_sse_stop_chunk
 from .common_utils import random_id
+from api_utils.utils_ext.usage_tracker import increment_profile_usage
 
 
 async def gen_sse_from_aux_stream(
@@ -27,6 +28,7 @@ async def gen_sse_from_aux_stream(
 
     产出增量、tool_calls、最终 usage 与 [DONE]。
     """
+    import server
     from server import logger
 
     last_reason_pos = 0
@@ -273,6 +275,17 @@ async def gen_sse_from_aux_stream(
                 full_reasoning_content,
             )
             logger.info(f"[{req_id}] 计算的token使用统计: {usage_stats}")
+            
+            # Update global token count
+            total_tokens = usage_stats.get("total_tokens", 0)
+            GlobalState.increment_token_count(total_tokens)
+
+            # Update profile usage stats
+            # [FIX] Re-import server to ensure availability in finally block
+            import server
+            if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
+                await increment_profile_usage(server.current_auth_profile_path, total_tokens)
+
             final_chunk = {
                 "id": chat_completion_id,
                 "object": "chat.completion.chunk",
@@ -343,6 +356,16 @@ async def gen_sse_from_playwright(
             [msg.model_dump() for msg in request.messages], final_content, "",
         )
         logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
+        
+        # Update global token count
+        total_tokens = usage_stats.get("total_tokens", 0)
+        GlobalState.increment_token_count(total_tokens)
+
+        # Update profile usage stats
+        import server
+        if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
+            await increment_profile_usage(server.current_auth_profile_path, total_tokens)
+
         yield generate_sse_stop_chunk(req_id, model_name_for_stream, "stop", usage_stats)
     except ClientDisconnectedError:
         logger.info(f"[{req_id}] Playwright流式生成器中检测到客户端断开连接")

@@ -60,7 +60,7 @@ class HttpInterceptor:
                 decoded_path = unquote(path)
                 if any(keyword in decoded_path for keyword in ["exceeded quota", "RESOURCE_EXHAUSTED", "Failed to generate content"]):
                     self.logger.critical(f"🚨 CRITICAL: Detected Quota Exceeded error in network traffic! URL: {path}")
-                    GlobalState.set_quota_exceeded()
+                    GlobalState.set_quota_exceeded(message=decoded_path)
             except Exception as e:
                 self.logger.error(f"Error parsing jserror path: {e}")
 

@@ -43,7 +43,7 @@ async def check_quota_limit(page: AsyncPage, req_id: str) -> None:
                 text = await element.text_content()
                 if text and "user has exceeded quota" in text.lower():
                     logger.critical(f"[{req_id}] ❌ Quota Limit Detected via UI! Text: {text}")
-                    GlobalState.set_quota_exceeded()
+                    GlobalState.set_quota_exceeded(message=text)
                     raise QuotaExceededError(f"Quota exceeded detected via UI: {text}")
 
         # 3. Check UI for Quota Error (Old Selector - Legacy Fallback)
@@ -51,7 +51,7 @@ async def check_quota_limit(page: AsyncPage, req_id: str) -> None:
         if await page.locator(quota_selector).count() > 0:
             if await page.locator(quota_selector).first.is_visible(timeout=500):
                 logger.critical(f"[{req_id}] ❌ Quota Limit Detected (Legacy)! Account is out of free generations.")
-                GlobalState.set_quota_exceeded()
+                GlobalState.set_quota_exceeded(message="AI Studio Account is out of free generations")
                 raise QuotaExceededError("AI Studio Account is out of free generations.")
                 
     except QuotaExceededError:
