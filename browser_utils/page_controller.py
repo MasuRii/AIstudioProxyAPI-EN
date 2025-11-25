@@ -85,8 +85,8 @@ class PageController:
         check_client_disconnected: Callable,
         is_streaming: bool = True,
     ):
-        """调整所有请求参数。"""
-        self.logger.info(f"[{self.req_id}] 开始调整所有请求参数...")
+        """Adjust all request parameters."""
+        self.logger.info(f"[{self.req_id}] Starting parameter adjustment...")
         await self._check_disconnect(
             check_client_disconnected, "Start Parameter Adjustment"
         )
@@ -139,9 +139,9 @@ class PageController:
         if ENABLE_URL_CONTEXT:
             await self._open_url_content(check_client_disconnected)
         else:
-            self.logger.info(f"[{self.req_id}] URL Context 功能已禁用，跳过调整。")
+            self.logger.info(f"[{self.req_id}] URL Context feature disabled, skipping adjustment.")
 
-        # 调整"思考预算"
+        # Adjust "Thinking Budget"
         await self._handle_thinking_budget(
             request_params, model_id_to_use, check_client_disconnected, is_streaming
         )
@@ -160,7 +160,7 @@ class PageController:
         reasoning_effort = request_params.get("reasoning_effort")
 
         directive = normalize_reasoning_effort_with_stream_check(reasoning_effort, is_streaming)
-        self.logger.info(f"[{self.req_id}] 思考模式指令: {format_directive_log(directive)}")
+        self.logger.info(f"[{self.req_id}] Reasoning mode directive: {format_directive_log(directive)}")
 
         uses_level = self._uses_thinking_level(
             model_id_to_use
@@ -171,14 +171,14 @@ class PageController:
         has_main_toggle = self._model_has_main_thinking_toggle(model_id_to_use)
         if has_main_toggle:
             self.logger.info(
-                f"[{self.req_id}] 开始设置主思考开关到: {'开启' if desired_enabled else '关闭'}"
+                f"[{self.req_id}] Starting to set main thinking toggle to: {'ON' if desired_enabled else 'OFF'}"
             )
             await self._control_thinking_mode_toggle(
                 should_be_enabled=desired_enabled,
                 check_client_disconnected=check_client_disconnected,
             )
         else:
-            self.logger.info(f"[{self.req_id}] 该模型无主思考开关，跳过开关设置。")
+            self.logger.info(f"[{self.req_id}] Model has no main thinking toggle, skipping.")
 
         if not desired_enabled:
             # 跳过无预算开关的模型
@@ -211,20 +211,20 @@ class PageController:
                 level_to_set = "high" if rv >= 8000 or rv == -1 else "low"
 
             if level_to_set is None:
-                self.logger.info(f"[{self.req_id}] 无法解析等级，保持当前等级。")
+                self.logger.info(f"[{self.req_id}] Unable to parse reasoning level, keeping current.")
             else:
                 await self._set_thinking_level(level_to_set, check_client_disconnected)
             return
 
         if not directive.thinking_enabled:
-            self.logger.info(f"[{self.req_id}] 尝试关闭主思考开关...")
+            self.logger.info(f"[{self.req_id}] Attempting to turn off main thinking toggle...")
             success = await self._control_thinking_mode_toggle(
                 should_be_enabled=False,
                 check_client_disconnected=check_client_disconnected,
             )
 
             if not success:
-                self.logger.warning(f"[{self.req_id}] 主思考开关不可用，使用降级方案：设置预算为 0")
+                self.logger.warning(f"[{self.req_id}] Main thinking toggle unavailable, using fallback: Setting budget to 0")
                 await self._control_thinking_budget_toggle(
                     should_be_checked=True,
                     check_client_disconnected=check_client_disconnected,
@@ -233,7 +233,7 @@ class PageController:
             return
 
         # 场景2和3: 开启思考模式
-        self.logger.info(f"[{self.req_id}] 开启主思考开关...")
+        self.logger.info(f"[{self.req_id}] Enabling main thinking toggle...")
         await self._control_thinking_mode_toggle(
             should_be_enabled=True, check_client_disconnected=check_client_disconnected
         )
@@ -243,14 +243,14 @@ class PageController:
         new_thinking_dropdown = self.page.locator(THINKING_LEVEL_DROPDOWN_SELECTOR)
         if await new_thinking_dropdown.is_visible(timeout=500):
             self.logger.info(
-                f"[{self.req_id}] 检测到 Gemini 3.0+ UI (Thinking Level Dropdown). 跳过预算滑块配置。"
+                f"[{self.req_id}] Gemini 3.0+ UI detected (Thinking Level Dropdown). Skipping budget slider config."
             )
             return
         # --- FIX END ---
 
         # 场景2: 开启思考，不限制预算
         if not directive.budget_enabled:
-            self.logger.info(f"[{self.req_id}] 关闭手动预算限制...")
+            self.logger.info(f"[{self.req_id}] Disabling manual budget limit...")
             await self._control_thinking_budget_toggle(
                 should_be_checked=False,
                 check_client_disconnected=check_client_disconnected,
@@ -267,7 +267,7 @@ class PageController:
             elif "flash" in model_lower:
                 value_to_set = min(value_to_set, 24576)
             self.logger.info(
-                f"[{self.req_id}] 开启手动预算限制并设置预算值: {value_to_set} tokens"
+                f"[{self.req_id}] Enabling manual budget limit and setting budget value: {value_to_set} tokens"
             )
             await self._control_thinking_budget_toggle(
                 should_be_checked=True,
@@ -292,7 +292,7 @@ class PageController:
             return False
 
     def _uses_thinking_level(self, model_id_to_use: Optional[str]) -> bool:
-        """仅在 Gemini 3 Pro 系列上使用“思考等级”逻辑，其它模型一律使用预算。"""
+        """Use 'Thinking Level' logic only on Gemini 3 Pro series, otherwise use budget."""
         try:
             mid = (model_id_to_use or "").lower()
             return ("gemini-3" in mid) and ("pro" in mid)
@@ -342,21 +342,21 @@ class PageController:
                 ".mat-mdc-select-value-text .mat-mdc-select-min-line"
             ).inner_text(timeout=3000)
             if value_text.strip().lower() == level.lower():
-                self.logger.info(f"[{self.req_id}] 已设置 Thinking Level 为 {level}")
+                self.logger.info(f"[{self.req_id}] Thinking Level set to {level}")
             else:
                 self.logger.warning(
-                    f"[{self.req_id}] Thinking Level 验证失败，页面值: {value_text}, 期望: {level}"
+                    f"[{self.req_id}] Thinking Level verification failed, page value: {value_text}, expected: {level}"
                 )
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] 设置 Thinking Level 时出错: {e}")
+            self.logger.error(f"[{self.req_id}] Error setting Thinking Level: {e}")
             if isinstance(e, ClientDisconnectedError):
                 raise
 
     async def _set_thinking_budget_value(
         self, token_budget: int, check_client_disconnected: Callable
     ):
-        """设置思考预算的具体数值。"""
-        self.logger.info(f"[{self.req_id}] 设置思考预算值: {token_budget} tokens")
+        """Set specific thinking budget value."""
+        self.logger.info(f"[{self.req_id}] Setting thinking budget value: {token_budget} tokens")
 
         budget_input_locator = self.page.locator(THINKING_BUDGET_INPUT_SELECTOR)
 
@@ -417,16 +417,16 @@ class PageController:
             except Exception:
                 pass
 
-            self.logger.info(f"[{self.req_id}] 设置思考预算为: {adjusted_budget}")
+            self.logger.info(f"[{self.req_id}] Setting thinking budget to: {adjusted_budget}")
             await budget_input_locator.fill(str(adjusted_budget), timeout=5000)
-            await self._check_disconnect(check_client_disconnected, "思考预算调整 - 填充输入框后")
+            await self._check_disconnect(check_client_disconnected, "Thinking Budget - after fill")
 
-            # 验证
+            # Verify
             try:
                 await expect_async(budget_input_locator).to_have_value(
                     str(adjusted_budget), timeout=3000
                 )
-                self.logger.info(f"[{self.req_id}] ✅ 思考预算已成功更新为: {adjusted_budget}")
+                self.logger.info(f"[{self.req_id}] ✅ Thinking budget successfully updated to: {adjusted_budget}")
             except Exception:
                 new_value_str = await budget_input_locator.input_value(timeout=3000)
                 try:
@@ -435,10 +435,10 @@ class PageController:
                     new_value_int = -1
                 if new_value_int == adjusted_budget:
                     self.logger.info(
-                        f"[{self.req_id}] ✅ 思考预算已成功更新为: {new_value_str}"
+                        f"[{self.req_id}] ✅ Thinking budget successfully updated to: {new_value_str}"
                     )
                 else:
-                    # 最后回退：如果页面仍然小于请求值，尝试按页面 max 进行填充
+                    # Fallback: if page max is less than requested
                     try:
                         page_max_str = await budget_input_locator.get_attribute("max")
                         page_max_val = (
@@ -448,7 +448,7 @@ class PageController:
                         page_max_val = None
                     if page_max_val is not None and page_max_val < adjusted_budget:
                         self.logger.warning(
-                            f"[{self.req_id}] 页面最大预算为 {page_max_val}，请求的预算 {adjusted_budget} 已调整为 {page_max_val}"
+                            f"[{self.req_id}] Page max budget is {page_max_val}, requested budget {adjusted_budget} adjusted to {page_max_val}"
                         )
                         try:
                             await self.page.evaluate(
@@ -476,16 +476,16 @@ class PageController:
                             pass
                     else:
                         self.logger.warning(
-                            f"[{self.req_id}] ⚠️ 思考预算更新后验证失败。页面显示: {new_value_str}, 期望: {adjusted_budget}"
+                            f"[{self.req_id}] ⚠️ Thinking budget verification failed after update. Page shows: {new_value_str}, expected: {adjusted_budget}"
                         )
 
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] ❌ 调整思考预算时出错: {e}")
+            self.logger.error(f"[{self.req_id}] ❌ Error adjusting thinking budget: {e}")
             if isinstance(e, ClientDisconnectedError):
                 raise
 
     def _should_enable_google_search(self, request_params: Dict[str, Any]) -> bool:
-        """根据请求参数或默认配置决定是否应启用 Google Search。"""
+        """Decide whether to enable Google Search based on request params or default config."""
         if "tools" in request_params and request_params.get("tools") is not None:
             tools = request_params.get("tools")
             has_google_search_tool = False
@@ -499,20 +499,20 @@ class PageController:
                             has_google_search_tool = True
                             break
             self.logger.info(
-                f"[{self.req_id}] 请求中包含 'tools' 参数。检测到 Google Search 工具: {has_google_search_tool}。"
+                f"[{self.req_id}] Request contains 'tools'. Google Search tool detected: {has_google_search_tool}."
             )
             return has_google_search_tool
         else:
             self.logger.info(
-                f"[{self.req_id}] 请求中不包含 'tools' 参数。使用默认配置 ENABLE_GOOGLE_SEARCH: {ENABLE_GOOGLE_SEARCH}。"
+                f"[{self.req_id}] Request does not contain 'tools'. Using default config ENABLE_GOOGLE_SEARCH: {ENABLE_GOOGLE_SEARCH}."
             )
             return ENABLE_GOOGLE_SEARCH
 
     async def _adjust_google_search(
         self, request_params: Dict[str, Any], check_client_disconnected: Callable
     ):
-        """根据请求参数或默认配置，双向控制 Google Search 开关。"""
-        self.logger.info(f"[{self.req_id}] 检查并调整 Google Search 开关...")
+        """Control Google Search toggle bidirectionally based on params or config."""
+        self.logger.info(f"[{self.req_id}] Checking and adjusting Google Search toggle...")
 
         should_enable_search = self._should_enable_google_search(request_params)
 
@@ -522,19 +522,19 @@ class PageController:
             toggle_locator = self.page.locator(toggle_selector)
             await expect_async(toggle_locator).to_be_visible(timeout=5000)
             await self._check_disconnect(
-                check_client_disconnected, "Google Search 开关 - 元素可见后"
+                check_client_disconnected, "Google Search Toggle - after visible"
             )
 
             is_checked_str = await toggle_locator.get_attribute("aria-checked")
             is_currently_checked = is_checked_str == "true"
             self.logger.info(
-                f"[{self.req_id}] Google Search 开关当前状态: '{is_checked_str}'。期望状态: {should_enable_search}"
+                f"[{self.req_id}] Google Search toggle current state: '{is_checked_str}'. Expected: {should_enable_search}"
             )
 
             if should_enable_search != is_currently_checked:
-                action = "打开" if should_enable_search else "关闭"
+                action = "Enable" if should_enable_search else "Disable"
                 self.logger.info(
-                    f"[{self.req_id}] Google Search 开关状态与期望不符。正在点击以{action}..."
+                    f"[{self.req_id}] Google Search toggle state differs from expected. Clicking to {action}..."
                 )
                 try:
                     await toggle_locator.scroll_into_view_if_needed()
@@ -542,29 +542,29 @@ class PageController:
                     pass
                 await toggle_locator.click(timeout=CLICK_TIMEOUT_MS)
                 await self._check_disconnect(
-                    check_client_disconnected, f"Google Search 开关 - 点击{action}后"
+                    check_client_disconnected, f"Google Search Toggle - after click {action}"
                 )
-                await asyncio.sleep(0.5)  # 等待UI更新
+                await asyncio.sleep(0.5)  # Wait for UI update
                 new_state = await toggle_locator.get_attribute("aria-checked")
                 if (new_state == "true") == should_enable_search:
-                    self.logger.info(f"[{self.req_id}] ✅ Google Search 开关已成功{action}。")
+                    self.logger.info(f"[{self.req_id}] ✅ Google Search toggle successfully {action}d.")
                 else:
                     self.logger.warning(
-                        f"[{self.req_id}] ⚠️ Google Search 开关{action}失败。当前状态: '{new_state}'"
+                        f"[{self.req_id}] ⚠️ Google Search toggle {action} failed. Current state: '{new_state}'"
                     )
             else:
-                self.logger.info(f"[{self.req_id}] Google Search 开关已处于期望状态，无需操作。")
+                self.logger.info(f"[{self.req_id}] Google Search toggle already in expected state.")
 
         except Exception as e:
             self.logger.error(
-                f"[{self.req_id}] ❌ 操作 'Google Search toggle' 开关时发生错误: {e}"
+                f"[{self.req_id}] ❌ Error operating 'Google Search toggle': {e}"
             )
             if isinstance(e, ClientDisconnectedError):
                 raise
 
     async def _ensure_tools_panel_expanded(self, check_client_disconnected: Callable):
-        """确保包含高级工具（URL上下文、思考预算等）的面板是展开的。"""
-        self.logger.info(f"[{self.req_id}] 检查并确保工具面板已展开...")
+        """Ensure tools panel (URL context, thinking budget, etc.) is expanded."""
+        self.logger.info(f"[{self.req_id}] Checking and ensuring tools panel is expanded...")
         try:
             collapse_tools_locator = self.page.locator(
                 'button[aria-label="Expand or collapse tools"]'
@@ -577,40 +577,40 @@ class PageController:
             )
 
             if class_string and "expanded" not in class_string.split():
-                self.logger.info(f"[{self.req_id}] 工具面板未展开，正在点击以展开...")
+                self.logger.info(f"[{self.req_id}] Tools panel not expanded, clicking to expand...")
                 await collapse_tools_locator.click(timeout=CLICK_TIMEOUT_MS)
-                await self._check_disconnect(check_client_disconnected, "展开工具面板后")
-                # 等待展开动画完成
+                await self._check_disconnect(check_client_disconnected, "After expanding tools panel")
+                # Wait for expansion
                 await expect_async(grandparent_locator).to_have_class(
                     re.compile(r".*expanded.*"), timeout=5000
                 )
-                self.logger.info(f"[{self.req_id}] ✅ 工具面板已成功展开。")
+                self.logger.info(f"[{self.req_id}] ✅ Tools panel successfully expanded.")
             else:
-                self.logger.info(f"[{self.req_id}] 工具面板已处于展开状态。")
+                self.logger.info(f"[{self.req_id}] Tools panel already expanded.")
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] ❌ 展开工具面板时发生错误: {e}")
-            # 即使出错，也继续尝试执行后续操作，但记录错误
+            self.logger.error(f"[{self.req_id}] ❌ Error expanding tools panel: {e}")
+            # Continue even if error, but log it
             if isinstance(e, ClientDisconnectedError):
                 raise
 
     async def _open_url_content(self, check_client_disconnected: Callable):
-        """仅负责打开 URL Context 开关，前提是面板已展开。"""
+        """Enable URL Context toggle, assuming panel is expanded."""
         try:
-            self.logger.info(f"[{self.req_id}] 检查并启用 URL Context 开关...")
+            self.logger.info(f"[{self.req_id}] Checking and enabling URL Context toggle...")
             use_url_content_selector = self.page.locator(USE_URL_CONTEXT_SELECTOR)
             await expect_async(use_url_content_selector).to_be_visible(timeout=5000)
 
             is_checked = await use_url_content_selector.get_attribute("aria-checked")
             if "false" == is_checked:
-                self.logger.info(f"[{self.req_id}] URL Context 开关未开启，正在点击以开启...")
+                self.logger.info(f"[{self.req_id}] URL Context toggle not enabled, clicking to enable...")
                 await use_url_content_selector.click(timeout=CLICK_TIMEOUT_MS)
-                await self._check_disconnect(check_client_disconnected, "点击URLCONTEXT后")
-                self.logger.info(f"[{self.req_id}] ✅ URL Context 开关已点击。")
+                await self._check_disconnect(check_client_disconnected, "After clicking URL Context")
+                self.logger.info(f"[{self.req_id}] ✅ URL Context toggle clicked.")
             else:
-                self.logger.info(f"[{self.req_id}] URL Context 开关已处于开启状态。")
+                self.logger.info(f"[{self.req_id}] URL Context toggle already enabled.")
         except Exception as e:
             self.logger.error(
-                f"[{self.req_id}] ❌ 操作 USE_URL_CONTEXT_SELECTOR 时发生错误:{e}。"
+                f"[{self.req_id}] ❌ Error operating USE_URL_CONTEXT_SELECTOR: {e}."
             )
             if isinstance(e, ClientDisconnectedError):
                 raise
@@ -619,53 +619,51 @@ class PageController:
         self, should_be_enabled: bool, check_client_disconnected: Callable
     ) -> bool:
         """
-        控制主思考开关（总开关），决定是否启用思考模式。
+        Control main thinking toggle to enable/disable thinking mode.
 
-        参数:
-            should_be_enabled: 期望的开关状态（True=开启, False=关闭）
-            check_client_disconnected: 客户端断开检测函数
+        Args:
+            should_be_enabled: Expected state (True=ON, False=OFF)
+            check_client_disconnected: Function to check disconnection
 
-        返回:
-            bool: 是否成功设置到期望状态（如果开关不存在或被禁用，返回False）
+        Returns:
+            bool: Success status
         """
         legacy_toggle_selector = ENABLE_THINKING_MODE_TOGGLE_SELECTOR
         new_dropdown_selector = THINKING_LEVEL_DROPDOWN_SELECTOR
 
         self.logger.info(
-            f"[{self.req_id}] 控制主思考开关，期望状态: {'开启' if should_be_enabled else '关闭'}..."
+            f"[{self.req_id}] Controlling main thinking toggle, expected state: {'ON' if should_be_enabled else 'OFF'}..."
         )
 
         try:
-            # 1. 优先检查新版 UI (Gemini 3.0+ Dropdown)
-            # 使用极短超时 (500ms) 避免在旧版 UI 上造成延迟
+            # 1. Check for new UI (Gemini 3.0+ Dropdown)
             new_dropdown_locator = self.page.locator(new_dropdown_selector)
             if await new_dropdown_locator.is_visible(timeout=500):
                 self.logger.info(
-                    f"[{self.req_id}] 检测到 Gemini 3.0+ UI (Thinking Level Dropdown)。"
+                    f"[{self.req_id}] Gemini 3.0+ UI detected (Thinking Level Dropdown)."
                 )
-                # 存在 Dropdown 即意味着处于新版 UI，此时不要尝试去点击旧版 Toggle
                 return True
 
-            # 2. 检查旧版 UI (Toggle)
+            # 2. Check for legacy UI (Toggle)
             toggle_locator = self.page.locator(legacy_toggle_selector)
 
-            # 等待元素可见（5秒超时）
+            # Wait for element visible
             await expect_async(toggle_locator).to_be_visible(timeout=5000)
             try:
                 await toggle_locator.scroll_into_view_if_needed()
             except Exception:
                 pass
-            await self._check_disconnect(check_client_disconnected, "主思考开关 - 元素可见后")
+            await self._check_disconnect(check_client_disconnected, "Main thinking toggle - after visible")
 
             is_checked_str = await toggle_locator.get_attribute("aria-checked")
             current_state_is_enabled = is_checked_str == "true"
             self.logger.info(
-                f"[{self.req_id}] 主思考开关当前状态: {is_checked_str} (是否开启: {current_state_is_enabled})"
+                f"[{self.req_id}] Main thinking toggle current state: {is_checked_str} (Enabled: {current_state_is_enabled})"
             )
 
             if current_state_is_enabled != should_be_enabled:
-                action = "开启" if should_be_enabled else "关闭"
-                self.logger.info(f"[{self.req_id}] 主思考开关需要切换，正在点击以{action}思考模式...")
+                action = "Enable" if should_be_enabled else "Disable"
+                self.logger.info(f"[{self.req_id}] Main thinking toggle needs switching, clicking to {action} thinking mode...")
 
                 try:
                     await toggle_locator.click(timeout=CLICK_TIMEOUT_MS)
@@ -680,34 +678,34 @@ class PageController:
                     except Exception:
                         raise
                 await self._check_disconnect(
-                    check_client_disconnected, f"主思考开关 - 点击{action}后"
+                    check_client_disconnected, f"Main thinking toggle - after click {action}"
                 )
 
-                # 验证新状态
+                # Verify new state
                 new_state_str = await toggle_locator.get_attribute("aria-checked")
                 new_state_is_enabled = new_state_str == "true"
 
                 if new_state_is_enabled == should_be_enabled:
                     self.logger.info(
-                        f"[{self.req_id}] ✅ 主思考开关已成功{action}。新状态: {new_state_str}"
+                        f"[{self.req_id}] ✅ Main thinking toggle successfully {action}d. New state: {new_state_str}"
                     )
                     return True
                 else:
                     self.logger.warning(
-                        f"[{self.req_id}] ⚠️ 主思考开关{action}后验证失败。期望: {should_be_enabled}, 实际: {new_state_str}"
+                        f"[{self.req_id}] ⚠️ Main thinking toggle verification failed after {action}. Expected: {should_be_enabled}, Actual: {new_state_str}"
                     )
                     return False
             else:
-                self.logger.info(f"[{self.req_id}] 主思考开关已处于期望状态，无需操作。")
+                self.logger.info(f"[{self.req_id}] Main thinking toggle already in expected state.")
                 return True
 
         except TimeoutError:
             self.logger.warning(
-                f"[{self.req_id}] ⚠️ 主思考开关元素未找到或不可见（当前模型可能不支持思考模式）"
+                f"[{self.req_id}] ⚠️ Main thinking toggle not found or invisible (Model might not support thinking mode)"
             )
             return False
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] ❌ 操作主思考开关时发生错误: {e}")
+            self.logger.error(f"[{self.req_id}] ❌ Error operating main thinking toggle: {e}")
             await save_error_snapshot(f"thinking_mode_toggle_error_{self.req_id}")
             if isinstance(e, ClientDisconnectedError):
                 raise
@@ -717,43 +715,42 @@ class PageController:
         self, should_be_checked: bool, check_client_disconnected: Callable
     ):
         """
-        根据 should_be_checked 的值，控制 "Thinking Budget" 滑块开关的状态。
-        （手动预算开关，控制是否限制思考预算）
+        Control 'Thinking Budget' toggle state based on should_be_checked.
         """
         toggle_selector = SET_THINKING_BUDGET_TOGGLE_SELECTOR
         self.logger.info(
-            f"[{self.req_id}] 控制 'Thinking Budget' 开关，期望状态: {'选中' if should_be_checked else '未选中'}..."
+            f"[{self.req_id}] Controlling 'Thinking Budget' toggle, expected state: {'Checked' if should_be_checked else 'Unchecked'}..."
         )
 
         try:
             toggle_locator = self.page.locator(toggle_selector)
 
-            # [Robustness] 检查可见性，如果不可见且期望为关闭，则直接返回
+            # [Robustness] Check visibility
             try:
                 await expect_async(toggle_locator).to_be_visible(timeout=3000)
             except Exception:
                 if not should_be_checked:
-                    self.logger.info(f"[{self.req_id}] 'Thinking Budget' 开关不可见，假定已禁用/不适用。")
+                    self.logger.info(f"[{self.req_id}] 'Thinking Budget' toggle invisible, assuming disabled/na.")
                     return
                 else:
-                    self.logger.warning(f"[{self.req_id}] ⚠️ 'Thinking Budget' 开关不可见，无法执行开启操作。")
+                    self.logger.warning(f"[{self.req_id}] ⚠️ 'Thinking Budget' toggle invisible, cannot enable.")
                     return
 
             try:
                 await toggle_locator.scroll_into_view_if_needed()
             except Exception:
                 pass
-            await self._check_disconnect(check_client_disconnected, "思考预算开关 - 元素可见后")
+            await self._check_disconnect(check_client_disconnected, "Thinking Budget toggle - after visible")
 
             is_checked_str = await toggle_locator.get_attribute("aria-checked")
             current_state_is_checked = is_checked_str == "true"
             self.logger.info(
-                f"[{self.req_id}] 思考预算开关当前 'aria-checked' 状态: {is_checked_str} (当前是否选中: {current_state_is_checked})"
+                f"[{self.req_id}] Thinking Budget toggle current 'aria-checked': {is_checked_str} (Checked: {current_state_is_checked})"
             )
 
             if current_state_is_checked != should_be_checked:
-                action = "启用" if should_be_checked else "禁用"
-                self.logger.info(f"[{self.req_id}] 思考预算开关当前状态与期望不符，正在点击以{action}...")
+                action = "Enable" if should_be_checked else "Disable"
+                self.logger.info(f"[{self.req_id}] Thinking Budget toggle state mismatch, clicking to {action}...")
                 try:
                     await toggle_locator.click(timeout=CLICK_TIMEOUT_MS)
                 except Exception:
@@ -767,7 +764,7 @@ class PageController:
                     except Exception:
                         raise
                 await self._check_disconnect(
-                    check_client_disconnected, f"思考预算开关 - 点击{action}后"
+                    check_client_disconnected, f"Thinking Budget toggle - after click {action}"
                 )
 
                 await asyncio.sleep(0.5)
@@ -776,18 +773,18 @@ class PageController:
 
                 if new_state_is_checked == should_be_checked:
                     self.logger.info(
-                        f"[{self.req_id}] ✅ 'Thinking Budget' 开关已成功{action}。新状态: {new_state_str}"
+                        f"[{self.req_id}] ✅ 'Thinking Budget' toggle successfully {action}d. New state: {new_state_str}"
                     )
                 else:
                     self.logger.warning(
-                        f"[{self.req_id}] ⚠️ 'Thinking Budget' 开关{action}后验证失败。期望状态: '{should_be_checked}', 实际状态: '{new_state_str}'"
+                        f"[{self.req_id}] ⚠️ 'Thinking Budget' toggle verification failed after {action}. Expected: '{should_be_checked}', Actual: '{new_state_str}'"
                     )
             else:
-                self.logger.info(f"[{self.req_id}] 'Thinking Budget' 开关已处于期望状态，无需操作。")
+                self.logger.info(f"[{self.req_id}] 'Thinking Budget' toggle already in expected state.")
 
         except Exception as e:
             self.logger.error(
-                f"[{self.req_id}] ❌ 操作 'Thinking Budget toggle' 开关时发生错误: {e}"
+                f"[{self.req_id}] ❌ Error operating 'Thinking Budget toggle': {e}"
             )
             if isinstance(e, ClientDisconnectedError):
                 raise
@@ -799,53 +796,53 @@ class PageController:
         params_cache_lock: asyncio.Lock,
         check_client_disconnected: Callable,
     ):
-        """调整温度参数。"""
+        """Adjust temperature parameter."""
         async with params_cache_lock:
-            self.logger.info(f"[{self.req_id}] 检查并调整温度设置...")
+            self.logger.info(f"[{self.req_id}] Checking and adjusting temperature...")
             clamped_temp = max(0.0, min(2.0, temperature))
             if clamped_temp != temperature:
                 self.logger.warning(
-                    f"[{self.req_id}] 请求的温度 {temperature} 超出范围 [0, 2]，已调整为 {clamped_temp}"
+                    f"[{self.req_id}] Requested temperature {temperature} out of range [0, 2], adjusted to {clamped_temp}"
                 )
 
             cached_temp = page_params_cache.get("temperature")
             if cached_temp is not None and abs(cached_temp - clamped_temp) < 0.001:
                 self.logger.info(
-                    f"[{self.req_id}] 温度 ({clamped_temp}) 与缓存值 ({cached_temp}) 一致。跳过页面交互。"
+                    f"[{self.req_id}] Temperature ({clamped_temp}) matches cached value ({cached_temp}). Skipping page interaction."
                 )
                 return
 
             self.logger.info(
-                f"[{self.req_id}] 请求温度 ({clamped_temp}) 与缓存值 ({cached_temp}) 不一致或缓存中无值。需要与页面交互。"
+                f"[{self.req_id}] Requested temperature ({clamped_temp}) differs from cache ({cached_temp}) or no cache. Interacting with page."
             )
             temp_input_locator = self.page.locator(TEMPERATURE_INPUT_SELECTOR)
 
             try:
                 await expect_async(temp_input_locator).to_be_visible(timeout=5000)
-                await self._check_disconnect(check_client_disconnected, "温度调整 - 输入框可见后")
+                await self._check_disconnect(check_client_disconnected, "Temperature adjustment - after input visible")
 
                 current_temp_str = await temp_input_locator.input_value(timeout=3000)
                 await self._check_disconnect(
-                    check_client_disconnected, "温度调整 - 读取输入框值后"
+                    check_client_disconnected, "Temperature adjustment - after reading input"
                 )
 
                 current_temp_float = float(current_temp_str)
                 self.logger.info(
-                    f"[{self.req_id}] 页面当前温度: {current_temp_float}, 请求调整后温度: {clamped_temp}"
+                    f"[{self.req_id}] Page current temperature: {current_temp_float}, Target: {clamped_temp}"
                 )
 
                 if abs(current_temp_float - clamped_temp) < 0.001:
                     self.logger.info(
-                        f"[{self.req_id}] 页面当前温度 ({current_temp_float}) 与请求温度 ({clamped_temp}) 一致。更新缓存并跳过写入。"
+                        f"[{self.req_id}] Page temperature ({current_temp_float}) matches target ({clamped_temp}). Updating cache."
                     )
                     page_params_cache["temperature"] = current_temp_float
                 else:
                     self.logger.info(
-                        f"[{self.req_id}] 页面温度 ({current_temp_float}) 与请求温度 ({clamped_temp}) 不同，正在更新..."
+                        f"[{self.req_id}] Updating temperature from {current_temp_float} to {clamped_temp}..."
                     )
                     await temp_input_locator.fill(str(clamped_temp), timeout=5000)
                     await self._check_disconnect(
-                        check_client_disconnected, "温度调整 - 填充输入框后"
+                        check_client_disconnected, "Temperature adjustment - after fill"
                     )
 
                     await asyncio.sleep(0.1)
@@ -854,12 +851,12 @@ class PageController:
 
                     if abs(new_temp_float - clamped_temp) < 0.001:
                         self.logger.info(
-                            f"[{self.req_id}] ✅ 温度已成功更新为: {new_temp_float}。更新缓存。"
+                            f"[{self.req_id}] ✅ Temperature successfully updated to: {new_temp_float}. Cache updated."
                         )
                         page_params_cache["temperature"] = new_temp_float
                     else:
                         self.logger.warning(
-                            f"[{self.req_id}] ⚠️ 温度更新后验证失败。页面显示: {new_temp_float}, 期望: {clamped_temp}。清除缓存中的温度。"
+                            f"[{self.req_id}] ⚠️ Temperature verification failed. Page shows: {new_temp_float}, Expected: {clamped_temp}. Clearing cache."
                         )
                         page_params_cache.pop("temperature", None)
                         await save_error_snapshot(
@@ -867,11 +864,11 @@ class PageController:
                         )
 
             except ValueError as ve:
-                self.logger.error(f"[{self.req_id}] 转换温度值为浮点数时出错. 错误: {ve}。清除缓存中的温度。")
+                self.logger.error(f"[{self.req_id}] Error converting temperature to float: {ve}. Clearing cache.")
                 page_params_cache.pop("temperature", None)
                 await save_error_snapshot(f"temperature_value_error_{self.req_id}")
             except Exception as pw_err:
-                self.logger.error(f"[{self.req_id}] ❌ 操作温度输入框时发生错误: {pw_err}。清除缓存中的温度。")
+                self.logger.error(f"[{self.req_id}] ❌ Error operating temperature input: {pw_err}. Clearing cache.")
                 page_params_cache.pop("temperature", None)
                 await save_error_snapshot(f"temperature_playwright_error_{self.req_id}")
                 if isinstance(pw_err, ClientDisconnectedError):
@@ -886,9 +883,9 @@ class PageController:
         parsed_model_list: list,
         check_client_disconnected: Callable,
     ):
-        """调整最大输出Token参数。"""
+        """Adjust max output tokens parameter."""
         async with params_cache_lock:
-            self.logger.info(f"[{self.req_id}] 检查并调整最大输出 Token 设置...")
+            self.logger.info(f"[{self.req_id}] Checking and adjusting Max Output Tokens...")
             min_val_for_tokens = 1
             max_val_for_tokens_from_model = 65536
 
@@ -910,11 +907,11 @@ class PageController:
                             max_val_for_tokens_from_model = supported_tokens
                         else:
                             self.logger.warning(
-                                f"[{self.req_id}] 模型 {model_id_to_use} supported_max_output_tokens 无效: {supported_tokens}"
+                                f"[{self.req_id}] Model {model_id_to_use} supported_max_output_tokens invalid: {supported_tokens}"
                             )
                     except (ValueError, TypeError):
                         self.logger.warning(
-                            f"[{self.req_id}] 模型 {model_id_to_use} supported_max_output_tokens 解析失败"
+                            f"[{self.req_id}] Failed to parse supported_max_output_tokens for model {model_id_to_use}"
                         )
 
             clamped_max_tokens = max(
@@ -922,7 +919,7 @@ class PageController:
             )
             if clamped_max_tokens != max_tokens:
                 self.logger.warning(
-                    f"[{self.req_id}] 请求的最大输出 Tokens {max_tokens} 超出模型范围，已调整为 {clamped_max_tokens}"
+                    f"[{self.req_id}] Requested Max Tokens {max_tokens} out of model range, adjusted to {clamped_max_tokens}"
                 )
 
             cached_max_tokens = page_params_cache.get("max_output_tokens")
@@ -931,7 +928,7 @@ class PageController:
                 and cached_max_tokens == clamped_max_tokens
             ):
                 self.logger.info(
-                    f"[{self.req_id}] 最大输出 Tokens ({clamped_max_tokens}) 与缓存值一致。跳过页面交互。"
+                    f"[{self.req_id}] Max Output Tokens ({clamped_max_tokens}) matches cache. Skipping page interaction."
                 )
                 return
 
@@ -940,7 +937,7 @@ class PageController:
             try:
                 await expect_async(max_tokens_input_locator).to_be_visible(timeout=5000)
                 await self._check_disconnect(
-                    check_client_disconnected, "最大输出Token调整 - 输入框可见后"
+                    check_client_disconnected, "Max Tokens adjustment - after input visible"
                 )
 
                 current_max_tokens_str = await max_tokens_input_locator.input_value(
@@ -950,18 +947,18 @@ class PageController:
 
                 if current_max_tokens_int == clamped_max_tokens:
                     self.logger.info(
-                        f"[{self.req_id}] 页面当前最大输出 Tokens ({current_max_tokens_int}) 与请求值 ({clamped_max_tokens}) 一致。更新缓存并跳过写入。"
+                        f"[{self.req_id}] Page Max Tokens ({current_max_tokens_int}) matches request ({clamped_max_tokens}). Updating cache."
                     )
                     page_params_cache["max_output_tokens"] = current_max_tokens_int
                 else:
                     self.logger.info(
-                        f"[{self.req_id}] 页面最大输出 Tokens ({current_max_tokens_int}) 与请求值 ({clamped_max_tokens}) 不同，正在更新..."
+                        f"[{self.req_id}] Updating Max Tokens from {current_max_tokens_int} to {clamped_max_tokens}..."
                     )
                     await max_tokens_input_locator.fill(
                         str(clamped_max_tokens), timeout=5000
                     )
                     await self._check_disconnect(
-                        check_client_disconnected, "最大输出Token调整 - 填充输入框后"
+                        check_client_disconnected, "Max Tokens adjustment - after fill"
                     )
 
                     await asyncio.sleep(0.1)
@@ -972,12 +969,12 @@ class PageController:
 
                     if new_max_tokens_int == clamped_max_tokens:
                         self.logger.info(
-                            f"[{self.req_id}] ✅ 最大输出 Tokens 已成功更新为: {new_max_tokens_int}"
+                            f"[{self.req_id}] ✅ Max Output Tokens successfully updated to: {new_max_tokens_int}"
                         )
                         page_params_cache["max_output_tokens"] = new_max_tokens_int
                     else:
                         self.logger.warning(
-                            f"[{self.req_id}] ⚠️ 最大输出 Tokens 更新后验证失败。页面显示: {new_max_tokens_int}, 期望: {clamped_max_tokens}。清除缓存。"
+                            f"[{self.req_id}] ⚠️ Max Tokens verification failed. Page shows: {new_max_tokens_int}, Expected: {clamped_max_tokens}. Clearing cache."
                         )
                         page_params_cache.pop("max_output_tokens", None)
                         await save_error_snapshot(
@@ -985,11 +982,11 @@ class PageController:
                         )
 
             except (ValueError, TypeError) as ve:
-                self.logger.error(f"[{self.req_id}] 转换最大输出 Tokens 值时出错: {ve}。清除缓存。")
+                self.logger.error(f"[{self.req_id}] Error converting Max Tokens value: {ve}. Clearing cache.")
                 page_params_cache.pop("max_output_tokens", None)
                 await save_error_snapshot(f"max_tokens_value_error_{self.req_id}")
             except Exception as e:
-                self.logger.error(f"[{self.req_id}] ❌ 调整最大输出 Tokens 时出错: {e}。清除缓存。")
+                self.logger.error(f"[{self.req_id}] ❌ Error adjusting Max Output Tokens: {e}. Clearing cache.")
                 page_params_cache.pop("max_output_tokens", None)
                 await save_error_snapshot(f"max_tokens_error_{self.req_id}")
                 if isinstance(e, ClientDisconnectedError):
@@ -1002,19 +999,17 @@ class PageController:
         params_cache_lock: asyncio.Lock,
         check_client_disconnected: Callable,
     ):
-        """调整停止序列参数。"""
+        """Adjust stop sequences parameter."""
         async with params_cache_lock:
-            self.logger.info(f"[{self.req_id}] 检查并设置停止序列...")
+            self.logger.info(f"[{self.req_id}] Checking and setting Stop Sequences...")
 
-            # 处理不同类型的stop_sequences输入
+            # Normalize input
             normalized_requested_stops = set()
             if stop_sequences is not None:
                 if isinstance(stop_sequences, str):
-                    # 单个字符串
                     if stop_sequences.strip():
                         normalized_requested_stops.add(stop_sequences.strip())
                 elif isinstance(stop_sequences, list):
-                    # 字符串列表
                     for s in stop_sequences:
                         if isinstance(s, str) and s.strip():
                             normalized_requested_stops.add(s.strip())
@@ -1025,7 +1020,7 @@ class PageController:
                 cached_stops_set is not None
                 and cached_stops_set == normalized_requested_stops
             ):
-                self.logger.info(f"[{self.req_id}] 请求的停止序列与缓存值一致。跳过页面交互。")
+                self.logger.info(f"[{self.req_id}] Requested Stop Sequences match cache. Skipping page interaction.")
                 return
 
             stop_input_locator = self.page.locator(STOP_SEQUENCE_INPUT_SELECTOR)
@@ -1034,7 +1029,7 @@ class PageController:
             )
 
             try:
-                # 清空已有的停止序列
+                # Clear existing sequences
                 initial_chip_count = await remove_chip_buttons_locator.count()
                 removed_count = 0
                 max_removals = initial_chip_count + 5
@@ -1044,7 +1039,7 @@ class PageController:
                     and removed_count < max_removals
                 ):
                     await self._check_disconnect(
-                        check_client_disconnected, "停止序列清除 - 循环开始"
+                        check_client_disconnected, "Stop Sequences clearing - loop start"
                     )
                     try:
                         await remove_chip_buttons_locator.first.click(timeout=2000)
@@ -1053,7 +1048,7 @@ class PageController:
                     except Exception:
                         break
 
-                # 添加新的停止序列
+                # Add new sequences
                 if normalized_requested_stops:
                     await expect_async(stop_input_locator).to_be_visible(timeout=5000)
                     for seq in normalized_requested_stops:
@@ -1062,96 +1057,94 @@ class PageController:
                         await asyncio.sleep(0.2)
 
                 page_params_cache["stop_sequences"] = normalized_requested_stops
-                self.logger.info(f"[{self.req_id}] ✅ 停止序列已成功设置。缓存已更新。")
+                self.logger.info(f"[{self.req_id}] ✅ Stop Sequences successfully set. Cache updated.")
 
             except Exception as e:
-                self.logger.error(f"[{self.req_id}] ❌ 设置停止序列时出错: {e}")
+                self.logger.error(f"[{self.req_id}] ❌ Error setting Stop Sequences: {e}")
                 page_params_cache.pop("stop_sequences", None)
                 await save_error_snapshot(f"stop_sequence_error_{self.req_id}")
                 if isinstance(e, ClientDisconnectedError):
                     raise
 
     async def _adjust_top_p(self, top_p: float, check_client_disconnected: Callable):
-        """调整Top P参数。"""
-        self.logger.info(f"[{self.req_id}] 检查并调整 Top P 设置...")
+        """Adjust Top P parameter."""
+        self.logger.info(f"[{self.req_id}] Checking and adjusting Top P...")
         clamped_top_p = max(0.0, min(1.0, top_p))
 
         if abs(clamped_top_p - top_p) > 1e-9:
             self.logger.warning(
-                f"[{self.req_id}] 请求的 Top P {top_p} 超出范围 [0, 1]，已调整为 {clamped_top_p}"
+                f"[{self.req_id}] Requested Top P {top_p} out of range [0, 1], adjusted to {clamped_top_p}"
             )
 
         top_p_input_locator = self.page.locator(TOP_P_INPUT_SELECTOR)
         try:
             await expect_async(top_p_input_locator).to_be_visible(timeout=5000)
-            await self._check_disconnect(check_client_disconnected, "Top P 调整 - 输入框可见后")
+            await self._check_disconnect(check_client_disconnected, "Top P adjustment - after input visible")
 
             current_top_p_str = await top_p_input_locator.input_value(timeout=3000)
             current_top_p_float = float(current_top_p_str)
 
             if abs(current_top_p_float - clamped_top_p) > 1e-9:
                 self.logger.info(
-                    f"[{self.req_id}] 页面 Top P ({current_top_p_float}) 与请求值 ({clamped_top_p}) 不同，正在更新..."
+                    f"[{self.req_id}] Page Top P ({current_top_p_float}) differs from request ({clamped_top_p}), updating..."
                 )
                 await top_p_input_locator.fill(str(clamped_top_p), timeout=5000)
                 await self._check_disconnect(
-                    check_client_disconnected, "Top P 调整 - 填充输入框后"
+                    check_client_disconnected, "Top P adjustment - after fill"
                 )
 
-                # 验证设置是否成功
+                # Verify
                 await asyncio.sleep(0.1)
                 new_top_p_str = await top_p_input_locator.input_value(timeout=3000)
                 new_top_p_float = float(new_top_p_str)
 
                 if abs(new_top_p_float - clamped_top_p) <= 1e-9:
                     self.logger.info(
-                        f"[{self.req_id}] ✅ Top P 已成功更新为: {new_top_p_float}"
+                        f"[{self.req_id}] ✅ Top P successfully updated to: {new_top_p_float}"
                     )
                 else:
                     self.logger.warning(
-                        f"[{self.req_id}] ⚠️ Top P 更新后验证失败。页面显示: {new_top_p_float}, 期望: {clamped_top_p}"
+                        f"[{self.req_id}] ⚠️ Top P verification failed. Page shows: {new_top_p_float}, Expected: {clamped_top_p}"
                     )
                     await save_error_snapshot(f"top_p_verify_fail_{self.req_id}")
             else:
                 self.logger.info(
-                    f"[{self.req_id}] 页面 Top P ({current_top_p_float}) 与请求值 ({clamped_top_p}) 一致，无需更改"
+                    f"[{self.req_id}] Page Top P ({current_top_p_float}) matches request ({clamped_top_p}), skipping update."
                 )
 
         except (ValueError, TypeError) as ve:
-            self.logger.error(f"[{self.req_id}] 转换 Top P 值时出错: {ve}")
+            self.logger.error(f"[{self.req_id}] Error converting Top P value: {ve}")
             await save_error_snapshot(f"top_p_value_error_{self.req_id}")
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] ❌ 调整 Top P 时出错: {e}")
+            self.logger.error(f"[{self.req_id}] ❌ Error adjusting Top P: {e}")
             await save_error_snapshot(f"top_p_error_{self.req_id}")
             if isinstance(e, ClientDisconnectedError):
                 raise
 
     async def clear_chat_history(self, check_client_disconnected: Callable):
-        """清空聊天记录。"""
-        self.logger.info(f"[{self.req_id}] 开始清空聊天记录...")
+        """Clear chat history."""
+        self.logger.info(f"[{self.req_id}] Starting chat history clearing...")
         await self._check_disconnect(check_client_disconnected, "Start Clear Chat")
 
         try:
-            # 一般是使用流式代理时遇到,流式输出已结束,但页面上AI仍回复个不停,此时会锁住清空按钮,但页面仍是/new_chat,而跳过后续清空操作
-            # 导致后续请求无法发出而卡住,故先检查并点击发送按钮(此时是停止功能)
+            # Handle case where AI is still generating (blocks clear button)
             submit_button_locator = self.page.locator(SUBMIT_BUTTON_SELECTOR)
             try:
-                self.logger.info(f"[{self.req_id}] 尝试检查发送按钮状态...")
-                # 使用较短的超时时间，避免长时间阻塞
+                self.logger.info(f"[{self.req_id}] Checking submit button state...")
+                # Short timeout to avoid blocking
                 await expect_async(submit_button_locator).to_be_enabled(timeout=1000)
-                self.logger.info(f"[{self.req_id}] 发送按钮可用，尝试点击并等待1秒...")
+                self.logger.info(f"[{self.req_id}] Submit button enabled, attempting click to stop generation...")
                 await submit_button_locator.click(timeout=CLICK_TIMEOUT_MS)
                 
-                # 尝试等待它变成禁用（表示点击生效），但也允许它不变成禁用
                 try:
                     await expect_async(submit_button_locator).to_be_disabled(
                         timeout=1200
                     )
                 except Exception:
                     pass
-                self.logger.info(f"[{self.req_id}] 发送按钮点击完成（尝试停止生成）。")
+                self.logger.info(f"[{self.req_id}] Stop generation click attempted.")
             except Exception:
-                # 如果发送按钮不可用、超时或发生Playwright相关错误，这是符合预期的，直接忽略
+                # Expected if button unavailable or disabled
                 pass
 
             clear_chat_button_locator = self.page.locator(CLEAR_CHAT_BUTTON_SELECTOR)
@@ -1166,20 +1159,20 @@ class PageController:
                     timeout=3000
                 )
                 can_attempt_clear = True
-                self.logger.info(f'[{self.req_id}] "清空聊天"按钮可用，继续清空流程。')
+                self.logger.info(f'[{self.req_id}] "Clear Chat" button enabled, proceeding.')
             except Exception as e_enable:
                 is_new_chat_url = "/prompts/new_chat" in self.page.url.rstrip("/")
                 if is_new_chat_url:
                     self.logger.info(
-                        f'[{self.req_id}] "清空聊天"按钮不可用 (预期，因为在 new_chat 页面)。跳过清空操作。'
+                        f'[{self.req_id}] "Clear Chat" button disabled (Expected on new_chat page). Skipping.'
                     )
                 else:
                     self.logger.warning(
-                        f'[{self.req_id}] 等待"清空聊天"按钮可用失败: {e_enable}。清空操作可能无法执行。'
+                        f'[{self.req_id}] Wait for "Clear Chat" button enabled failed: {e_enable}. Clear might fail.'
                     )
 
             await self._check_disconnect(
-                check_client_disconnected, '清空聊天 - "清空聊天"按钮可用性检查后'
+                check_client_disconnected, 'Clear Chat - after button check'
             )
 
             if can_attempt_clear:
@@ -1190,13 +1183,13 @@ class PageController:
                     check_client_disconnected,
                 )
                 await self._verify_chat_cleared(check_client_disconnected)
-                self.logger.info(f"[{self.req_id}] 聊天已清空，重新启用 '临时聊天' 模式...")
+                self.logger.info(f"[{self.req_id}] Chat cleared, re-enabling 'Temporary Chat' mode...")
                 await enable_temporary_chat_mode(self.page)
 
         except ClientDisconnectedError:
             self.logger.info(f"[{self.req_id}] Client disconnected during chat history cleanup. Session reset.")
         except Exception as e_clear:
-            self.logger.error(f"[{self.req_id}] 清空聊天过程中发生错误: {e_clear}")
+            self.logger.error(f"[{self.req_id}] Error during chat clearing: {e_clear}")
             if not (
                 isinstance(e_clear, ClientDisconnectedError)
                 or (hasattr(e_clear, "name") and "Disconnect" in e_clear.name)

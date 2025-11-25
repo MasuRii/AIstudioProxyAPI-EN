@@ -1,17 +1,17 @@
 """
-配置模块统一入口
-导出所有配置项，便于其他模块导入使用
+Configuration Module Entry Point
+Exports all configuration items for easy import by other modules.
 """
 
-# 从各个配置文件导入所有配置项
+# Import all configuration items from individual config files
 from .constants import *
 from .timeouts import *
 from .selectors import *
 from .settings import *
 
-# 显式导出主要配置项（用于IDE自动完成和类型检查）
+# Explicitly export main configuration items (for IDE autocomplete and type checking)
 __all__ = [
-    # 常量配置
+    # Constant Configuration
     'MODEL_NAME',
     'CHAT_COMPLETION_ID_PREFIX', 
     'DEFAULT_FALLBACK_MODEL_ID',
@@ -26,7 +26,7 @@ __all__ = [
     'EXCLUDED_MODELS_FILENAME',
     'STREAM_TIMEOUT_LOG_STATE',
     
-    # 超时配置
+    # Timeout Configuration
     'RESPONSE_COMPLETION_TIMEOUT',
     'INITIAL_WAIT_MS_BEFORE_POLLING',
     'POLLING_INTERVAL',
@@ -42,7 +42,7 @@ __all__ = [
     'WAIT_FOR_ELEMENT_TIMEOUT_MS',
     'PSEUDO_STREAM_DELAY',
     
-    # 选择器配置
+    # Selector Configuration
     'PROMPT_TEXTAREA_SELECTOR',
     'INPUT_SELECTOR',
     'INPUT_SELECTOR2',
@@ -69,7 +69,7 @@ __all__ = [
     'USE_URL_CONTEXT_SELECTOR',
     'UPLOAD_BUTTON_SELECTOR',
     
-    # --- 新增：思考模式相关选择器 ---
+    # --- New: Thinking Mode Related Selectors ---
     'ENABLE_THINKING_MODE_TOGGLE_SELECTOR',
     'SET_THINKING_BUDGET_TOGGLE_SELECTOR',
     'THINKING_BUDGET_INPUT_SELECTOR',
@@ -78,10 +78,10 @@ __all__ = [
     'THINKING_LEVEL_OPTION_LOW_SELECTOR',
     'THINKING_LEVEL_OPTION_HIGH_SELECTOR',
     
-    # --- 新增：Google Search 相关选择器 ---
+    # --- New: Google Search Related Selectors ---
     'GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR',
     
-    # 设置配置
+    # Settings Configuration
     'DEBUG_LOGS_ENABLED',
     'TRACE_LOGS_ENABLED',
     'AUTO_SAVE_AUTH',
@@ -96,13 +96,13 @@ __all__ = [
     'ENABLE_SCRIPT_INJECTION',
     'USERSCRIPT_PATH',
     
-    # --- 新增：功能开关设置 ---
+    # --- New: Feature Toggle Settings ---
     'ENABLE_THINKING_BUDGET',
     'DEFAULT_THINKING_BUDGET',
     'ENABLE_GOOGLE_SEARCH',
     'ENABLE_URL_CONTEXT',
 
-    # 工具函数
+    # Utility Functions
     'get_environment_variable',
     'get_boolean_env',
     'get_int_env',

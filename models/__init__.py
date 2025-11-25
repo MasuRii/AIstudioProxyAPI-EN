@@ -1,4 +1,4 @@
-# 聊天相关模型
+# Chat related models
 from .chat import (
     FunctionCall,
     ToolCall,
@@ -7,10 +7,10 @@ from .chat import (
     ChatCompletionRequest
 )
 
-# 异常类
+# Exception classes
 from .exceptions import ClientDisconnectedError, QuotaExceededError
 
-# 日志工具类
+# Logging utility classes
 from .logging import (
     StreamToLogger,
     WebSocketConnectionManager,
@@ -18,19 +18,19 @@ from .logging import (
 )
 
 __all__ = [
-    # 聊天模型
+    # Chat models
     'FunctionCall',
-    'ToolCall', 
+    'ToolCall',
     'MessageContentItem',
     'Message',
     'ChatCompletionRequest',
     
-    # 异常
+    # Exceptions
     'ClientDisconnectedError',
     'QuotaExceededError',
     
-    # 日志工具
+    # Logging tools
     'StreamToLogger',
     'WebSocketConnectionManager',
     'WebSocketLogHandler'
-] 
+]

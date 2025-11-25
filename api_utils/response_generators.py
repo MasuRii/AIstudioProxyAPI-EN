@@ -63,11 +63,11 @@ async def gen_sse_from_aux_stream(
             data_receiving = True
 
             try:
-                check_client_disconnected(f"流式生成器循环 ({req_id}): ")
+                check_client_disconnected(f"Stream generator loop ({req_id}): ")
             except ClientDisconnectedError:
-                logger.info(f"[{req_id}] 客户端断开连接，终止流式生成")
+                logger.info(f"[{req_id}] Client disconnected, terminating stream generation")
                 if data_receiving and not event_to_set.is_set():
-                    logger.info(f"[{req_id}] 数据接收中客户端断开，立即设置done信号")
+                    logger.info(f"[{req_id}] Client disconnected during data reception, setting done signal immediately")
                     event_to_set.set()
                 break
 
@@ -75,16 +75,16 @@ async def gen_sse_from_aux_stream(
                 try:
                     data = json.loads(raw_data)
                 except json.JSONDecodeError:
-                    logger.warning(f"[{req_id}] 无法解析流数据JSON: {raw_data}")
+                    logger.warning(f"[{req_id}] Failed to parse stream data JSON: {raw_data}")
                     continue
             elif isinstance(raw_data, dict):
                 data = raw_data
             else:
-                logger.warning(f"[{req_id}] 未知的流数据类型: {type(raw_data)}")
+                logger.warning(f"[{req_id}] Unknown stream data type: {type(raw_data)}")
                 continue
 
             if not isinstance(data, dict):
-                logger.warning(f"[{req_id}] 数据不是字典类型: {data}")
+                logger.warning(f"[{req_id}] Data is not a dict: {data}")
                 continue
 
             reason = data.get("reason", "")
@@ -219,12 +219,12 @@ async def gen_sse_from_aux_stream(
                 logger.info(f"[{req_id}] ✅ Response finalized. Subsequent messages will be ignored.")
 
     except ClientDisconnectedError:
-        logger.info(f"[{req_id}] 流式生成器中检测到客户端断开连接")
+        logger.info(f"[{req_id}] Client disconnection detected in stream generator")
         if data_receiving and not event_to_set.is_set():
-            logger.info(f"[{req_id}] 客户端断开异常处理中立即设置done信号")
+            logger.info(f"[{req_id}] Setting done signal immediately in client disconnect handler")
             event_to_set.set()
     except Exception as e:
-        logger.error(f"[{req_id}] 流式生成器处理过程中发生错误: {e}", exc_info=True)
+        logger.error(f"[{req_id}] Error in stream generator processing: {e}", exc_info=True)
         try:
             error_chunk = {
                 "id": chat_completion_id,
@@ -248,7 +248,7 @@ async def gen_sse_from_aux_stream(
                 full_body_content,
                 full_reasoning_content,
             )
-            logger.info(f"[{req_id}] 计算的token使用统计: {usage_stats}")
+            logger.info(f"[{req_id}] Calculated token usage stats: {usage_stats}")
             
             # Update global token count
             total_tokens = usage_stats.get("total_tokens", 0)
@@ -275,15 +275,15 @@ async def gen_sse_from_aux_stream(
             }
             yield f"data: {json.dumps(final_chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
         except Exception as usage_err:
-            logger.error(f"[{req_id}] 计算或发送usage统计时出错: {usage_err}")
+            logger.error(f"[{req_id}] Error calculating or sending usage stats: {usage_err}")
         try:
-            logger.info(f"[{req_id}] 流式生成器完成，发送 [DONE] 标记")
+            logger.info(f"[{req_id}] Stream generator completed, sending [DONE] marker")
             yield "data: [DONE]\n\n"
         except Exception as done_err:
-            logger.error(f"[{req_id}] 发送 [DONE] 标记时出错: {done_err}")
+            logger.error(f"[{req_id}] Error sending [DONE] marker: {done_err}")
         if not event_to_set.is_set():
             event_to_set.set()
-            logger.info(f"[{req_id}] 流式生成器完成事件已设置")
+            logger.info(f"[{req_id}] Stream generator completion event set")
 
 
 async def gen_sse_from_playwright(
@@ -310,11 +310,11 @@ async def gen_sse_from_playwright(
         lines = final_content.split('\n')
         for line_idx, line in enumerate(lines):
             try:
-                check_client_disconnected(f"Playwright流式生成器循环 ({req_id}): ")
+                check_client_disconnected(f"Playwright stream generator loop ({req_id}): ")
             except ClientDisconnectedError:
-                logger.info(f"[{req_id}] Playwright流式生成器中检测到客户端断开连接")
+                logger.info(f"[{req_id}] Client disconnection detected in Playwright stream generator")
                 if data_receiving and not completion_event.is_set():
-                    logger.info(f"[{req_id}] Playwright数据接收中客户端断开，立即设置done信号")
+                    logger.info(f"[{req_id}] Client disconnected during Playwright data reception, setting done signal immediately")
                     completion_event.set()
                 break
             if line:
@@ -329,7 +329,7 @@ async def gen_sse_from_playwright(
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages], final_content, "",
         )
-        logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
+        logger.info(f"[{req_id}] Playwright non-stream calculated token usage stats: {usage_stats}")
         
         # Update global token count
         total_tokens = usage_stats.get("total_tokens", 0)
@@ -342,18 +342,18 @@ async def gen_sse_from_playwright(
 
         yield generate_sse_stop_chunk(req_id, model_name_for_stream, "stop", usage_stats)
     except ClientDisconnectedError:
-        logger.info(f"[{req_id}] Playwright流式生成器中检测到客户端断开连接")
+        logger.info(f"[{req_id}] Client disconnection detected in Playwright stream generator")
         if data_receiving and not completion_event.is_set():
-            logger.info(f"[{req_id}] Playwright客户端断开异常处理中立即设置done信号")
+            logger.info(f"[{req_id}] Setting done signal immediately in Playwright client disconnect handler")
             completion_event.set()
     except Exception as e:
-        logger.error(f"[{req_id}] Playwright流式生成器处理过程中发生错误: {e}", exc_info=True)
+        logger.error(f"[{req_id}] Error in Playwright stream generator processing: {e}", exc_info=True)
         try:
-            yield generate_sse_chunk(f"\n\n[错误: {str(e)}]", req_id, model_name_for_stream)
+            yield generate_sse_chunk(f"\n\n[Error: {str(e)}]", req_id, model_name_for_stream)
             yield generate_sse_stop_chunk(req_id, model_name_for_stream)
         except Exception:
             pass
     finally:
         if not completion_event.is_set():
             completion_event.set()
-            logger.info(f"[{req_id}] Playwright流式生成器完成事件已设置")
+            logger.info(f"[{req_id}] Playwright stream generator completion event set")

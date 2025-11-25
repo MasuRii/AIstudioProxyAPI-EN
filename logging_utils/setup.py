@@ -19,70 +19,70 @@ def setup_server_logging(
     redirect_print_str: str = "false"
 ) -> Tuple[object, object]:
     """
-    设置服务器日志系统
+    Setup server logging system
     
     Args:
-        logger_instance: 主要的日志器实例
-        log_ws_manager: WebSocket连接管理器
-        log_level_name: 日志级别名称
-        redirect_print_str: 是否重定向print输出
+        logger_instance: Main logger instance
+        log_ws_manager: WebSocket connection manager
+        log_level_name: Log level name
+        redirect_print_str: Whether to redirect print output
         
     Returns:
-        Tuple[object, object]: 原始的stdout和stderr流
+        Tuple[object, object]: Original stdout and stderr streams
     """
     log_level = getattr(logging, log_level_name.upper(), logging.INFO)
     redirect_print = redirect_print_str.lower() in ('true', '1', 'yes')
     
-    # 创建必要的目录
+    # Create necessary directories
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(ACTIVE_AUTH_DIR, exist_ok=True)
     os.makedirs(SAVED_AUTH_DIR, exist_ok=True)
     
-    # 设置文件日志格式器
+    # Setup file log formatter
     file_log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - [%(name)s:%(funcName)s:%(lineno)d] - %(message)s')
     
-    # 清理现有的处理器
+    # Clear existing handlers
     if logger_instance.hasHandlers():
         logger_instance.handlers.clear()
     logger_instance.setLevel(log_level)
     logger_instance.propagate = False
     
-    # 移除旧的日志文件
+    # Remove old log file
     if os.path.exists(APP_LOG_FILE_PATH):
         try:
             os.remove(APP_LOG_FILE_PATH)
         except OSError as e:
-            print(f"警告 (setup_server_logging): 尝试移除旧的 app.log 文件 '{APP_LOG_FILE_PATH}' 失败: {e}。将依赖 mode='w' 进行截断。", file=sys.__stderr__)
+            print(f"Warning (setup_server_logging): Failed to remove old app.log file '{APP_LOG_FILE_PATH}': {e}. Will rely on mode='w' for truncation.", file=sys.__stderr__)
     
-    # 添加文件处理器
+    # Add file handler
     file_handler = logging.handlers.RotatingFileHandler(
         APP_LOG_FILE_PATH, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8', mode='w'
     )
     file_handler.setFormatter(file_log_formatter)
     logger_instance.addHandler(file_handler)
     
-    # 添加WebSocket处理器
+    # Add WebSocket handler
     if log_ws_manager is None:
-        print("严重警告 (setup_server_logging): log_ws_manager 未初始化！WebSocket 日志功能将不可用。", file=sys.__stderr__)
+        print("Critical Warning (setup_server_logging): log_ws_manager not initialized! WebSocket logging will be unavailable.", file=sys.__stderr__)
     else:
         ws_handler = WebSocketLogHandler(log_ws_manager)
         ws_handler.setLevel(logging.INFO)
         logger_instance.addHandler(ws_handler)
     
-    # 添加控制台处理器
+    # Add console handler
     console_server_log_formatter = logging.Formatter('%(asctime)s - %(levelname)s [SERVER] - %(message)s')
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(console_server_log_formatter)
     console_handler.setLevel(log_level)
     logger_instance.addHandler(console_handler)
     
-    # 保存原始流
+    # Save original streams
     original_stdout = sys.stdout
     original_stderr = sys.stderr
     
-    # 重定向print输出（如果需要）
+    # Redirect print output (if needed)
     if redirect_print:
-        print("--- 注意：server.py 正在将其 print 输出重定向到日志系统 (文件、WebSocket 和控制台记录器) ---", file=original_stderr)
+        print("--- Note: server.py is redirecting its print output to the logging system (File, WebSocket, and Console logger) ---", file=original_stderr)
         stdout_redirect_logger = logging.getLogger("AIStudioProxyServer.stdout")
         stdout_redirect_logger.setLevel(logging.INFO)
         stdout_redirect_logger.propagate = True
@@ -92,9 +92,9 @@ def setup_server_logging(
         stderr_redirect_logger.propagate = True
         sys.stderr = StreamToLogger(stderr_redirect_logger, logging.ERROR)
     else:
-        print("--- server.py 的 print 输出未被重定向到日志系统 (将使用原始 stdout/stderr) ---", file=original_stderr)
+        print("--- server.py print output is NOT redirected to logging system (using original stdout/stderr) ---", file=original_stderr)
     
-    # 配置第三方库的日志级别
+    # Configure third-party library log levels
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -106,24 +106,24 @@ def setup_server_logging(
     asyncio_logger.setLevel(logging.CRITICAL)
     asyncio_logger.addFilter(SSLWarningFilter())
     
-    # 记录初始化信息
-    logger_instance.info("=" * 5 + " AIStudioProxyServer 日志系统已在 lifespan 中初始化 " + "=" * 5)
-    logger_instance.info(f"日志级别设置为: {logging.getLevelName(log_level)}")
-    logger_instance.info(f"日志文件路径: {APP_LOG_FILE_PATH}")
-    logger_instance.info(f"控制台日志处理器已添加。")
-    logger_instance.info(f"Print 重定向 (由 SERVER_REDIRECT_PRINT 环境变量控制): {'启用' if redirect_print else '禁用'}")
+    # Log initialization info
+    logger_instance.info("=" * 5 + " AIStudioProxyServer Logging System Initialized in lifespan " + "=" * 5)
+    logger_instance.info(f"Log level set to: {logging.getLevelName(log_level)}")
+    logger_instance.info(f"Log file path: {APP_LOG_FILE_PATH}")
+    logger_instance.info(f"Console log handler added.")
+    logger_instance.info(f"Print Redirection (controlled by SERVER_REDIRECT_PRINT env var): {'Enabled' if redirect_print else 'Disabled'}")
     
     return original_stdout, original_stderr
 
 
 def restore_original_streams(original_stdout: object, original_stderr: object) -> None:
     """
-    恢复原始的stdout和stderr流
+    Restore original stdout and stderr streams
     
     Args:
-        original_stdout: 原始的stdout流
-        original_stderr: 原始的stderr流
+        original_stdout: Original stdout stream
+        original_stderr: Original stderr stream
     """
     sys.stdout = original_stdout
     sys.stderr = original_stderr
-    print("已恢复 server.py 的原始 stdout 和 stderr 流。", file=sys.__stderr__) 
+    print("Restored server.py original stdout and stderr streams.", file=sys.__stderr__)

@@ -1,30 +1,30 @@
 """
-思考模式参数归一化模块
-将 reasoning_effort 参数归一化为标准化的思考指令
+Thinking Mode Parameter Normalization Module
+Normalizes the reasoning_effort parameter into a standardized thinking directive.
 
-本模块负责将各种格式的 reasoning_effort 参数转换为统一的内部指令结构。
+This module is responsible for converting various formats of the reasoning_effort parameter into a unified internal directive structure.
 """
 
 from typing import Optional, Any, Dict
 from dataclasses import dataclass
 from config import ENABLE_THINKING_BUDGET, DEFAULT_THINKING_BUDGET
 from config.settings import (
-    DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE, 
-    THINKING_BUDGET_LOW, 
-    THINKING_BUDGET_MEDIUM, 
+    DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE,
+    THINKING_BUDGET_LOW,
+    THINKING_BUDGET_MEDIUM,
     THINKING_BUDGET_HIGH
 )
 
 
 @dataclass
 class ThinkingDirective:
-    """标准化的思考指令
+    """Standardized thinking directive
 
-    属性:
-        thinking_enabled: 是否启用思考模式（总开关）
-        budget_enabled: 是否限制思考预算
-        budget_value: 预算token数量（仅当budget_enabled=True时有效）
-        original_value: 原始的reasoning_effort值（用于日志）
+    Attributes:
+        thinking_enabled: Whether thinking mode is enabled (master switch)
+        budget_enabled: Whether to limit thinking budget
+        budget_value: Budget token count (valid only when budget_enabled=True)
+        original_value: Original reasoning_effort value (for logging)
     """
     thinking_enabled: bool
     budget_enabled: bool
@@ -33,21 +33,21 @@ class ThinkingDirective:
 
 
 def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bool = True) -> ThinkingDirective:
-    """将 reasoning_effort 参数归一化为标准化的思考指令
+    """Normalize reasoning_effort parameter into a standardized thinking directive
 
-    参数:
-        reasoning_effort: API请求中的reasoning_effort参数，可能的取值：
-            - None: 使用默认配置
-            - 0 或 "0": 关闭思考模式
-            - 正整数: 开启思考，设置具体预算值
-            - "low"/"medium"/"high": 开启思考，使用预设预算
-            - "none"或"-1"或-1: 开启思考，不限制预算
-        is_streaming: 是否为流式请求（影响 DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE 配置）
+    Args:
+        reasoning_effort: reasoning_effort parameter in API request, possible values:
+            - None: Use default configuration
+            - 0 or "0": Disable thinking mode
+            - Positive integer: Enable thinking, set specific budget value
+            - "low"/"medium"/"high": Enable thinking, use preset budget
+            - "none" or "-1" or -1: Enable thinking, unlimited budget
+        is_streaming: Whether it is a streaming request (affects DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE config)
 
-    返回:
-        ThinkingDirective: 标准化的思考指令
+    Returns:
+        ThinkingDirective: Standardized thinking directive
 
-    示例:
+    Example:
         >>> normalize_reasoning_effort(None)
         ThinkingDirective(thinking_enabled=False, budget_enabled=False, budget_value=None, ...)
 
@@ -61,7 +61,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
         ThinkingDirective(thinking_enabled=True, budget_enabled=False, budget_value=None, ...)
     """
 
-    # 场景1: 用户未指定，使用默认配置
+    # Scenario 1: User unspecified, use default configuration
     if reasoning_effort is None:
         return ThinkingDirective(
             thinking_enabled=ENABLE_THINKING_BUDGET,
@@ -70,7 +70,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             original_value=None
         )
 
-    # 场景2: 关闭思考模式 (reasoning_effort = 0 或 "0")
+    # Scenario 2: Disable thinking mode (reasoning_effort = 0 or "0")
     if reasoning_effort == 0 or (isinstance(reasoning_effort, str) and reasoning_effort.strip() == "0"):
         return ThinkingDirective(
             thinking_enabled=False,
@@ -79,7 +79,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             original_value=reasoning_effort
         )
 
-    # 场景3: 开启思考但不限制预算 (reasoning_effort = "none" / "-1" / -1)
+    # Scenario 3: Enable thinking but unlimited budget (reasoning_effort = "none" / "-1" / -1)
     if isinstance(reasoning_effort, str):
         reasoning_str = reasoning_effort.strip().lower()
         if reasoning_str in ["none", "-1"]:
@@ -97,7 +97,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             original_value=reasoning_effort
         )
 
-    # 场景4: 开启思考且限制预算 (具体数字或预设值)
+    # Scenario 4: Enable thinking and limit budget (specific number or preset value)
     budget_value = _parse_budget_value(reasoning_effort)
 
     if budget_value is not None and budget_value > 0:
@@ -108,7 +108,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             original_value=reasoning_effort
         )
 
-    # 无效值：使用默认配置
+    # Invalid value: Use default configuration
     return ThinkingDirective(
         thinking_enabled=ENABLE_THINKING_BUDGET,
         budget_enabled=ENABLE_THINKING_BUDGET,
@@ -118,21 +118,21 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
 
 
 def normalize_reasoning_effort_with_stream_check(reasoning_effort: Optional[Any], is_streaming: bool = True) -> ThinkingDirective:
-    """带流式检查的思考指令归一化
+    """Normalize thinking directive with stream check
     
-    根据 DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE 配置决定是否在非流式模式下禁用思考预算
+    Decides whether to disable thinking budget in non-streaming mode based on DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE configuration.
     
-    参数:
-        reasoning_effort: API请求中的reasoning_effort参数
-        is_streaming: 是否为流式请求
+    Args:
+        reasoning_effort: reasoning_effort parameter from API request
+        is_streaming: Whether it is a streaming request
         
-    返回:
-        ThinkingDirective: 标准化的思考指令
+    Returns:
+        ThinkingDirective: Standardized thinking directive
     """
-    # 首先获取基础的思考指令
+    # First get the basic thinking directive
     directive = normalize_reasoning_effort(reasoning_effort, is_streaming)
     
-    # 如果不是流式请求且配置为禁用思考预算，则禁用
+    # If not streaming and configured to disable budget on streaming disable, then disable
     if not is_streaming and DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE:
         return ThinkingDirective(
             thinking_enabled=False,
@@ -141,39 +141,39 @@ def normalize_reasoning_effort_with_stream_check(reasoning_effort: Optional[Any]
             original_value=reasoning_effort
         )
     
-    # 否则返回原始指令（允许思考预算在非流式模式下保持启用）
+    # Otherwise return original directive (allowing thinking budget to remain enabled in non-streaming mode)
     return directive
 
 
 def _parse_budget_value(reasoning_effort: Any) -> Optional[int]:
-    """解析预算值
+    """Parse budget value
 
-    参数:
-        reasoning_effort: reasoning_effort参数值
+    Args:
+        reasoning_effort: reasoning_effort parameter value
 
-    返回:
-        int: 预算token数量，如果无法解析则返回None
+    Returns:
+        int: Budget token count, or None if parsing fails
     """
-    # 如果是整数，直接返回
+    # If integer, return directly
     if isinstance(reasoning_effort, int) and reasoning_effort > 0:
         return reasoning_effort
 
-    # 如果是字符串，尝试解析为数字
+    # If string, try to parse as number
     if isinstance(reasoning_effort, str):
         effort_str = reasoning_effort.strip().lower()
 
-        # 预设值映射 - 使用环境变量配置的值
+        # Preset value mapping - use values from environment configuration
         effort_map = {
             "low": THINKING_BUDGET_LOW,
             "medium": THINKING_BUDGET_MEDIUM,
             "high": THINKING_BUDGET_HIGH,
         }
 
-        # 先尝试预设值
+        # Try preset values first
         if effort_str in effort_map:
             return effort_map[effort_str]
 
-        # 再尝试解析为数字
+        # Then try parsing as number
         try:
             value = int(effort_str)
             if value > 0:
@@ -185,17 +185,17 @@ def _parse_budget_value(reasoning_effort: Any) -> Optional[int]:
 
 
 def format_directive_log(directive: ThinkingDirective) -> str:
-    """格式化思考指令为日志字符串
+    """Format thinking directive as log string
 
-    参数:
-        directive: 思考指令
+    Args:
+        directive: Thinking directive
 
-    返回:
-        str: 格式化的日志字符串
+    Returns:
+        str: Formatted log string
     """
     if not directive.thinking_enabled:
-        return f"关闭思考模式 (原始值: {directive.original_value})"
+        return f"Thinking mode disabled (Original: {directive.original_value})"
     elif directive.budget_enabled and directive.budget_value is not None:
-        return f"开启思考并限制预算: {directive.budget_value} tokens (原始值: {directive.original_value})"
+        return f"Thinking enabled with budget: {directive.budget_value} tokens (Original: {directive.original_value})"
     else:
-        return f"开启思考，不限制预算 (原始值: {directive.original_value})"
+        return f"Thinking enabled, unlimited budget (Original: {directive.original_value})"

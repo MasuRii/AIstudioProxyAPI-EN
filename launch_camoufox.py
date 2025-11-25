@@ -348,6 +348,7 @@ def find_pids_on_port(port: int) -> list[int]:
             stdout, stderr = process.communicate(timeout=5)
             if process.returncode == 0 and stdout:
                 pids = [int(pid) for pid in stdout.strip().split('\n') if pid.isdigit()]
+            # Check for localized "command not found" messages (e.g., "未找到命令" for Chinese systems)
             elif process.returncode != 0 and ("command not found" in stderr.lower() or "未找到命令" in stderr):
                 logger.error(f"Command 'lsof' not found. Please ensure it is installed.")
             elif process.returncode not in [0, 1]: # lsof returns 1 when not found
@@ -398,9 +399,11 @@ def kill_process_interactive(pid: int) -> bool:
             result = subprocess.run(command_desc, shell=True, capture_output=True, text=True, timeout=5, check=False)
             output = result.stdout.strip()
             error_output = result.stderr.strip()
+            # Check for localized "Success" messages (e.g., "成功" for Chinese systems)
             if result.returncode == 0 and ("SUCCESS" in output.upper() or "成功" in output):
                 logger.info(f"    ✓ PID {pid} terminated via taskkill /F.")
                 success = True
+            # Check for localized "Not Found" messages (e.g., "找不到" for Chinese systems)
             elif "could not find process" in error_output.lower() or "找不到" in error_output: # Process might have exited itself
                 logger.info(f"    PID {pid} not found during taskkill (might have exited).")
                 success = True # Considered success as target is port availability

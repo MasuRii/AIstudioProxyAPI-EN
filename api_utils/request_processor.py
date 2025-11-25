@@ -1,6 +1,6 @@
 """
-请求处理器模块
-包含核心的请求处理逻辑
+Request Processor Module
+Contains core request processing logic
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from playwright.async_api import Page as AsyncPage, Locator, Error as PlaywrightAsyncError, expect as expect_async
 
-# --- 配置模块导入 ---
+# --- Configuration Module Imports ---
 from config import (
     MODEL_NAME,
     SUBMIT_BUTTON_SELECTOR,
@@ -23,16 +23,16 @@ from config import (
 from config import ONLY_COLLECT_CURRENT_USER_ATTACHMENTS, UPLOAD_FILES_DIR
 from config.global_state import GlobalState
 
-# --- models模块导入 ---
+# --- models Module Imports ---
 from models import ChatCompletionRequest, ClientDisconnectedError, QuotaExceededError
 
-# --- browser_utils模块导入 ---
+# --- browser_utils Module Imports ---
 from browser_utils import (
     switch_ai_studio_model,
     save_error_snapshot
 )
 
-# --- api_utils模块导入 ---
+# --- api_utils Module Imports ---
 from .utils import (
     validate_chat_request,
     prepare_combined_prompt,
@@ -67,47 +67,47 @@ from .error_utils import (
 
 
 async def _analyze_model_requirements(req_id: str, context: RequestContext, request: ChatCompletionRequest) -> RequestContext:
-    """代理到 model_switching.analyze_model_requirements"""
+    """Proxy to model_switching.analyze_model_requirements"""
     return await ms_analyze(req_id, context, request.model, MODEL_NAME)
 
 
-# 直接使用导入的实现
+# Use imported implementation directly
 
-# 直接使用导入的实现
+# Use imported implementation directly
 
 
 async def _validate_page_status(req_id: str, context: RequestContext, check_client_disconnected: Callable) -> None:
-    """验证页面状态"""
+    """Validate page status"""
     page = context['page']
     is_page_ready = context['is_page_ready']
     
     if not page or page.is_closed() or not is_page_ready:
-        raise HTTPException(status_code=503, detail=f"[{req_id}] AI Studio 页面丢失或未就绪。", headers={"Retry-After": "30"})
+        raise HTTPException(status_code=503, detail=f"[{req_id}] AI Studio page missing or not ready.", headers={"Retry-After": "30"})
     
     check_client_disconnected("Initial Page Check")
 
 
 async def _handle_model_switching(req_id: str, context: RequestContext, check_client_disconnected: Callable) -> RequestContext:
-    """代理到 model_switching.handle_model_switching"""
+    """Proxy to model_switching.handle_model_switching"""
     return await ms_switch(req_id, context)
 
 
 async def _handle_model_switch_failure(req_id: str, page: AsyncPage, model_id_to_use: str, model_before_switch: str, logger) -> None:
-    """处理模型切换失败的情况"""
+    """Handle model switch failure"""
     import server
     
-    logger.warning(f"[{req_id}] ❌ 模型切换至 {model_id_to_use} 失败。")
-    # 尝试恢复全局状态
+    logger.warning(f"[{req_id}] Failed to switch model to {model_id_to_use}.")
+    # Attempt to restore global state
     server.current_ai_studio_model_id = model_before_switch
     
     raise HTTPException(
         status_code=422,
-        detail=f"[{req_id}] 未能切换到模型 '{model_id_to_use}'。请确保模型可用。"
+        detail=f"[{req_id}] Failed to switch to model '{model_id_to_use}'. Ensure model is available."
     )
 
 
 async def _handle_parameter_cache(req_id: str, context: RequestContext) -> None:
-    """代理到 model_switching.handle_parameter_cache"""
+    """Proxy to model_switching.handle_parameter_cache"""
     await ms_param_cache(req_id, context)
 
 
@@ -116,16 +116,16 @@ async def _prepare_and_validate_request(
     request: ChatCompletionRequest,
     check_client_disconnected: Callable,
 ) -> Tuple[str, List[Optional[str]]]:
-    """准备和验证请求，返回 (组合提示, 图片路径列表)。"""
+    """Prepare and validate request, return (combined prompt, image path list)."""
     try:
         validate_chat_request(request.messages, req_id)
     except ValueError as e:
-        raise bad_request(req_id, f"无效请求: {e}")
+        raise bad_request(req_id, f"Invalid request: {e}")
     
     prepared_prompt, images_list = prepare_combined_prompt(request.messages, req_id, getattr(request, 'tools', None), getattr(request, 'tool_choice', None))
-    # 基于 tools/tool_choice 的主动函数执行（支持 per-request MCP 端点）
+    # Active function execution based on tools/tool_choice (supports per-request MCP endpoints)
     try:
-        # 将 mcp_endpoint 注入 utils.maybe_execute_tools 的注册逻辑
+        # Inject mcp_endpoint into utils.maybe_execute_tools registration logic
         if hasattr(request, 'mcp_endpoint') and request.mcp_endpoint:
             from .tools_registry import register_runtime_tools
             register_runtime_tools(getattr(request, 'tools', None), request.mcp_endpoint)
@@ -133,17 +133,17 @@ async def _prepare_and_validate_request(
     except Exception:
         tool_exec_results = None
     check_client_disconnected("After Prompt Prep")
-    # 将结果内联到提示末尾，供网页端一并提交
+    # Inline results at the end of the prompt for submission together
     if tool_exec_results:
         try:
             for res in tool_exec_results:
                 name = res.get('name')
                 args = res.get('arguments')
                 result_str = res.get('result')
-                prepared_prompt += f"\n---\n工具执行: {name}\n参数:\n{args}\n结果:\n{result_str}\n"
+                prepared_prompt += f"\n---\nTool Execution: {name}\nArguments:\n{args}\nResult:\n{result_str}\n"
         except Exception:
             pass
-    # 若配置仅收集当前用户消息附件，则在此过滤附件
+    # If configured to only collect current user attachments, filter here
     try:
         if ONLY_COLLECT_CURRENT_USER_ATTACHMENTS:
             latest_user = None
@@ -156,9 +156,9 @@ async def _prepare_and_validate_request(
                 from api_utils.utils import extract_data_url_to_local
                 from urllib.parse import urlparse, unquote
                 import os
-                # 收集该条 user 消息上的 data:/file:/绝对路径（存在的）
+                # Collect data:/file:/absolute paths (existing) on this user message
                 content = getattr(latest_user, 'content', None)
-                # 统一从 messages 附件字段抽取
+                # Extract uniformly from messages attachment fields
                 for key in ('attachments', 'images', 'files', 'media'):
                     arr = getattr(latest_user, key, None)
                     if not isinstance(arr, list):
@@ -200,13 +200,13 @@ async def _handle_response_processing(
     prompt_length: int,
     timeout: float,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
-    """处理响应生成"""
+    """Handle response generation"""
     from server import logger
     
     is_streaming = request.stream
     current_ai_studio_model_id = context.get('current_ai_studio_model_id')
     
-    # 检查是否使用辅助流
+    # Check if auxiliary stream is used
     from config import get_environment_variable
     stream_port = get_environment_variable('STREAM_PORT')
     use_stream = stream_port != '0'
@@ -226,7 +226,7 @@ async def _handle_auxiliary_stream_response(
     check_client_disconnected: Callable,
     timeout: float,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
-    """辅助流响应处理路径"""
+    """Auxiliary stream response processing path"""
     from server import logger
     
     is_streaming = request.stream
@@ -258,7 +258,7 @@ async def _handle_auxiliary_stream_response(
             return completion_event, submit_button_locator, check_client_disconnected
 
         except Exception as e:
-            logger.error(f"[{req_id}] 从队列获取流式数据时出错: {e}", exc_info=True)
+            logger.error(f"[{req_id}] Error getting stream data from queue: {e}", exc_info=True)
             # Fallback to non-streaming if stream setup fails...
             page = context['page']
             async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
@@ -275,13 +275,13 @@ async def _handle_auxiliary_stream_response(
         # Pass page here too for non-streaming requests so they don't time out
         page = context['page']
         async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout):
-            check_client_disconnected(f"非流式辅助流 - 循环中 ({req_id}): ")
+            check_client_disconnected(f"Non-streaming aux stream - loop ({req_id}): ")
             
             if isinstance(raw_data, str):
                 try:
                     data = json.loads(raw_data)
                 except json.JSONDecodeError:
-                    logger.warning(f"[{req_id}] 无法解析非流式数据JSON: {raw_data}")
+                    logger.warning(f"[{req_id}] Failed to parse non-stream data JSON: {raw_data}")
                     continue
             elif isinstance(raw_data, dict):
                 data = raw_data
@@ -300,12 +300,12 @@ async def _handle_auxiliary_stream_response(
         
         # ... (Rest of non-streaming logic remains unchanged) ...
         if final_data_from_aux_stream and final_data_from_aux_stream.get("reason") == "internal_timeout":
-            logger.error(f"[{req_id}] 非流式请求通过辅助流失败: 内部超时")
-            raise HTTPException(status_code=502, detail=f"[{req_id}] 辅助流处理错误 (内部超时)")
+            logger.error(f"[{req_id}] Non-stream request failed via aux stream: Internal Timeout")
+            raise HTTPException(status_code=502, detail=f"[{req_id}] Aux stream processing error (Internal Timeout)")
 
         if final_data_from_aux_stream and final_data_from_aux_stream.get("done") is True and content is None:
-             logger.error(f"[{req_id}] 非流式请求通过辅助流完成但未提供内容")
-             raise HTTPException(status_code=502, detail=f"[{req_id}] 辅助流完成但未提供内容")
+             logger.error(f"[{req_id}] Non-stream request completed via aux stream but no content provided")
+             raise HTTPException(status_code=502, detail=f"[{req_id}] Aux stream completed but no content provided")
 
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
         
@@ -385,7 +385,7 @@ async def _handle_auxiliary_stream_response(
 async def _handle_playwright_response(req_id: str, request: ChatCompletionRequest, page: AsyncPage,
                                     context: dict, result_future: Future, submit_button_locator: Locator,
                                     check_client_disconnected: Callable, prompt_length: int, timeout: float) -> Optional[Tuple[Event, Locator, Callable]]:
-    """使用Playwright处理响应 - 增强版本，支持混合响应和完整性验证"""
+    """Handle response using Playwright - Enhanced version, supports hybrid response and integrity verification"""
     from server import logger
     
     is_streaming = request.stream
@@ -413,10 +413,10 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         
         return completion_event, submit_button_locator, check_client_disconnected
     else:
-        # 使用增强的PageController获取响应（支持完整性验证）
+        # Use enhanced PageController to get response (supports integrity verification)
         page_controller = PageController(page, logger, req_id)
         
-        # 获取响应内容（包含完整性验证逻辑）
+        # Get response content (including integrity verification logic)
         response_data = await page_controller.get_response_with_integrity_check(
             check_client_disconnected,
             prompt_length,
@@ -428,8 +428,8 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         recovery_method = response_data.get("recovery_method", "direct")
         
         if recovery_method == "integrity_verification":
-            logger.info(f"[{req_id}] ✅ 使用完整性验证成功恢复响应内容 ({len(final_content)} chars)")
-            # 保存调试信息
+            logger.info(f"[{req_id}] Successfully recovered response content using integrity verification ({len(final_content)} chars)")
+            # Save debug info
             await save_error_snapshot(
                 f"integrity_recovery_success_{req_id}",
                 extra_context={
@@ -439,7 +439,7 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
                 }
             )
         elif recovery_method == "direct":
-            logger.info(f"[{req_id}] ✅ 直接获取响应内容成功 ({len(final_content)} chars)")
+            logger.info(f"[{req_id}] Successfully retrieved response content directly ({len(final_content)} chars)")
         
         # Consolidate reasoning content with body content for usage stats
         consolidated_content_for_usage = ""
@@ -450,13 +450,13 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
                 consolidated_content_for_usage += "\n\n"
             consolidated_content_for_usage += final_content.strip()
         
-        # 计算token使用统计（使用consolidated content）
+        # Calculate token usage stats (using consolidated content)
         usage_stats = calculate_usage_stats(
             [msg.model_dump() for msg in request.messages],
             consolidated_content_for_usage,
             ""  # No separate reasoning content since it's consolidated
         )
-        logger.info(f"[{req_id}] Playwright非流式计算的token使用统计: {usage_stats}")
+        logger.info(f"[{req_id}] Playwright non-stream token usage stats: {usage_stats}")
         
         # Update global token count
         total_tokens = usage_stats.get("total_tokens", 0)
@@ -467,7 +467,7 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         if hasattr(server, 'current_auth_profile_path') and server.current_auth_profile_path:
             await increment_profile_usage(server.current_auth_profile_path, total_tokens)
 
-        # 统一使用构造器生成 OpenAI 兼容响应
+        # Use unified constructor to generate OpenAI compatible response
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
         
         # Consolidate reasoning content with body content
@@ -521,36 +521,36 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         return response_payload
 
 
-async def _cleanup_request_resources(req_id: str, disconnect_check_task: Optional[asyncio.Task], 
-                                   completion_event: Optional[Event], result_future: Future, 
+async def _cleanup_request_resources(req_id: str, disconnect_check_task: Optional[asyncio.Task],
+                                   completion_event: Optional[Event], result_future: Future,
                                    is_streaming: bool) -> None:
-    """清理请求资源"""
+    """Cleanup request resources"""
     from server import logger
     from config import UPLOAD_FILES_DIR
     import os, shutil
     
     if disconnect_check_task and not disconnect_check_task.done():
         disconnect_check_task.cancel()
-        try: 
+        try:
             await disconnect_check_task
-        except asyncio.CancelledError: 
+        except asyncio.CancelledError:
             pass
-        except Exception as task_clean_err: 
-            logger.error(f"[{req_id}] 清理任务时出错: {task_clean_err}")
+        except Exception as task_clean_err:
+            logger.error(f"[{req_id}] Error during task cleanup: {task_clean_err}")
     
-    logger.info(f"[{req_id}] 处理完成。")
+    logger.info(f"[{req_id}] Processing completed.")
 
-    # 清理本次请求的上传子目录，避免磁盘累积
+    # Clean up upload subdirectory for this request to avoid disk accumulation
     try:
         req_dir = os.path.join(UPLOAD_FILES_DIR, req_id)
         if os.path.isdir(req_dir):
             shutil.rmtree(req_dir, ignore_errors=True)
-            logger.info(f"[{req_id}] 已清理请求上传目录: {req_dir}")
+            logger.info(f"[{req_id}] Cleaned up request upload directory: {req_dir}")
     except Exception as clean_err:
-        logger.warning(f"[{req_id}] 清理上传目录失败: {clean_err}")
+        logger.warning(f"[{req_id}] Failed to clean up upload directory: {clean_err}")
     
     if is_streaming and completion_event and not completion_event.is_set() and (result_future.done() and result_future.exception() is not None):
-         logger.warning(f"[{req_id}] 流式请求异常，确保完成事件已设置。")
+         logger.warning(f"[{req_id}] Stream request exception, ensuring completion event is set.")
          completion_event.set()
 
 
@@ -560,9 +560,9 @@ async def _process_request_refactored(
     http_request: Request,
     result_future: Future
 ) -> Optional[Tuple[Event, Locator, Callable[[str], bool]]]:
-    """核心请求处理函数 - 重构版本"""
+    """Core Request Processing Function - Refactored Version"""
 
-    # 优化：在开始任何处理前主动检测客户端连接状态
+    # Optimize: Proactively check client connection status before starting any processing
     from server import logger
     from config import get_environment_variable
 
@@ -583,21 +583,21 @@ async def _process_request_refactored(
 
     is_connected = await _test_client_connection(req_id, http_request)
     if not is_connected:
-        logger.info(f"[{req_id}] ✅ 核心处理前检测到客户端断开，提前退出节省资源")
+        logger.info(f"[{req_id}] Client disconnection detected before core processing, exiting early to save resources")
         if not result_future.done():
-            result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端在处理开始前已断开连接"))
+            result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] Client disconnected before processing started"))
         return None
 
     stream_port = get_environment_variable('STREAM_PORT')
     use_stream = stream_port != '0'
     if use_stream:
-        logger.info(f"[{req_id}] 🔧 请求开始前清空流式队列（防止残留数据）...")
+        logger.info(f"[{req_id}] Clearing stream queue before request (preventing residual data)...")
         try:
             from api_utils import clear_stream_queue
             await clear_stream_queue()
-            logger.info(f"[{req_id}] ✅ 流式队列已清空")
+            logger.info(f"[{req_id}] Stream queue cleared")
         except Exception as clear_err:
-            logger.warning(f"[{req_id}] ⚠️ 清空流式队列时出错: {clear_err}")
+            logger.warning(f"[{req_id}] Error clearing stream queue: {clear_err}")
 
     context = await _initialize_request_context(req_id, request)
     context = await _analyze_model_requirements(req_id, context, request)
@@ -619,7 +619,7 @@ async def _process_request_refactored(
         await _handle_parameter_cache(req_id, context)
         
         prepared_prompt,image_list = await _prepare_and_validate_request(req_id, request, check_client_disconnected)
-        # 额外合并顶层与消息级 attachments/files（兼容历史记录）已在下方处理；此处确保路径存在
+        # Extra merge of top-level and message-level attachments/files (compatibility history) handled below; ensure path exists here
         try:
             import os
             valid_images = []
@@ -628,17 +628,17 @@ async def _process_request_refactored(
                     valid_images.append(p)
             if len(valid_images) != len(image_list):
                 from server import logger
-                logger.warning(f"[{req_id}] 过滤掉不存在的附件路径: {set(image_list) - set(valid_images)}")
+                logger.warning(f"[{req_id}] Filtered out non-existent attachment paths: {set(image_list) - set(valid_images)}")
             image_list = valid_images
         except Exception:
             pass
-        # 兼容: 顶层与消息级附件字段合并到上传列表（仅 data:/file:/绝对路径）
-        # 附件来源策略：仅接受当前请求显式提供的 data:/file:/绝对路径（存在的）
+        # Compatibility: Merge top-level and message-level attachment fields into upload list (only data:/file:/absolute path)
+        # Attachment source strategy: Only accept data:/file:/absolute paths explicitly provided by current request
         try:
             from api_utils.utils import extract_data_url_to_local
             from urllib.parse import urlparse, unquote
             import os
-            # 顶层 attachments
+            # Top-level attachments
             top_level_atts = getattr(request, 'attachments', None)
             if isinstance(top_level_atts, list) and len(top_level_atts) > 0:
                 for it in top_level_atts:
@@ -661,7 +661,7 @@ async def _process_request_refactored(
                             image_list.append(lp)
                     elif os.path.isabs(url_value) and os.path.exists(url_value):
                         image_list.append(url_value)
-            # 消息级 attachments/images/files/media（全量收集，但仅保留有效本地/data）
+            # Message-level attachments/images/files/media (full collection, but only keep valid local/data)
             for msg in (request.messages or []):
                 for key in ('attachments', 'images', 'files', 'media'):
                     arr = getattr(msg, key, None)
@@ -690,11 +690,11 @@ async def _process_request_refactored(
         except Exception:
             pass
 
-        # 使用PageController处理页面交互
-        # 注意：聊天历史清空已移至队列处理锁释放后执行
+        # Use PageController to handle page interaction
+        # Note: Chat history clearing has been moved to execute after queue processing lock release
 
         await page_controller.adjust_parameters(
-            request.model_dump(exclude_none=True), # 使用 exclude_none=True 避免传递None值
+            request.model_dump(exclude_none=True), # Use exclude_none=True to avoid passing None values
             context['page_params_cache'],
             context['params_cache_lock'],
             context['model_id_to_use'],
@@ -703,14 +703,14 @@ async def _process_request_refactored(
             request.stream
         )
 
-        # 优化：在提交提示前再次检查客户端连接，避免不必要的后台请求
-        check_client_disconnected("提交提示前最终检查")
+        # Optimize: Check client connection again before submitting prompt to avoid unnecessary background requests
+        check_client_disconnected("Final check before submitting prompt")
 
         await page_controller.submit_prompt(prepared_prompt,image_list, check_client_disconnected)
         
-        # 刷新页面引用，因为 submit_prompt 可能会在恢复过程中更新页面
+        # Refresh page reference because submit_prompt might update page during recovery
         if page_controller.page != page:
-            context['logger'].info(f"[{req_id}] 检测到页面实例已更新 (Tab Recovery)，正在同步引用...")
+            context['logger'].info(f"[{req_id}] Page instance updated (Tab Recovery) detected, syncing references...")
             page = page_controller.page
             context['page'] = page
             submit_button_locator = page.locator(SUBMIT_BUTTON_SELECTOR)
@@ -720,7 +720,7 @@ async def _process_request_refactored(
         dynamic_timeout = 5.0 + (len(prepared_prompt) / 1000.0)
         logger.info(f"[{req_id}] Calculated dynamic TTFB timeout: {dynamic_timeout:.2f}s")
 
-        # 响应处理仍然需要在这里，因为它决定了是流式还是非流式，并设置future
+        # Response processing is still needed here as it determines if it's streaming or non-streaming, and sets future
         response_result = await _handle_response_processing(
             req_id, request, page, context, result_future, submit_button_locator, check_client_disconnected, len(prepared_prompt),
             timeout=dynamic_timeout
@@ -729,6 +729,9 @@ async def _process_request_refactored(
         if response_result:
             # [FIX] Handle dictionary return (non-streaming payload)
             if isinstance(response_result, dict):
+                # [STREAM-FIX] Explicitly check for Done signal in dictionary response
+                if response_result.get("done") is True:
+                     logger.info(f"[{req_id}] Dictionary DONE signal received in process_request. Treating as EOF.")
                 return response_result, submit_button_locator, check_client_disconnected
             
             # Handle tuple return (streaming event/loc/checker)
@@ -739,11 +742,11 @@ async def _process_request_refactored(
         return completion_event, submit_button_locator, check_client_disconnected
         
     except ClientDisconnectedError as disco_err:
-        context['logger'].info(f"[{req_id}] 捕获到客户端断开连接信号: {disco_err}")
+        context['logger'].info(f"[{req_id}] Caught client disconnection signal: {disco_err}")
         if not result_future.done():
              result_future.set_exception(client_disconnected(req_id, "Client disconnected during processing."))
     except HTTPException as http_err:
-        context['logger'].warning(f"[{req_id}] 捕获到 HTTP 异常: {http_err.status_code} - {http_err.detail}")
+        context['logger'].warning(f"[{req_id}] Caught HTTP exception: {http_err.status_code} - {http_err.detail}")
         if not result_future.done():
             result_future.set_exception(http_err)
     except QuotaExceededError as quota_err:
@@ -764,12 +767,12 @@ async def _process_request_refactored(
                 )
             )
     except PlaywrightAsyncError as pw_err:
-        context['logger'].error(f"[{req_id}] 捕获到 Playwright 错误: {pw_err}")
+        context['logger'].error(f"[{req_id}] Caught Playwright error: {pw_err}")
         await save_error_snapshot(f"process_playwright_error_{req_id}")
         if not result_future.done():
             result_future.set_exception(upstream_error(req_id, f"Playwright interaction failed: {pw_err}"))
     except Exception as e:
-        context['logger'].exception(f"[{req_id}] 捕获到意外错误")
+        context['logger'].exception(f"[{req_id}] Caught unexpected error")
         await save_error_snapshot(f"process_unexpected_error_{req_id}")
         if not result_future.done():
             result_future.set_exception(server_error(req_id, f"Unexpected server error: {e}"))

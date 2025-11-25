@@ -33,16 +33,16 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     import queue
 
     if STREAM_QUEUE is None:
-        logger.warning(f"[{req_id}] STREAM_QUEUE is None, 无法使用流响应")
+        logger.warning(f"[{req_id}] STREAM_QUEUE is None, cannot use stream response")
         return
         
-    # 引入 PageController 用于 DOM 兜底
+    # Import PageController for DOM fallback
     from browser_utils.page_controller import PageController
 
     if stream_start_time == 0.0:
         stream_start_time = time.time() - 10.0 # Fallback: 10s buffer if not provided
 
-    logger.info(f"[{req_id}] 开始使用流响应 (TTFB Timeout: {timeout:.2f}s, Start Time: {stream_start_time})")
+    logger.info(f"[{req_id}] Starting stream response (TTFB Timeout: {timeout:.2f}s, Start Time: {stream_start_time})")
 
     accumulated_body = ""
     accumulated_reason_len = 0
@@ -156,12 +156,20 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 if data is None:
                     logger.info(f"[{req_id}] 🔴 CRITICAL: Received stream termination signal (None). Forcing immediate exit.")
                     break
+                
+                # Check for explicit done signal in dictionary format
+                if isinstance(data, dict) and data.get("done") is True:
+                    logger.info(f"[{req_id}] ✅ Explicit dictionary DONE signal received. Treating as EOF.")
+                    # Ensure we yield this final state to flush buffer
+                    yield data
+                    break
+
                 empty_count = 0
                 data_received = True
                 received_items_count += 1
                 # [LOGIC-FIX] Update last packet time for silence detection
                 last_packet_time = time.time()
-                logger.debug(f"[{req_id}] 接收到流数据[#{received_items_count}]: {type(data)} - {str(data)[:200]}...")
+                logger.debug(f"[{req_id}] Received stream data [#{received_items_count}]: {type(data)} - {str(data)[:200]}...")
 
                 # [FIX-TIMESTAMP] Handle wrapped data with timestamp
                 actual_data = data
@@ -259,7 +267,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         
                         # [FIX-06] Thinking-to-Answer Handover Protocol (Copied from string branch)
                         if accumulated_reason_len > 0 and len(accumulated_body) == 0:
-                             logger.info(f"[{req_id}] ⚠️ [Dict Path] 检测到 Thinking-Only 响应. 启动 DOM Body-Wait 协议...")
+                             logger.info(f"[{req_id}] ⚠️ [Dict Path] Thinking-Only response detected. Starting DOM Body-Wait protocol...")
                              try:
                                 if page:
                                     pc = PageController(page, logger, req_id)
@@ -269,17 +277,17 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                                         await asyncio.sleep(0.5)
                                         dom_text = await pc.get_body_text_only_from_dom()
                                         if dom_text and len(dom_text.strip()) > 0:
-                                            logger.info(f"[{req_id}] ✅ [Dict Path] DOM 捕获到正文: {len(dom_text)} chars")
+                                            logger.info(f"[{req_id}] ✅ [Dict Path] DOM captured body: {len(dom_text)} chars")
                                             yield {"body": dom_text, "reason": "", "done": False}
                                             dom_body_found = True
                                             break
                                     if not dom_body_found:
-                                        logger.warning(f"[{req_id}] ⚠️ [Dict Path] DOM 等待超时。")
+                                        logger.warning(f"[{req_id}] ⚠️ [Dict Path] DOM wait timed out.")
                              except Exception as e:
                                  logger.error(f"[{req_id}] ❌ [Dict Path] DOM Wait Error: {e}")
 
                         if not has_content and received_items_count == 1 and not stale_done_ignored:
-                            logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
+                            logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
                             stale_done_ignored = True
                             continue
                         break
@@ -390,35 +398,35 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                             logger.info(f"[{req_id}] 🔴 CRITICAL: JSON DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
                             
                             # [FIX-06] Thinking-to-Answer Handover Protocol
-                            # 检测是否只输出了思考过程而没有正文 (Thinking > 0, Body == 0)
+                            # Detect if only thinking process was output without body (Thinking > 0, Body == 0)
                             if accumulated_reason_len > 0 and len(accumulated_body) == 0:
-                                logger.info(f"[{req_id}] ⚠️ 检测到 Thinking-Only 响应 (Total Reason: {accumulated_reason_len}, Body: 0)。启动 DOM Body-Wait 协议...")
+                                logger.info(f"[{req_id}] ⚠️ Thinking-Only response detected (Total Reason: {accumulated_reason_len}, Body: 0). Starting DOM Body-Wait protocol...")
                                 
                                 try:
                                     if page:
                                         pc = PageController(page, logger, req_id)
-                                        # 尝试等待正文出现，最多等 10 秒 (20 * 0.5s)
+                                        # Try waiting for body to appear, max 10 seconds (20 * 0.5s)
                                         wait_attempts = 20
                                         dom_body_found = False
                                         
                                         for wait_i in range(wait_attempts):
                                             await asyncio.sleep(0.5)
-                                            # 使用新添加的 get_body_text_only_from_dom 方法
+                                            # Use newly added get_body_text_only_from_dom method
                                             dom_text = await pc.get_body_text_only_from_dom()
                                             
                                             if dom_text and len(dom_text.strip()) > 0:
-                                                logger.info(f"[{req_id}] ✅ 在第 {wait_i+1} 次尝试中通过 DOM 捕获到正文: {len(dom_text)} chars")
+                                                logger.info(f"[{req_id}] ✅ Captured body via DOM on attempt {wait_i+1}: {len(dom_text)} chars")
                                                 
                                                 # [Sanity Check] Prevent Duplication
-                                                # 如果 stream 发送了部分内容（虽然这里是 body==0 的分支，但为了代码健壮性保留检查逻辑）
+                                                # If stream sent partial content (checking for robustness)
                                                 final_text_to_yield = dom_text
                                                 if len(accumulated_body) > 0:
                                                     if dom_text.startswith(accumulated_body):
                                                         final_text_to_yield = dom_text[len(accumulated_body):]
-                                                        logger.info(f"[{req_id}] 去重: 剔除已发送的 {len(accumulated_body)} 字符")
+                                                        logger.info(f"[{req_id}] Deduplication: Removed {len(accumulated_body)} sent chars")
                                                 
                                                 if final_text_to_yield:
-                                                    # 构造一个新的 body chunk
+                                                    # Construct a new body chunk
                                                     new_chunk = {
                                                         "body": final_text_to_yield,
                                                         "reason": "",
@@ -431,14 +439,14 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                                                     break
                                         
                                         if not dom_body_found:
-                                            logger.warning(f"[{req_id}] ⚠️ DOM 等待超时，仍未获取到正文。将执行 Fallback (复制思考内容或提示错误)。")
+                                            logger.warning(f"[{req_id}] ⚠️ DOM wait timed out, still no body. Executing Fallback (copying thinking content or error prompt).")
                                     else:
-                                        logger.warning(f"[{req_id}] ⚠️ 无法执行 DOM Wait (Page 对象为空)。")
+                                        logger.warning(f"[{req_id}] ⚠️ Cannot execute DOM Wait (Page object is None).")
                                 except Exception as dom_wait_err:
-                                    logger.error(f"[{req_id}] ❌ DOM Body-Wait 协议执行出错: {dom_wait_err}")
+                                    logger.error(f"[{req_id}] ❌ DOM Body-Wait Protocol Error: {dom_wait_err}")
 
                             if not has_content and received_items_count == 1 and not stale_done_ignored:
-                                logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
+                                logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
                                 stale_done_ignored = True
                                 continue
                             yield parsed_data
@@ -461,11 +469,11 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                             
                             # Log significant content updates
                             if body_increment > 0 or reason_increment > 0:
-                                logger.debug(f"[{req_id}] 📝 数据增量: Body +{body_increment}, Reason +{reason_increment}, 状态: ForceBody={force_body_mode}")
+                                logger.debug(f"[{req_id}] 📝 Data Increment: Body +{body_increment}, Reason +{reason_increment}, State: ForceBody={force_body_mode}")
                             
                             yield parsed_data
                     except json.JSONDecodeError:
-                        logger.debug(f"[{req_id}] 返回非JSON字符串数据")
+                        logger.debug(f"[{req_id}] Returning non-JSON string data")
                         has_content = True
                         stale_done_ignored = False
                         yield data
@@ -533,7 +541,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                         if data.get("done") is True:
                             logger.info(f"[{req_id}] 🔴 CRITICAL: Dict DONE received. Body={len(body)}, Reason={len(reason)}. Forcing immediate stream completion.")
                             if not has_content and received_items_count == 1 and not stale_done_ignored:
-                                logger.warning(f"[{req_id}] ⚠️ 收到done=True但没有任何内容，且这是第一个接收的项目！可能是队列残留的旧数据，尝试忽略并继续等待...")
+                                logger.warning(f"[{req_id}] ⚠️ Received done=True but no content, and this is the first item! Possibly stale data, ignoring and waiting...")
                                 stale_done_ignored = True
                                 continue
                             break
@@ -554,7 +562,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     try:
                         check_client_disconnected(f"Stream Queue Wait ({req_id})")
                     except ClientDisconnectedError:
-                        logger.warning(f"[{req_id}] 客户端在流式队列等待期间断开连接。")
+                        logger.warning(f"[{req_id}] Client disconnected during stream queue wait.")
                         raise
 
                 # Fail-Fast TTFB Check
@@ -591,7 +599,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 # Periodic logging and UI checks
                 if empty_count % 50 == 0:
                     elapsed_seconds = empty_count * 0.1
-                    logger.info(f"[{req_id}] 等待流数据... ({empty_count}/{max_empty_retries}, 已收到:{received_items_count}项, 耗时:{elapsed_seconds:.1f}s)")
+                    logger.info(f"[{req_id}] Waiting for stream data... ({empty_count}/{max_empty_retries}, Received:{received_items_count} items, Elapsed:{elapsed_seconds:.1f}s)")
                 
                 # UI-based generation check every 3 seconds
                 if empty_count - last_ui_check_time >= ui_check_interval:
@@ -599,26 +607,26 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     last_ui_check_time = empty_count
                     
                     if ui_generation_active:
-                        logger.info(f"[{req_id}] UI检测到模型仍在生成中，继续等待... (已等待 {empty_count * 0.1:.1f}s)")
+                        logger.info(f"[{req_id}] UI detected model is still generating, continuing wait... (Waited {empty_count * 0.1:.1f}s)")
                     else:
-                        logger.debug(f"[{req_id}] UI检测到模型未在生成 (已等待 {empty_count * 0.1:.1f}s)")
+                        logger.debug(f"[{req_id}] UI detected model is NOT generating (Waited {empty_count * 0.1:.1f}s)")
 
                 await asyncio.sleep(0.1)
                 continue
     except Exception as e:
         if isinstance(e, ClientDisconnectedError):
-             logger.info(f"[{req_id}] 停止流响应: 客户端已断开。")
+             logger.info(f"[{req_id}] Stopping stream response: Client disconnected.")
              raise e
-        logger.error(f"[{req_id}] 使用流响应时出错: {e}")
+        logger.error(f"[{req_id}] Error using stream response: {e}")
         raise
     finally:
         logger.info(
-            f"[{req_id}] ✅ 流响应使用完成统计:\n"
-            f"  📊 数据接收: {data_received}, 有内容: {has_content}, 收到项目数: {received_items_count}\n"
-            f"  📝 内容统计: Body={total_body_processed} chars, Reason={total_reason_processed} chars\n"
-            f"  🔄 边界转换: {boundary_transitions} 次, 强制Body模式: {force_body_mode}\n"
-            f"  ⏱️ 超时处理: 忽略空done={stale_done_ignored}, 初始等待限制={initial_wait_limit}\n"
-            f"  🧹 开始清理队列..."
+            f"[{req_id}] ✅ Stream response usage stats:\n"
+            f"  📊 Data Received: {data_received}, Has Content: {has_content}, Item Count: {received_items_count}\n"
+            f"  📝 Content Stats: Body={total_body_processed} chars, Reason={total_reason_processed} chars\n"
+            f"  🔄 Boundary Transitions: {boundary_transitions}, Force Body Mode: {force_body_mode}\n"
+            f"  ⏱️ Timeout Handling: Ignored Stale Done={stale_done_ignored}, Initial Wait Limit={initial_wait_limit}\n"
+            f"  🧹 Starting queue cleanup..."
         )
         # Trigger queue cleanup to prevent residual data
         await clear_stream_queue()
@@ -629,7 +637,7 @@ async def clear_stream_queue():
     import queue
 
     if STREAM_QUEUE is None:
-        logger.info("流队列未初始化或已被禁用，跳过清空操作。")
+        logger.info("Stream queue not initialized or disabled, skipping cleanup.")
         return
 
     cleared_count = 0
@@ -638,15 +646,15 @@ async def clear_stream_queue():
             data_chunk = await asyncio.to_thread(STREAM_QUEUE.get_nowait)
             cleared_count += 1
             if cleared_count <= 3:
-                logger.debug(f"清空流式队列项 #{cleared_count}: {type(data_chunk)} - {str(data_chunk)[:100]}...")
+                logger.debug(f"Clearing stream queue item #{cleared_count}: {type(data_chunk)} - {str(data_chunk)[:100]}...")
         except queue.Empty:
-            logger.info(f"流式队列已清空 (捕获到 queue.Empty)。清空项数: {cleared_count}")
+            logger.info(f"Stream queue cleared (caught queue.Empty). Cleared items: {cleared_count}")
             break
         except Exception as e:
-            logger.error(f"清空流式队列时发生意外错误 (已清空{cleared_count}项): {e}", exc_info=True)
+            logger.error(f"Unexpected error clearing stream queue (Cleared {cleared_count} items): {e}", exc_info=True)
             break
     
     if cleared_count > 0:
-        logger.warning(f"⚠️ 流式队列缓存清空完毕，共清理了 {cleared_count} 个残留项目！")
+        logger.warning(f"⚠️ Stream queue cache cleared, cleaned {cleared_count} residual items!")
     else:
-        logger.info("流式队列缓存清空完毕（队列为空）。")
+        logger.info("Stream queue cache cleared (queue was empty).")
