@@ -12,7 +12,7 @@ from typing import Any, AsyncGenerator, Optional, Callable
 # 4. Trigger: XML Tag Start (<tagname) followed by Space (for attributes) or > (immediate close)
 TOOL_STRUCTURE_PATTERN = re.compile(r'(?:^|\n)\s*(?:```[a-zA-Z0-9]*\s*)?<[a-zA-Z0-9_\-]+(?:\s|>)')
 
-async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None, stream_start_time: float = 0.0) -> AsyncGenerator[Any, None]:
+async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None, stream_start_time: float = 0.0, is_streaming_request: bool = True) -> AsyncGenerator[Any, None]:
     """Enhanced stream response handler with UI-based generation active checks.
     
     Args:
@@ -21,6 +21,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
         page: Playwright page instance for UI state checks
         check_client_disconnected: Optional callback to check if client disconnected
         stream_start_time: Timestamp when this specific stream request was initiated. Used to filter out stale queue data.
+        is_streaming_request: Whether this is a streaming request (True) or non-streaming (False). Controls silence detection.
     """
     from server import STREAM_QUEUE, logger
     from models import ClientDisconnectedError, QuotaExceededError
@@ -75,7 +76,8 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     ui_check_interval = 30  # Check UI state every 30 empty reads (3 seconds)
     
     # [LOGIC-FIX] Last Packet Watchdog for silence detection
-    last_packet_time = time.time()
+    # Use monotonic time for robust duration checks
+    last_packet_time = time.monotonic()
     silence_detection_threshold = 5.0  # 5 seconds of silence triggers completion
     min_items_before_silence_check = 10  # Only check silence after receiving some data
     
@@ -168,7 +170,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 data_received = True
                 received_items_count += 1
                 # [LOGIC-FIX] Update last packet time for silence detection
-                last_packet_time = time.time()
+                last_packet_time = time.monotonic()
                 logger.debug(f"[{req_id}] Received stream data [#{received_items_count}]: {type(data)} - {str(data)[:200]}...")
 
                 # [FIX-TIMESTAMP] Handle wrapped data with timestamp
@@ -551,8 +553,10 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 empty_count += 1
 
                 # [LOGIC-FIX] Silence Detection: Check if stream has been silent for too long
-                if (received_items_count >= min_items_before_silence_check and
-                    time.time() - last_packet_time > silence_detection_threshold):
+                # Only active for streaming requests where user is watching real-time
+                if (is_streaming_request and
+                    received_items_count >= min_items_before_silence_check and
+                    time.monotonic() - last_packet_time > silence_detection_threshold):
                     logger.info(f"[{req_id}] 🔇 Stream silence detected ({silence_detection_threshold}s). Assuming generation complete.")
                     yield {"done": True, "reason": "silence_detected", "body": "", "function": []}
                     return
@@ -585,11 +589,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 if empty_count >= max_empty_retries:
                     # CRITICAL FIX: Remove UI-based timeout extension
                     # Trust Network State over UI State - force exit on timeout
-                    is_thinking = await check_ui_generation_active()
-                    if is_thinking:
-                        logger.warning(f"[{req_id}] 🚨 TIMEOUT REACHED despite active UI! Forcing stream completion.")
-                    else:
-                        logger.warning(f"[{req_id}] ⏰ Stream timeout reached ({max_empty_retries} attempts). Ending stream.")
+                    logger.warning(f"[{req_id}] ⏰ Stream timeout reached ({max_empty_retries} attempts). Ending stream.")
                     
                     if not data_received:
                         logger.error(f"[{req_id}] Stream timeout: no data received, likely auxiliary stream failed")
@@ -601,15 +601,16 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     elapsed_seconds = empty_count * 0.1
                     logger.info(f"[{req_id}] Waiting for stream data... ({empty_count}/{max_empty_retries}, Received:{received_items_count} items, Elapsed:{elapsed_seconds:.1f}s)")
                 
-                # UI-based generation check every 3 seconds
-                if empty_count - last_ui_check_time >= ui_check_interval:
-                    ui_generation_active = await check_ui_generation_active()
-                    last_ui_check_time = empty_count
-                    
-                    if ui_generation_active:
-                        logger.info(f"[{req_id}] UI detected model is still generating, continuing wait... (Waited {empty_count * 0.1:.1f}s)")
-                    else:
-                        logger.debug(f"[{req_id}] UI detected model is NOT generating (Waited {empty_count * 0.1:.1f}s)")
+                    # [ROBUSTNESS-FIX] Fail-Fast UI Check
+                    # If we are waiting for data (empty_count > 0) and network is silent
+                    # Check if the UI actually thinks it is generating.
+                    # If UI says "Not Generating" (Run button enabled), then we are likely stuck in a zombie state.
+                    if is_streaming_request and empty_count > 50 and not has_content:
+                        is_generating = await check_ui_generation_active()
+                        if not is_generating:
+                            logger.warning(f"[{req_id}] ⚠️ UI indicates generation stopped (Run button enabled), but no data received. Assuming stream failure/completion.")
+                            yield {"done": True, "reason": "ui_stopped_generating", "body": "", "function": []}
+                            return
 
                 await asyncio.sleep(0.1)
                 continue

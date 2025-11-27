@@ -2,7 +2,9 @@ import asyncio
 import threading
 import time
 import logging
-from config.settings import QUOTA_SOFT_LIMIT, QUOTA_HARD_LIMIT
+from typing import Dict, Set
+from collections import defaultdict
+from config.settings import QUOTA_SOFT_LIMIT, QUOTA_HARD_LIMIT, MODEL_QUOTA_LIMITS
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,9 @@ class GlobalState:
     last_error_type = None
 
     # Token usage tracking for proactive rotation
-    current_profile_token_count = 0
+    # [QUOTA-02] Changed from single int to dict for model-specific tracking
+    current_profile_model_usage: Dict[str, int] = defaultdict(int)
+    current_profile_exhausted_models: Set[str] = set()
 
     # [FINAL-02] Dynamic Rotation Guard: Track queued requests
     queued_request_count = 0
@@ -59,7 +63,8 @@ class GlobalState:
             cls.QUOTA_EXCEEDED_EVENT.set()
             
             # Determine error type
-            msg_lower = message.lower()
+            safe_message = message if message else ""
+            msg_lower = safe_message.lower()
             if "429" in msg_lower or "rate limit" in msg_lower or "resource has been exhausted" in msg_lower:
                 # API "RESOURCE_EXHAUSTED" usually means 429/quota shared behavior,
                 # but "rate limit" specifically implies a temporary 429.
@@ -89,10 +94,15 @@ class GlobalState:
         cls.QUOTA_EXCEEDED_TIMESTAMP = 0.0
         cls.last_error_type = None
         cls.QUOTA_EXCEEDED_EVENT.clear()
+        
+        # [QUOTA-02] Reset model usage stats
+        cls.current_profile_model_usage.clear()
+        cls.current_profile_exhausted_models.clear()
+        
         logger.info("✅ GLOBAL ALERT: Quota status manually reset.")
 
     @classmethod
-    def increment_token_count(cls, count: int):
+    def increment_token_count(cls, count: int, model_id: str = "default"):
         """
         Increments the token count for the current profile and checks if it exceeds the limit.
         [GR-01] Implements Graceful Rotation logic.
@@ -100,19 +110,30 @@ class GlobalState:
         if count <= 0:
             return
             
-        cls.current_profile_token_count += count
+        # Ensure model_id is a valid string for key usage
+        safe_model_id = model_id if model_id else "default"
+        model_key = safe_model_id.lower()
         
-        # Check Hard Limit (Emergency Kill)
-        if cls.current_profile_token_count >= QUOTA_HARD_LIMIT:
-            logger.critical(f"⛔ HARD LIMIT REACHED: {cls.current_profile_token_count} >= {QUOTA_HARD_LIMIT}. Triggering immediate kill.")
-            cls.set_quota_exceeded() # Triggers the Watchdog Event
+        cls.current_profile_model_usage[model_key] += count
+        current_usage = cls.current_profile_model_usage[model_key]
+        
+        # Retrieve limit (fallback to global hard limit)
+        limit = MODEL_QUOTA_LIMITS.get(model_key, QUOTA_HARD_LIMIT)
+        
+        # Check Hard Limit (Emergency Kill / Model Exhaustion)
+        if current_usage >= limit:
+            logger.critical(f"⛔ HARD LIMIT REACHED ({model_key}): {current_usage} >= {limit}. Marking model as exhausted.")
+            cls.current_profile_exhausted_models.add(model_key)
+            # Trigger global rotation signal
+            cls.set_quota_exceeded(message=f"Quota exceeded for model {model_key}")
             return
 
         # Check Soft Limit (Graceful Signal)
-        if cls.current_profile_token_count >= QUOTA_SOFT_LIMIT and not cls.NEEDS_ROTATION:
-            logger.warning(f"🔄 SOFT LIMIT REACHED: {cls.current_profile_token_count} >= {QUOTA_SOFT_LIMIT}. Setting NEEDS_ROTATION flag.")
+        # Note: Using global soft limit as baseline for rotation signal
+        if current_usage >= QUOTA_SOFT_LIMIT and not cls.NEEDS_ROTATION:
+            logger.warning(f"🔄 SOFT LIMIT REACHED ({model_key}): {current_usage} >= {QUOTA_SOFT_LIMIT}. Setting NEEDS_ROTATION flag.")
             cls.NEEDS_ROTATION = True
         
         # Log status
-        limit_str = f"{QUOTA_SOFT_LIMIT}(Soft)/{QUOTA_HARD_LIMIT}(Hard)"
-        logger.info(f"📊 Token usage updated: +{count} => {cls.current_profile_token_count} (Limits: {limit_str}) | Rotation Pending: {cls.NEEDS_ROTATION}")
+        limit_str = f"{QUOTA_SOFT_LIMIT}(Soft)/{limit}(Hard)"
+        logger.info(f"📊 Token usage updated ({model_key}): +{count} => {current_usage} (Limits: {limit_str}) | Rotation Pending: {cls.NEEDS_ROTATION}")

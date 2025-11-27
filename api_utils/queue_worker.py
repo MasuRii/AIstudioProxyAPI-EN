@@ -177,7 +177,7 @@ async def queue_worker() -> None:
                 continue
             
             # Stream request interval control
-            current_time = time.time()
+            current_time = time.monotonic()
             if was_last_request_streaming and is_streaming_request and (current_time - last_request_completion_time < 1.0):
                 delay_time = max(0.5, 1.0 - (current_time - last_request_completion_time))
                 logger.info(f"[{req_id}] (Worker) Consecutive streaming request, adding {delay_time:.2f}s delay...")
@@ -206,14 +206,17 @@ async def queue_worker() -> None:
                     logger.info(f"[{req_id}] (Worker) Future already done/cancelled before processing. Skipping.")
                 else:
                     # Call actual request processing function
+                    # Initialize variables before try block to avoid UnboundLocalError
+                    completion_event, submit_btn_loc, client_disco_checker = None, None, None
+                    current_request_was_streaming = False
+                    context = None  # Initialize context to avoid UnboundLocalError
+                    disconnect_monitor_task = None # Initialize to None for safe cleanup
+                    
                     try:
                         from api_utils import _process_request_refactored
                         returned_value = await _process_request_refactored(
                             req_id, request_data, http_request, result_future
                         )
-                        
-                        completion_event, submit_btn_loc, client_disco_checker = None, None, None
-                        current_request_was_streaming = False
 
                         if isinstance(returned_value, tuple) and len(returned_value) == 3:
                             completion_event, submit_btn_loc, client_disco_checker = returned_value
@@ -412,7 +415,7 @@ async def queue_worker() -> None:
                                 result_future.set_exception(server_error(req_id, f"Error waiting for completion: {ev_wait_err}"))
                         finally:
                             # Cleanup disconnect monitor task
-                            if 'disconnect_monitor_task' in locals() and not disconnect_monitor_task.done():
+                            if disconnect_monitor_task and not disconnect_monitor_task.done():
                                 disconnect_monitor_task.cancel()
                                 try:
                                     await disconnect_monitor_task
@@ -496,7 +499,7 @@ async def queue_worker() -> None:
                 logger.error(f"[{req_id}] (Worker) Error during cleanup: {clear_err}", exc_info=True)
 
             was_last_request_streaming = is_streaming_request
-            last_request_completion_time = time.time()
+            last_request_completion_time = time.monotonic()
             
         except asyncio.CancelledError:
             logger.info("--- Queue Worker Cancelled ---")

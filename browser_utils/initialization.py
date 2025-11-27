@@ -97,7 +97,11 @@ async def _modify_model_list_response(original_body: bytes, url: str) -> bytes:
 
         # 解析JSON
         import json
-        json_data = json.loads(original_text)
+        try:
+            json_data = json.loads(original_text)
+        except json.JSONDecodeError as json_err:
+            logger.error(f"解析模型列表响应JSON失败: {json_err}")
+            return original_body
 
         # 注入模型
         modified_data = await _inject_models_to_response(json_data, url)
@@ -283,6 +287,23 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
             logger.error(f"   ❌ 覆盖的认证文件不存在: {override_storage_state_path}")
             raise RuntimeError(f"Override auth file not found: {override_storage_state_path}")
     elif launch_mode == 'headless' or launch_mode == 'virtual_headless':
+        # Check for Auto-Auth Rotation on Startup
+        if os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP', 'false').lower() == 'true':
+            logger.info("   🤖 Auto-Auth Rotation on Startup is ENABLED. Selecting profile...")
+            try:
+                # Local import to avoid circular dependencies
+                from .auth_rotation import _get_next_profile
+                next_profile = _get_next_profile()
+                if next_profile:
+                    os.environ['ACTIVE_AUTH_JSON_PATH'] = next_profile
+                    logger.info(f"   ✅ Auto-selected profile: {next_profile}")
+                else:
+                    logger.warning("   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults.")
+            except ImportError:
+                logger.error("   ❌ Auto-Auth Rotation failed: Could not import auth_rotation module.")
+            except Exception as e:
+                logger.error(f"   ❌ Error during Auto-Auth Rotation on Startup: {e}", exc_info=True)
+
         auth_filename = os.environ.get('ACTIVE_AUTH_JSON_PATH')
         if auth_filename:
             constructed_path = auth_filename

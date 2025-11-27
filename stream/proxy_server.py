@@ -88,10 +88,15 @@ class ProxyServer:
                 # Handle HTTPS connection
                 await self._handle_connect(reader, writer, target)
 
+        except asyncio.CancelledError:
+            pass  # Task cancelled, cleanup in finally
+        except ConnectionResetError:
+            self.logger.debug("Connection reset by peer handling client.")
         except Exception as e:
-            self.logger.error(f"Error handling client: {e}")
+            self.logger.error(f"Error handling client: {e}", exc_info=True)
         finally:
-            writer.close()
+            if not writer.is_closing():
+                writer.close()
     
     async def _handle_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, target: str):
         """
@@ -164,9 +169,9 @@ class ProxyServer:
                     host
                 )
             except Exception as e:
-                # --- FIX: Log the unused exception variable ---
-                self.logger.error(f"Error connecting to server {host}:{port}: {e}")
-                client_writer.close()
+                self.logger.error(f"Error connecting to server {host}:{port}: {e}", exc_info=True)
+                if not client_writer.is_closing():
+                    client_writer.close()
         else:
             # No interception, just forward the connection
             writer.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
@@ -187,9 +192,9 @@ class ProxyServer:
                     server_reader, server_writer
                 )
             except Exception as e:
-                # --- FIX: Log the unused exception variable ---
-                self.logger.error(f"Error connecting to server {host}:{port}: {e}")
-                writer.close()
+                self.logger.error(f"Error connecting to server {host}:{port}: {e}", exc_info=True)
+                if not writer.is_closing():
+                    writer.close()
 
     async def _forward_data(self, client_reader, client_writer, server_reader, server_writer):
         """
@@ -212,9 +217,14 @@ class ProxyServer:
                     self.logger.debug("Connection closed by peer (SSL notify)")
                     return
                 else:
-                    self.logger.error(f"Error forwarding data: {e}")
+                    self.logger.error(f"Error forwarding data: {e}", exc_info=True)
+                    # Send termination signal on error
+                    if self.queue:
+                        self.logger.info("Signaling stream termination due to forwarding error.")
+                        self.queue.put(None)
             finally:
-                writer.close()
+                if not writer.is_closing():
+                    writer.close()
         
         # Create tasks for both directions
         client_to_server = asyncio.create_task(_forward(client_reader, server_writer))
@@ -302,9 +312,13 @@ class ProxyServer:
                     self.logger.debug("Connection closed by peer (SSL notify) processing client data")
                     return
                 else:
-                    self.logger.error(f"Error processing client data: {e}")
+                    self.logger.error(f"Error processing client data: {e}", exc_info=True)
+                    if self.queue:
+                        self.logger.info("Signaling stream termination due to client processing error.")
+                        self.queue.put(None)
             finally:
-                server_writer.close()
+                if not server_writer.is_closing():
+                    server_writer.close()
         
         # Parse HTTP headers from server
         async def _process_server_data():
@@ -312,7 +326,15 @@ class ProxyServer:
             
             try:
                 while True:
-                    data = await server_reader.read(8192)
+                    try:
+                        data = await server_reader.read(8192)
+                    except TimeoutError as e:
+                        if "SSL shutdown timed out" in str(e):
+                            self.logger.warning("SSL shutdown timed out, treating as EOF.")
+                            data = b""
+                        else:
+                            raise e
+
                     if not data:
                         break
 
@@ -352,8 +374,7 @@ class ProxyServer:
                                     }
                                     self.queue.put(json.dumps(payload))
                             except Exception as e:
-                                # --- FIX: Log the unused exception variable ---
-                                self.logger.error(f"Error during response interception: {e}")
+                                self.logger.error(f"Error during response interception: {e}", exc_info=True)
 
                     # Not enough data to parse headers, forward as is
                     client_writer.write(data)
@@ -368,9 +389,13 @@ class ProxyServer:
                     self.logger.debug("Connection closed by peer (SSL notify) processing server data")
                     return
                 else:
-                    self.logger.error(f"Error processing server data: {e}")
+                    self.logger.error(f"Error processing server data: {e}", exc_info=True)
+                    if self.queue:
+                        self.logger.info("Signaling stream termination due to server processing error.")
+                        self.queue.put(None)
             finally:
-                client_writer.close()
+                if not client_writer.is_closing():
+                    client_writer.close()
         
         # Create tasks for both directions
         client_to_server = asyncio.create_task(_process_client_data())
@@ -398,7 +423,7 @@ class ProxyServer:
                 self.queue.put("READY")
                 self.logger.info("Sent 'READY' signal to the main process.")
             except Exception as e:
-                self.logger.error(f"Failed to send 'READY' signal: {e}")
+                self.logger.error(f"Failed to send 'READY' signal: {e}", exc_info=True)
 
         async with server:
             await server.serve_forever()

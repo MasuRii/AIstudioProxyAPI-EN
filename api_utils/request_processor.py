@@ -260,10 +260,15 @@ async def _handle_auxiliary_stream_response(
         except Exception as e:
             logger.error(f"[{req_id}] Error getting stream data from queue: {e}", exc_info=True)
             # Fallback to non-streaming if stream setup fails...
-            page = context['page']
-            async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
-                if completion_event and not completion_event.is_set():
-                    completion_event.set()
+            try:
+                logger.info(f"[{req_id}] Attempting fallback to non-streaming response...")
+                page = context['page']
+                async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
+                    if completion_event and not completion_event.is_set():
+                        completion_event.set()
+            except Exception as fallback_err:
+                 logger.error(f"[{req_id}] Fallback to non-streaming also failed: {fallback_err}", exc_info=True)
+                 # Re-raise the original error to ensure the failure is reported
             raise
 
     else:  # Non-streaming logic
@@ -274,7 +279,7 @@ async def _handle_auxiliary_stream_response(
 
         # Pass page here too for non-streaming requests so they don't time out
         page = context['page']
-        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout):
+        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout, is_streaming_request=False):
             check_client_disconnected(f"Non-streaming aux stream - loop ({req_id}): ")
             
             if isinstance(raw_data, str):
@@ -345,7 +350,7 @@ async def _handle_auxiliary_stream_response(
         
         # Update global token count
         total_tokens = usage_stats.get("total_tokens", 0)
-        GlobalState.increment_token_count(total_tokens)
+        GlobalState.increment_token_count(total_tokens, model_name_for_json)
 
         # Update profile usage stats
         import server
@@ -460,7 +465,7 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
         
         # Update global token count
         total_tokens = usage_stats.get("total_tokens", 0)
-        GlobalState.increment_token_count(total_tokens)
+        GlobalState.increment_token_count(total_tokens, model_name_for_json)
 
         # Update profile usage stats
         import server
@@ -580,6 +585,15 @@ async def _process_request_refactored(
         if await perform_auth_rotation():
              GlobalState.NEEDS_ROTATION = False
              logger.info(f"[{req_id}] ✅ Pre-flight rotation complete.")
+    
+    # [QUOTA-03] Pre-Flight Exhaustion Check
+    # Check if the specific model is already exhausted for this profile
+    model_id_to_check = getattr(request, 'model', None)
+    if model_id_to_check:
+        model_key = model_id_to_check.lower()
+        if model_key in GlobalState.current_profile_exhausted_models:
+             logger.warning(f"[{req_id}] ⛔ Model '{model_key}' is exhausted for current profile. Raising QuotaExceededError.")
+             raise QuotaExceededError(f"Quota exceeded for model {model_key}")
 
     is_connected = await _test_client_connection(req_id, http_request)
     if not is_connected:
@@ -600,17 +614,29 @@ async def _process_request_refactored(
             logger.warning(f"[{req_id}] Error clearing stream queue: {clear_err}")
 
     context = await _initialize_request_context(req_id, request)
+    
+    # [QUOTA-03] Updated Pre-Flight Exhaustion Check after context initialization
+    model_id_to_check = context.get('model_id_to_use') or request.model
+    if model_id_to_check:
+        model_key = model_id_to_check.lower()
+        if model_key in GlobalState.current_profile_exhausted_models:
+             logger.warning(f"[{req_id}] ⛔ Model '{model_key}' is exhausted for current profile. Raising QuotaExceededError.")
+             raise QuotaExceededError(f"Quota exceeded for model {model_key}")
+    
     context = await _analyze_model_requirements(req_id, context, request)
     
-    client_disconnected_event, disconnect_check_task, check_client_disconnected = await _setup_disconnect_monitoring(
-        req_id, http_request, result_future
-    )
-    
-    page = context['page']
-    submit_button_locator = page.locator(SUBMIT_BUTTON_SELECTOR) if page else None
+    # Initialize variables for safe cleanup
+    disconnect_check_task = None
     completion_event = None
     
     try:
+        client_disconnected_event, disconnect_check_task, check_client_disconnected = await _setup_disconnect_monitoring(
+            req_id, http_request, result_future
+        )
+        
+        page = context['page']
+        submit_button_locator = page.locator(SUBMIT_BUTTON_SELECTOR) if page else None
+
         await _validate_page_status(req_id, context, check_client_disconnected)
         
         page_controller = PageController(page, context['logger'], req_id)

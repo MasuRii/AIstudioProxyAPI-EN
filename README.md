@@ -2,6 +2,8 @@
 
 This is a Python-based proxy server that converts Google AI Studio's web interface into an OpenAI-compatible API. Through Camoufox (anti-fingerprinting Firefox) and Playwright automation, it provides stable API access
 
+This fork is the primary English version of the original project.
+
 This project is generously sponsored by ZMTO. Visit their website: [https://zmto.com/](https://zmto.com/)
 
 This project is generously sponsored by ZMTO with server support. Visit their website: [https://zmto.com/](https://zmto.com/)
@@ -17,6 +19,7 @@ The birth and development of this project cannot be separated from the generous 
 - **Real-time streaming functionality optimization and improvement**: @luispater ([https://github.com/luispater](https://github.com/luispater))
 - **3400+ line main file project refactoring great contribution**: @yattin (Holt) ([https://github.com/yattin](https://github.com/yattin))
 - **High-quality project maintenance in later stages**: @Louie ([https://github.com/NikkeTryHard](https://github.com/NikkeTryHard))
+- **English version maintainer**: @MasuRii ([https://github.com/MasuRii](https://github.com/MasuRii))
 - **Community support and inspiration**: Special thanks to the [Linux.do Community](https://linux.do/) members for their enthusiastic discussions, valuable suggestions, and problem feedback - your participation is an important driving force for the project's progress.
 
 At the same time, we sincerely thank every friend who has silently contributed to this project through submitting Issues, providing suggestions, sharing usage experiences, contributing code fixes, and other ways. It is your joint efforts that make this project better!
@@ -58,6 +61,8 @@ At the same time, we sincerely thank every friend who has silently contributed t
 - **Flexible Authentication System**: Supports optional API key authentication, fully compatible with OpenAI standard Bearer token format
 - **Modular Architecture**: Clear modular separation design, api_utils/, browser_utils/, config/ and other independent modules
 - **Unified Configuration Management**: Based on `.env` file unified configuration, supports environment variable overrides, Docker compatible
+- **Auth profile smart rotation**: Automatically rotates authentication profiles to avoid rate limits and improve stability.
+- **Quota detection with graceful shutdown**: The system can detect when a quota is reached and will gracefully shut down services to prevent errors.
 - **Modern Development Tools**: Poetry dependency management + Pyright type checking, providing excellent development experience
 
 ## System Architecture

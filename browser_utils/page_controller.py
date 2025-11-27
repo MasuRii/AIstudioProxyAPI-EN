@@ -1669,46 +1669,67 @@ class PageController:
 
                 # 等待发送按钮启用 (Timeout reduced to 10s to detect hang early)
                 wait_timeout_ms_submit_enabled = 10000
+                button_clicked = False
+                is_btn_enabled = False
+
                 try:
                     await self._check_disconnect(check_client_disconnected, "填充提示后等待发送按钮启用 - 前置检查")
                     await expect_async(submit_button_locator).to_be_enabled(timeout=wait_timeout_ms_submit_enabled)
                     self.logger.info(f"[{self.req_id}] ✅ 发送按钮已启用。")
+                    is_btn_enabled = True
                 except Exception as e_pw_enabled:
-                    self.logger.warning(f"[{self.req_id}] ⚠️ 等待发送按钮启用超时 (可能是页面卡顿): {e_pw_enabled}")
-                    raise # Trigger retry logic
+                    self.logger.warning(f"[{self.req_id}] ⚠️ 等待发送按钮启用超时 (可能是页面卡顿或按钮确实禁用): {e_pw_enabled}. 将直接尝试键盘提交.")
+                    # Do NOT raise here immediately, try keyboard shortcuts first as fallback
+                    is_btn_enabled = False
 
-                await self._check_disconnect(check_client_disconnected, "After Submit Button Enabled")
+                await self._check_disconnect(check_client_disconnected, "After Submit Button Check")
                 await asyncio.sleep(0.3)
 
-                # 优先点击按钮提交，其次回车提交，最后组合键提交
-                button_clicked = False
-                try:
-                    self.logger.info(f"[{self.req_id}] 尝试点击提交按钮...")
-                    # 提交前再处理一次潜在对话框，避免按钮点击被拦截
-                    await self._handle_post_upload_dialog()
-                    await submit_button_locator.click(timeout=5000)
-                    self.logger.info(f"[{self.req_id}] ✅ 提交按钮点击完成。")
-                    button_clicked = True
-                    
-                    # Immediate Check: Call check_quota_limit() immediately after clicking.
-                    await check_quota_limit(self.page, self.req_id)
+                # 优先点击按钮提交 (if enabled)，其次回车提交，最后组合键提交
+                if is_btn_enabled:
+                    try:
+                        self.logger.info(f"[{self.req_id}] 尝试点击提交按钮...")
+                        # 提交前再处理一次潜在对话框，避免按钮点击被拦截
+                        await self._handle_post_upload_dialog()
+                        
+                        await submit_button_locator.click(timeout=5000)
+                        self.logger.info(f"[{self.req_id}] ✅ 提交按钮点击完成。")
+                        button_clicked = True
+                        
+                        # Immediate Check: Call check_quota_limit() immediately after clicking.
+                        await check_quota_limit(self.page, self.req_id)
 
-                except Exception as click_err:
-                    self.logger.error(f"[{self.req_id}] ❌ 提交按钮点击失败: {click_err}")
-                    # Don't snapshot here, retry mechanism handles it or next methods try
+                    except Exception as click_err:
+                        # 降级为 Warning，因为我们有后续的备用方案 (Enter/Combo)
+                        self.logger.warning(f"[{self.req_id}] ⚠️ 提交按钮点击尝试失败 (将尝试备用方案): {click_err}")
+                        button_clicked = False
+                else:
+                    self.logger.info(f"[{self.req_id}] 提交按钮未启用或检查超时，跳过点击，直接使用键盘提交。")
 
                 # 如果按钮点击失败，或者虽然点击了但没有触发提交（这里简化逻辑，如果点击代码跑通则认为点击成功，
                 # 后续通过响应检测来判定是否真正提交。如果点击报错，则 button_clicked 为 False，进入备用方案）
                 
+                submission_verified = False
                 if not button_clicked:
-                    self.logger.info(f"[{self.req_id}] 按钮提交失败，尝试回车键提交...")
+                    self.logger.info(f"[{self.req_id}] 按钮未点击或失败，尝试回车键提交...")
                     submitted_successfully = await self._try_enter_submit(prompt_textarea_locator, check_client_disconnected)
-                    if not submitted_successfully:
+                    if submitted_successfully:
+                         submission_verified = True
+                    else:
                         self.logger.info(f"[{self.req_id}] 回车提交失败，尝试组合键提交...")
                         combo_ok = await self._try_combo_submit(prompt_textarea_locator, check_client_disconnected)
-                        if not combo_ok:
+                        if combo_ok:
+                            submission_verified = True
+                        else:
                             self.logger.error(f"[{self.req_id}] ❌ 组合键提交也失败。")
-                            raise Exception("Submit failed: Button, Enter, and Combo key all failed")
+                            # Only raise if we really tried everything and failed
+                            # AND if the button was originally not enabled, implying we couldn't even try the primary method properly
+                            if not is_btn_enabled:
+                                 raise Exception("Submit failed: Button disabled/timeout and Keyboard shortcuts failed")
+                            else:
+                                 raise Exception("Submit failed: Button click failed and Keyboard shortcuts failed")
+                else:
+                     submission_verified = True
 
                 await self._check_disconnect(check_client_disconnected, "After Submit")
                 

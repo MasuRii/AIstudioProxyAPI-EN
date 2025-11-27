@@ -68,6 +68,19 @@ QUOTA_SOFT_LIMIT = get_int_env('QUOTA_SOFT_LIMIT', 450000)
 # Hard Limit: Triggers immediate "Kill Signal" (Emergency)
 QUOTA_HARD_LIMIT = get_int_env('QUOTA_HARD_LIMIT', 550000)
 
+# [QUOTA-01] Model-Specific Quota Limits
+# Parses QUOTA_LIMIT_MODELNAME from environment variables
+MODEL_QUOTA_LIMITS = {}
+for key, value in os.environ.items():
+    if key.upper().startswith("QUOTA_LIMIT_"):
+        # Extract suffix as model identifier (e.g., QUOTA_LIMIT_GEMINI_PRO -> gemini_pro)
+        try:
+            model_id = key[12:].lower()
+            MODEL_QUOTA_LIMITS[model_id] = int(value)
+        except ValueError:
+            print(f"⚠️ Warning: Invalid quota limit for {key}: {value}. Expected integer. Using default.")
+            continue
+
 PROACTIVE_ROTATION_TOKEN_LIMIT = QUOTA_HARD_LIMIT # Backwards compatibility alias
 
 # --- Dynamic Rotation Guard Configuration ---
