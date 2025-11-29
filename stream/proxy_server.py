@@ -231,8 +231,8 @@ class ProxyServer:
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer.")
             except Exception as e:
-                if getattr(e, 'winerror', None) == 10054:
-                    self.logger.debug("Connection reset by peer (WinError 10054).")
+                if getattr(e, 'winerror', None) in (10054, 10058):
+                    self.logger.debug(f"Connection closed by peer (WinError {getattr(e, 'winerror', None)}).")
                 elif isinstance(e, ssl.SSLError) and "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(e):
                     self.logger.debug("Connection closed by peer (SSL notify)")
                     return
@@ -321,8 +321,8 @@ class ProxyServer:
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer processing client data.")
             except Exception as e:
-                if getattr(e, 'winerror', None) == 10054:
-                    self.logger.debug("Connection reset by peer (WinError 10054) processing client data.")
+                if getattr(e, 'winerror', None) in (10054, 10058):
+                    self.logger.debug(f"Connection closed by peer (WinError {getattr(e, 'winerror', None)}) processing client data.")
                 elif isinstance(e, ssl.SSLError) and "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(e):
                     self.logger.debug("Connection closed by peer (SSL notify) processing client data")
                     return
@@ -387,8 +387,8 @@ class ProxyServer:
             except ConnectionResetError:
                 self.logger.debug("Connection reset by peer processing server data.")
             except Exception as e:
-                if getattr(e, 'winerror', None) == 10054:
-                    self.logger.debug("Connection reset by peer (WinError 10054) processing server data.")
+                if getattr(e, 'winerror', None) in (10054, 10058):
+                    self.logger.debug(f"Connection closed by peer (WinError {getattr(e, 'winerror', None)}) processing server data.")
                 elif isinstance(e, ssl.SSLError) and "APPLICATION_DATA_AFTER_CLOSE_NOTIFY" in str(e):
                     self.logger.debug("Connection closed by peer (SSL notify) processing server data")
                     return
