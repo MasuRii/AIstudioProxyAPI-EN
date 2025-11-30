@@ -67,6 +67,48 @@ def _normalize_model_id(model_id: str) -> str:
     return normalized
 
 
+def _calculate_smart_priority(profile_path: str, target_model_id: str, cooldown_dict: dict) -> tuple:
+    """
+    Calculates a sorting priority for a profile based on 'Efficiency' logic.
+    
+    Priority Tuple: (neg_efficiency_score, usage_count, random_factor)
+    1. efficiency_score (Higher is better): Count of ACTIVE cooldowns for OTHER models.
+       Rationale: Prefer profiles that are already "damaged" (in cooldown) for other models
+       but valid for the current target, over "fresh" profiles that can serve everything.
+    2. usage_count (Lower is better): Standard wear leveling.
+    3. random_factor: Tie-breaker.
+    """
+    efficiency_score = 0
+    now = time.time()
+    
+    # Check cooldown data for this profile
+    if profile_path in cooldown_dict:
+        data = cooldown_dict[profile_path]
+        if isinstance(data, dict):
+            # Iterate through model cooldowns
+            for model, ts in data.items():
+                # Skip global cooldowns (already filtered out) and target model (already filtered out)
+                if model == "global":
+                    continue
+                
+                # Check if this model is different from target
+                if target_model_id and model == target_model_id:
+                    continue
+                    
+                # If cooldown is active for this OTHER model, increase efficiency score
+                ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                if ts_val > now:
+                    efficiency_score += 1
+
+    usage = get_profile_usage(profile_path)
+    
+    # Return tuple for sorting:
+    # 1. Negative efficiency_score (Ascending sort -> Higher score comes first)
+    # 2. Positive usage (Ascending sort -> Lower usage comes first)
+    # 3. Random (Ascending sort -> Random tie breaker)
+    return (-efficiency_score, usage, random.random())
+
+
 def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = None) -> Optional[str]:
     """
     Finds the best available profile within a given list of directories.
@@ -145,12 +187,12 @@ def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = No
     if not valid_profiles:
         return None
 
-    # Usage-Based Selection Logic:
-    # 1. Random shuffle (secondary sort factor)
-    random.shuffle(valid_profiles)
-    # 2. Sort by usage (primary sort factor, stable sort preserves randomness for ties)
-    valid_profiles.sort(key=get_profile_usage)
+    # Smart Efficiency Selection Logic:
+    # Sort candidates using the smart priority tuple
+    # Key: (-efficiency_score, usage, random)
+    valid_profiles.sort(key=lambda p: _calculate_smart_priority(p, normalized_target_model, _COOLDOWN_PROFILES))
 
+    logger.info(f"[DEBUG] Best profile selected: {os.path.basename(valid_profiles[0])}")
     return valid_profiles[0]
 
 

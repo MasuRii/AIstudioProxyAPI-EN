@@ -105,7 +105,7 @@ async def get_raw_text_content(response_element: Locator, previous_text: str, re
     if raw_text != previous_text:
         if DEBUG_LOGS_ENABLED:
             preview = raw_text[:100].replace('\n', '\\n')
-            logger.debug(f"[{req_id}] (获取原始文本) 文本已更新，长度: {len(raw_text)}，预览: '{preview}...'")
+            logger.debug(f"[{req_id}] (获取原始文本) 文本已更新，长度: {len(raw_text)}，Preview: '{preview}...'")
     return raw_text
 
 def _parse_userscript_models(script_content: str):
@@ -268,7 +268,7 @@ async def _handle_model_list_response(response: Any):
                         logger.info("检测到根列表，元素为字典。直接使用 data 作为 models_array_container。")
                     models_array_container = data
                 else:
-                    logger.warning(f"未知的列表嵌套结构。data[0] 类型: {type(data[0]) if data else 'N/A'}。data[0] 预览: {str(data[0])[:200] if data else 'N/A'}")
+                    logger.warning(f"未知的列表嵌套结构。data[0] 类型: {type(data[0]) if data else 'N/A'}。data[0] Preview: {str(data[0])[:200] if data else 'N/A'}")
             elif isinstance(data, dict):
                 if 'data' in data and isinstance(data['data'], list):
                     models_array_container = data['data']

@@ -425,7 +425,7 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
         final_prompt += "\n"
     
     preview_text = final_prompt[:300].replace('\n', '\\n')
-    logger.info(f"[{req_id}] (准备提示) 组合提示长度: {len(final_prompt)}，附件数量: {len(files_list)}。预览: '{preview_text}...'")
+    logger.info(f"[{req_id}] (准备提示) 组合提示长度: {len(final_prompt)}，附件数量: {len(files_list)}。Preview: '{preview_text}...'")
     
     return final_prompt, files_list
 
