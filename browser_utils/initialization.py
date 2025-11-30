@@ -305,6 +305,8 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
                 logger.error(f"   ❌ Error during Auto-Auth Rotation on Startup: {e}", exc_info=True)
 
         auth_filename = os.environ.get('ACTIVE_AUTH_JSON_PATH')
+        logger.info(f"[DEBUG] Headless Init: ACTIVE_AUTH_JSON_PATH='{auth_filename}'")
+        
         if auth_filename:
             constructed_path = auth_filename
             if os.path.exists(constructed_path):
@@ -312,6 +314,8 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
                 logger.info(f"   无头模式将使用的认证文件: {constructed_path}")
             else:
                 logger.error(f"{launch_mode} 模式认证文件无效或不存在: '{constructed_path}'")
+                # DIAGNOSTIC: Check if we should have rotated
+                logger.info(f"[DEBUG] Auth file missing. Auto-Rotation Flag: {os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP')}")
                 raise RuntimeError(f"{launch_mode} 模式认证文件无效: '{constructed_path}'")
         else:
             logger.error(f"{launch_mode} 模式需要 ACTIVE_AUTH_JSON_PATH 环境变量，但未设置或为空。")

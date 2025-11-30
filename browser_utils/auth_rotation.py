@@ -49,13 +49,18 @@ def _find_best_profile_in_dirs(directories: list[str], target_model_id: str = No
     if not directories or not isinstance(directories, list):
         return None
 
+    logger.info(f"[DEBUG] Scanning directories: {directories}")
     all_profiles = []
     for d in directories:
         if d and isinstance(d, str) and os.path.exists(d):
             files = glob.glob(os.path.join(d, "*.json"))
+            logger.info(f"[DEBUG] Found {len(files)} profiles in {d}")
             all_profiles.extend([os.path.abspath(f) for f in files])
+        else:
+            logger.warning(f"[DEBUG] Directory missing or invalid: {d} (Abs: {os.path.abspath(d) if d else 'None'})")
 
     if not all_profiles:
+        logger.warning(f"[DEBUG] No profiles found in {directories}")
         return None
 
     # Filter out profiles that don't exist or are in cooldown
@@ -128,6 +133,8 @@ def _get_next_profile(target_model_id: str = None) -> Optional[str]:
     """
     # Ensure the emergency directory exists
     emergency_dir = "auth_profiles/emergency"
+    abs_emergency = os.path.abspath(emergency_dir)
+    logger.info(f"[DEBUG] Emergency Dir: {emergency_dir} (Absolute: {abs_emergency})")
     os.makedirs(emergency_dir, exist_ok=True)
     
     # Note: Cooldown cleanup is complex with nested structure.

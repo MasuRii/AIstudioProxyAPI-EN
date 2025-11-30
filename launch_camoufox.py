@@ -97,6 +97,7 @@ DEFAULT_SERVER_LOG_LEVEL = os.environ.get('SERVER_LOG_LEVEL', 'INFO')  # Server 
 AUTH_PROFILES_DIR = os.path.join(os.path.dirname(__file__), "auth_profiles")
 ACTIVE_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "active")
 SAVED_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "saved")
+EMERGENCY_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "emergency")
 HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
 HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
 LOG_DIR = os.path.join(os.path.dirname(__file__), 'logs')
@@ -642,6 +643,12 @@ if __name__ == "__main__":
         "--exit-on-auth-save", action='store_true',
         help="[Debug Mode] Automatically close launcher and all processes after successful auth save via UI."
     )
+    parser.add_argument(
+        "--auto-auth-rotation-on-startup",
+        type=str,
+        default=os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP', 'false'),
+        help="Enable auto-rotation to saved/emergency profiles on startup if active profile is missing (true/false)."
+    )
     # Logging related arguments (from dev)
     parser.add_argument(
         "--server-log-level", type=str, default=DEFAULT_SERVER_LOG_LEVEL, choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -942,7 +949,8 @@ if __name__ == "__main__":
             # For debug mode, scan all directories and prompt user
             available_profiles = []
             # Scan ACTIVE_AUTH_DIR first, then SAVED_AUTH_DIR
-            for profile_dir_path_str, dir_label in [(ACTIVE_AUTH_DIR, "active"), (SAVED_AUTH_DIR, "saved")]:
+            logger.info(f"[DIAGNOSTIC] Scanning for profiles in: active, saved, emergency.")
+            for profile_dir_path_str, dir_label in [(ACTIVE_AUTH_DIR, "active"), (SAVED_AUTH_DIR, "saved"), (EMERGENCY_AUTH_DIR, "emergency")]:
                 if os.path.exists(profile_dir_path_str):
                     try:
                         # Sort filenames in each directory
@@ -985,9 +993,31 @@ if __name__ == "__main__":
                 logger.info("   No auth files found. Using browser current state.")
                 print("   No auth files found. Using browser current state.", flush=True)
         elif not effective_active_auth_json_path and not args.auto_save_auth:
-            # For headless mode, error if --active-auth-json not provided and active/ empty
-            logger.error(f"  ❌ {final_launch_mode} Mode Error: --active-auth-json not provided and no '.json' auth files found in '{ACTIVE_AUTH_DIR}'. Please save one in Debug mode or specify via argument.")
-            sys.exit(1)
+            # Check for backup profiles in saved or emergency before failing, BUT ONLY if auto-rotation is enabled.
+            auto_rotation_enabled = str(args.auto_auth_rotation_on_startup).lower() == 'true'
+
+            if not auto_rotation_enabled:
+                logger.error(f"  ❌ {final_launch_mode} Mode Error: No active profile found in '{ACTIVE_AUTH_DIR}' and AUTO_AUTH_ROTATION_ON_STARTUP is disabled.")
+                logger.error(f"     Please ensure a profile exists in '{ACTIVE_AUTH_DIR}' or enable auto-rotation.")
+                sys.exit(1)
+
+            # If auto-rotation IS enabled, verify we actually have backups to rotate TO.
+            has_backups = False
+            for backup_dir in [SAVED_AUTH_DIR, EMERGENCY_AUTH_DIR]:
+                if os.path.exists(backup_dir):
+                    try:
+                        if any(f.lower().endswith('.json') for f in os.listdir(backup_dir)):
+                            has_backups = True
+                            break
+                    except Exception:
+                        pass
+
+            if has_backups:
+                logger.info(f"  ⚠️ No active profile selected, but profiles exist in saved/emergency and auto-rotation is enabled. Allowing startup (runtime rotation will select one).")
+            else:
+                # For headless mode, error if --active-auth-json not provided and active/ is empty AND no backups
+                logger.error(f"  ❌ {final_launch_mode} Mode Error: --active-auth-json not provided, active/ is empty, and no backup profiles found in saved/emergency.")
+                sys.exit(1)
 
     # Build Camoufox internal launch command (from dev)
     camoufox_internal_cmd_args = [
