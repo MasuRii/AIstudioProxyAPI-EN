@@ -1751,7 +1751,9 @@ class PageController:
                     raise # Don't retry if client disconnected
 
                 if isinstance(e_input_submit, QuotaExceededError):
-                    raise # Don't retry if quota exceeded
+                    # [ID-03] Allow retry/rotation on QuotaExceeded
+                    self.logger.warning(f"[{self.req_id}] QuotaExceeded during submit. Propagating to trigger rotation.")
+                    raise
                 
                 if attempt < max_retries - 1:
                     self.logger.info(f"[{self.req_id}] ⚠️ 遇到错误，尝试刷新页面并重试...")

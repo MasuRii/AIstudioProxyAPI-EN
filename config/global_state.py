@@ -40,10 +40,40 @@ class GlobalState:
     # Used to circuit-break logic during aggressive shutdown
     IS_SHUTTING_DOWN = threading.Event()
 
+    # [ID-01] Global Recovery State Manager
+    # Flag to indicate if a recovery operation (auth rotation) is currently active
+    IS_RECOVERING = False
+    # Event to signal that recovery is complete and streams can resume
+    RECOVERY_EVENT = asyncio.Event()
+    # [FIX-RACE] Track last rotation timestamp to handle race conditions
+    LAST_ROTATION_TIMESTAMP = 0.0
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(GlobalState, cls).__new__(cls)
         return cls._instance
+
+    @classmethod
+    def start_recovery(cls):
+        """
+        Signals the start of a recovery operation (e.g., auth rotation).
+        Pauses streams and sets the recovery flag.
+        """
+        cls.IS_RECOVERING = True
+        cls.RECOVERY_EVENT.clear()
+        logger.info("🔄 SYSTEM: Recovery Mode Initiated. Streams will pause.")
+
+    @classmethod
+    def finish_recovery(cls):
+        """
+        Signals the completion of a recovery operation.
+        Resumes streams and clears the recovery flag.
+        """
+        cls.IS_RECOVERING = False
+        cls.RECOVERY_EVENT.set()
+        # [FIX-RACE] Update timestamp on finish
+        cls.LAST_ROTATION_TIMESTAMP = time.time()
+        logger.info(f"✅ SYSTEM: Recovery Mode Finished at {cls.LAST_ROTATION_TIMESTAMP}. Streams resuming.")
 
     @classmethod
     def init_rotation_lock(cls):

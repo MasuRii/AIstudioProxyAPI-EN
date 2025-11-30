@@ -117,15 +117,27 @@ async def queue_worker() -> None:
             if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.NEEDS_ROTATION:
                 reason = "Quota Exceeded" if GlobalState.IS_QUOTA_EXCEEDED else "Graceful Rotation Pending"
                 logger.info(f"⏸️ Pausing worker for Auth Rotation ({reason})...")
-                from browser_utils.auth_rotation import perform_auth_rotation
-                rotation_success = await perform_auth_rotation()
-                if rotation_success:
-                    GlobalState.NEEDS_ROTATION = False
-                    logger.info("✅ Auth rotation completed successfully. Resuming request processing.")
-                else:
-                    logger.error("❌ Auth rotation failed. System may be exhausted.")
-                    # Continue to check again after a short delay
-                    await asyncio.sleep(1)
+                
+                # [ID-01] Signal Start of Recovery
+                GlobalState.start_recovery()
+                
+                try:
+                    from browser_utils.auth_rotation import perform_auth_rotation
+                    rotation_success = await perform_auth_rotation()
+                    if rotation_success:
+                        GlobalState.NEEDS_ROTATION = False
+                        logger.info("✅ Auth rotation completed successfully. Resuming request processing.")
+                    else:
+                        logger.error("❌ Auth rotation failed. System may be exhausted.")
+                        # Continue to check again after a short delay
+                        await asyncio.sleep(1)
+                        # Do NOT finish recovery here if failed, keep system locked or retry?
+                        # For now, we finish to allow retries or error propagation
+                finally:
+                    # [ID-01] Signal End of Recovery (Successful or not, we unblock streams)
+                    GlobalState.finish_recovery()
+
+                if not rotation_success:
                     continue
 
             # [SHUTDOWN-05] Check shutdown before getting new request
@@ -272,11 +284,55 @@ async def queue_worker() -> None:
 
                                             # Check Global Quota State
                                             if GlobalState.IS_QUOTA_EXCEEDED:
-                                                logger.critical(f"[{req_id}] (Worker) ⛔ Quota Exceeded detected mid-stream! Aborting worker wait.")
-                                                client_disconnected_early = True # Treat as early exit to skip button handling
-                                                if not completion_event.is_set():
-                                                    completion_event.set()
-                                                break
+                                                # [ID-04] Enhanced Quota Handling in Worker
+                                                if GlobalState.IS_RECOVERING:
+                                                    # If recovering, we do NOT abort. We wait.
+                                                    # The stream generator handles the pause. The worker just needs to NOT kill it.
+                                                    # We log occasionally to show we are alive.
+                                                    if int(time.time()) % 5 == 0:
+                                                        logger.info(f"[{req_id}] (Worker) 🔄 Recovery in progress... Worker holding position.")
+                                                    await asyncio.sleep(0.5)
+                                                    continue
+                                                else:
+                                                    # [FIX-RACE] Check if we just finished recovering
+                                                    # If rotation happened recently (< 10s), ignore the quota flag (it might be stale or transient)
+                                                    # and allow the worker to continue waiting.
+                                                    time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                                                    if time_since_rotation < 10.0:
+                                                        logger.info(f"[{req_id}] (Worker) 🛡️ Quota signal ignored - Rotation completed {time_since_rotation:.2f}s ago. Resuming wait.")
+                                                        await asyncio.sleep(0.5)
+                                                        continue
+
+                                                    # Quota is exceeded but Recovery hasn't signaled yet.
+                                                    # It might be starting momentarily. Give it a grace period.
+                                                    # [DEBUG-LOG] detailed state diagnosis
+                                                    logger.warning(f"[{req_id}] (Worker) ⛔ Quota signal detected. State: Recovering={GlobalState.IS_RECOVERING}, Lock={GlobalState.AUTH_ROTATION_LOCK.is_set()}")
+                                                    logger.warning(f"[{req_id}] (Worker) ⛔ Waiting for recovery initiation...")
+                                                    
+                                                    await asyncio.sleep(2.0)
+                                                    
+                                                    if GlobalState.IS_RECOVERING:
+                                                        logger.info(f"[{req_id}] (Worker) 🔄 Recovery caught after wait. Resuming loop.")
+                                                        continue # Loop back to recovery handling
+                                                    
+                                                    # [FIX-BRITTLE] Check if quota cleared during wait
+                                                    if not GlobalState.IS_QUOTA_EXCEEDED:
+                                                        logger.info(f"[{req_id}] (Worker) ✅ Recovery completed successfully (Quota cleared) after wait. Resuming.")
+                                                        continue
+                                                    
+                                                    # Double check race condition after wait
+                                                    time_since_rotation = time.time() - GlobalState.LAST_ROTATION_TIMESTAMP
+                                                    if time_since_rotation < 10.0:
+                                                        logger.info(f"[{req_id}] (Worker) 🛡️ Quota signal ignored after wait - Rotation completed {time_since_rotation:.2f}s ago.")
+                                                        continue
+
+                                                    # If still no recovery, THEN abort.
+                                                    logger.critical(f"[{req_id}] (Worker) ⛔ Quota Exceeded and no recovery! Aborting worker wait.")
+                                                    logger.critical(f"[{req_id}] (Worker) ⛔ Final State: Recovering={GlobalState.IS_RECOVERING}, Lock={GlobalState.AUTH_ROTATION_LOCK.is_set()}")
+                                                    client_disconnected_early = True # Treat as early exit to skip button handling
+                                                    if not completion_event.is_set():
+                                                        completion_event.set()
+                                                    break
 
                                             # Proactively check if client is disconnected
                                             is_connected = await _test_client_connection(req_id, http_request)

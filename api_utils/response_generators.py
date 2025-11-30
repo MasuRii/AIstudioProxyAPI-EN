@@ -52,13 +52,61 @@ async def gen_sse_from_aux_stream(
                 logger.warning(f"[{req_id}] ⚠️ Extraneous message received after response finalization. Ignoring.")
                 continue
 
-            if GlobalState.IS_QUOTA_EXCEEDED:
-                logger.error(f"[{req_id}] ⛔ Quota exceeded detected during stream! Aborting.")
-                yield generate_sse_chunk("\n\n[SYSTEM: Quota Exceeded. Stopping.]", req_id, model_name_for_stream)
-                yield generate_sse_stop_chunk(req_id, model_name_for_stream)
-                if not event_to_set.is_set():
+            # [ID-02] Holding Pattern for Recovery
+            if GlobalState.IS_RECOVERING:
+                logger.info(f"[{req_id}] ⏸️ System in Recovery Mode. Holding stream open...")
+                
+                # Wait for recovery signal loop with heartbeats
+                recovery_wait_start = time.time()
+                recovery_wait_timeout = 120.0
+                
+                while GlobalState.IS_RECOVERING:
+                    if time.time() - recovery_wait_start > recovery_wait_timeout:
+                        logger.error(f"[{req_id}] ❌ Recovery Timed Out (120s). Aborting.")
+                        yield generate_sse_chunk("\n\n[SYSTEM: Service Recovery Failed. Please retry.]", req_id, model_name_for_stream)
+                        yield generate_sse_stop_chunk(req_id, model_name_for_stream)
+                        break
+                    
+                    # [FIX-KEEPALIVE] Send heartbeat to keep client connection alive
+                    yield ": heartbeat\n\n"
+                    await asyncio.sleep(1.0)
+                
+                if GlobalState.IS_RECOVERING: # Timeout break
+                    break
+                
+                logger.info(f"[{req_id}] ▶️ Recovery Complete. Resuming stream.")
+                # [ID-03] Trigger Browser Resubmit Logic handled by loop
+                try:
+                     await asyncio.wait_for(GlobalState.RECOVERY_EVENT.wait(), timeout=120.0)
+                     logger.info(f"[{req_id}] ▶️ Recovery Complete. Resuming stream.")
+                     
+                     # [ID-03] Trigger Browser Resubmit Logic
+                     # We need to tell the worker (via some mechanism) to resubmit the prompt.
+                     # Since we are in the generator, we rely on `use_stream_response` to handle the actual
+                     # re-entry into the browser logic, OR we signal it here.
+                     # For now, we just continue, assuming the underlying `use_stream_response`
+                     # loop will pick up the new data flow after rotation.
+                except asyncio.TimeoutError:
+                     logger.error(f"[{req_id}] ❌ Recovery Timed Out (120s). Aborting.")
+                     yield generate_sse_chunk("\n\n[SYSTEM: Service Recovery Failed. Please retry.]", req_id, model_name_for_stream)
+                     yield generate_sse_stop_chunk(req_id, model_name_for_stream)
+                     break
+
+            if GlobalState.IS_QUOTA_EXCEEDED and not GlobalState.IS_RECOVERING:
+                 # If Quota is exceeded but Recovery hasn't started yet, we should wait a moment
+                 # to see if the Queue Worker initiates recovery.
+                 logger.warning(f"[{req_id}] ⚠️ Quota exceeded detected. Waiting for recovery initiation...")
+                 await asyncio.sleep(1)
+                 if GlobalState.IS_RECOVERING:
+                     continue # Loop back to hit the holding pattern above
+                 
+                 # If still no recovery after wait, fail gracefully
+                 logger.error(f"[{req_id}] ⛔ Quota exceeded and no recovery initiated. Aborting.")
+                 yield generate_sse_chunk("\n\n[SYSTEM: Quota Exceeded. Stopping.]", req_id, model_name_for_stream)
+                 yield generate_sse_stop_chunk(req_id, model_name_for_stream)
+                 if not event_to_set.is_set():
                     event_to_set.set()
-                break
+                 break
 
             data_receiving = True
 
@@ -152,8 +200,16 @@ async def gen_sse_from_aux_stream(
                 yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
             if done:
+                # [ID-04] Suppress Backfill on Recovery
+                # If the stream ended because of an internal timeout triggered by a quota event
+                # (which should ideally be caught by the Holding Pattern, but safety first),
+                # we do NOT want to send synthetic content if recovery is intended.
+                
+                is_recovering = GlobalState.IS_RECOVERING
+                
                 # [ID-02] The Backfill: Synthetic Content if no body
-                if not has_started_body:
+                # Only trigger backfill if NOT recovering.
+                if not has_started_body and not is_recovering:
                     fallback_text = "\n\n*(Model finished thinking but generated no code/text output.)*"
                     logger.info(f"[{req_id}] ⚠️ Backfill triggered: Sending synthetic content.")
                     
@@ -176,6 +232,8 @@ async def gen_sse_from_aux_stream(
                     full_body_content += fallback_text
                     # Mark as started so we don't do it again if logic changes
                     has_started_body = True
+                elif is_recovering:
+                     logger.info(f"[{req_id}] 🔇 Backfill suppressed due to active recovery mode.")
 
                 # Handle Tool Calls or Stop
                 if function and len(function) > 0:

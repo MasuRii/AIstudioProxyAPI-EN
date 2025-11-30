@@ -151,11 +151,16 @@ async def quota_watchdog():
                  continue
             
             # Force rotation
-            success = await perform_auth_rotation()
-            if success:
-                logger.info("Watchdog: Rotation triggered and completed successfully.")
-            else:
-                logger.error("Watchdog: Rotation triggered but failed.")
+            # [FIX-COORD] Wrap in recovery signal to notify listeners (stream/worker)
+            GlobalState.start_recovery()
+            try:
+                success = await perform_auth_rotation()
+                if success:
+                    logger.info("Watchdog: Rotation triggered and completed successfully.")
+                else:
+                    logger.error("Watchdog: Rotation triggered but failed.")
+            finally:
+                GlobalState.finish_recovery()
             
             # Ensure event/flag is cleared
             if GlobalState.IS_QUOTA_EXCEEDED:

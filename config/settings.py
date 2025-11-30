@@ -64,9 +64,9 @@ DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE = get_boolean_env("DISABLE_THINKING
 # --- Proactive Rotation Configuration ---
 # [GR-04] Graceful Rotation Thresholds
 # Soft Limit: Triggers "Rotation Pending" flag (Graceful)
-QUOTA_SOFT_LIMIT = get_int_env('QUOTA_SOFT_LIMIT', 450000)
+QUOTA_SOFT_LIMIT = get_int_env('QUOTA_SOFT_LIMIT', 650000)
 # Hard Limit: Triggers immediate "Kill Signal" (Emergency)
-QUOTA_HARD_LIMIT = get_int_env('QUOTA_HARD_LIMIT', 550000)
+QUOTA_HARD_LIMIT = get_int_env('QUOTA_HARD_LIMIT', 800000)
 
 # [QUOTA-01] Model-Specific Quota Limits
 # Parses QUOTA_LIMIT_MODELNAME from environment variables

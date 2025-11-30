@@ -143,9 +143,33 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     pass
 
             # [ROBUST-02] Check for Quota Exceeded
-            if GlobalState.IS_QUOTA_EXCEEDED:
-                logger.warning(f"[{req_id}] ⛔ Quota detected during wait loop. Aborting request immediately.")
-                raise QuotaExceededError("Global Quota Limit Reached during stream wait.")
+            if GlobalState.IS_QUOTA_EXCEEDED and not GlobalState.IS_RECOVERING:
+                 # [ID-03] Wait briefly to see if recovery is initiated (by Queue Worker or other trigger)
+                 logger.warning(f"[{req_id}] ⛔ Quota detected during wait loop. Pausing briefly to check for recovery...")
+                 try:
+                     # Wait up to 2 seconds for recovery to start
+                     start_wait = time.time()
+                     while time.time() - start_wait < 2.0:
+                         if GlobalState.IS_RECOVERING:
+                             break
+                         await asyncio.sleep(0.2)
+                 except Exception:
+                     pass
+                 
+                 # [FIX-BRITTLE] Check if recovery is active OR if quota is no longer exceeded (success)
+                 if GlobalState.IS_RECOVERING:
+                     logger.info(f"[{req_id}] 🔄 Recovery mode detected. Continuing wait loop (Holding Pattern).")
+                 elif not GlobalState.IS_QUOTA_EXCEEDED:
+                     logger.info(f"[{req_id}] ✅ Recovery completed successfully (Quota cleared). Resuming stream.")
+                     # Loop back, the condition at top of loop will now pass
+                 else:
+                    # [DEBUG-LOG] detailed state diagnosis
+                    logger.warning(f"[{req_id}] ⛔ DEBUG DIAGNOSTIC: Quota abort decision.")
+                    logger.warning(f"[{req_id}] ⛔ State: IS_RECOVERING={GlobalState.IS_RECOVERING}, IS_QUOTA_EXCEEDED={GlobalState.IS_QUOTA_EXCEEDED}")
+                    logger.warning(f"[{req_id}] ⛔ Recovery Event Set: {GlobalState.RECOVERY_EVENT.is_set()}, Rotation Lock Set: {GlobalState.AUTH_ROTATION_LOCK.is_set()}")
+                    
+                    logger.warning(f"[{req_id}] ⛔ Quota exceeded and no recovery initiated. Aborting request immediately.")
+                    raise QuotaExceededError("Global Quota Limit Reached during stream wait.")
 
             # [FIX-SHUTDOWN] Check for Global Shutdown
             if GlobalState.IS_SHUTTING_DOWN.is_set():
@@ -586,6 +610,12 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
                 # [CRITICAL-FIX] Network State Priority: Trust data flow over UI state
                 if empty_count >= max_empty_retries:
+                    # [ID-03] Dynamic Timeout Extension during Recovery
+                    if GlobalState.IS_RECOVERING:
+                        logger.info(f"[{req_id}] ⏳ Stream timeout reached, but system is RECOVERING. Extending wait...")
+                        empty_count = 0 # Reset counter to give more time
+                        continue
+
                     # CRITICAL FIX: Remove UI-based timeout extension
                     # Trust Network State over UI State - force exit on timeout
                     is_thinking = await check_ui_generation_active()
