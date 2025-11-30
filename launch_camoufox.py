@@ -1247,7 +1247,13 @@ if __name__ == "__main__":
                             for task in tasks:
                                 task.cancel()
                             # Give tasks a brief moment to acknowledge cancellation
-                            asyncio.gather(*tasks, return_exceptions=True)
+                            async def wait_for_cancellation():
+                                try:
+                                    await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3.0)
+                                except asyncio.TimeoutError:
+                                    logger.warning("[ID-03] Timeout waiting for tasks to cancel.")
+                            
+                            loop.create_task(wait_for_cancellation())
                     except Exception as e:
                         logger.warning(f"[ID-03] Error cancelling asyncio tasks: {e}")
                     

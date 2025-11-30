@@ -8,6 +8,7 @@ from .constants import *
 from .timeouts import *
 from .selectors import *
 from .settings import *
+from .global_state import GlobalState
 
 # Explicitly export main configuration items (for IDE autocomplete and type checking)
 __all__ = [
@@ -106,4 +107,7 @@ __all__ = [
     'get_environment_variable',
     'get_boolean_env',
     'get_int_env',
+
+    # Global State
+    'GlobalState',
 ]

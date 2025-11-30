@@ -20,6 +20,7 @@ from config import (
     AUTO_SAVE_AUTH,
     AUTH_SAVE_TIMEOUT,
     SAVED_AUTH_DIR,
+    GlobalState,
 )
 from models import ClientDisconnectedError
 
@@ -270,6 +271,12 @@ def _clean_userscript_headers(script_content: str) -> str:
     return '\n'.join(cleaned_lines)
 
 
+async def _wait_for_shutdown():
+    """Helper to wait for GlobalState.IS_SHUTTING_DOWN event."""
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, GlobalState.IS_SHUTTING_DOWN.wait)
+
+
 async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_path: Optional[str] = None):
     """初始化页面逻辑，连接到现有浏览器"""
     logger.info("--- 初始化页面逻辑 (连接到现有浏览器) ---")
@@ -464,7 +471,22 @@ async def _initialize_page_logic(browser: AsyncBrowser, override_storage_state_p
 
         try:
             input_wrapper_locator = found_page.locator('ms-prompt-input-wrapper')
-            await expect_async(input_wrapper_locator).to_be_visible(timeout=35000)
+            
+            # Wait for either input visibility or shutdown signal
+            expect_task = asyncio.create_task(expect_async(input_wrapper_locator).to_be_visible(timeout=35000))
+            shutdown_task = asyncio.create_task(_wait_for_shutdown())
+
+            done, pending = await asyncio.wait([expect_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED)
+
+            if shutdown_task in done:
+                logger.info("🛑 Shutdown signal received during initialization. Aborting.")
+                expect_task.cancel()
+                raise RuntimeError("Initialization aborted due to shutdown signal.")
+
+            # expect_task finished
+            shutdown_task.cancel()
+            await expect_task # Propagate result/exception
+
             await expect_async(found_page.locator(INPUT_SELECTOR)).to_be_visible(timeout=10000)
             logger.info("-> ✅ 核心输入区域可见。")
             
