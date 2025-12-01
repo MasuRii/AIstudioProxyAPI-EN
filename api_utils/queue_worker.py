@@ -594,10 +594,23 @@ async def queue_worker() -> None:
         except QuotaExceededError as qe:
             logger.error(f"[{req_id}] ⛔ CRITICAL: {qe}")
             # [FINAL-FIX] If QuotaExceededError bubbles up here, it means it happened MID-PROCESSING.
-            # The user wants to HOLD connection, not fail.
-            # Re-queue request to retry after rotation.
-            if result_future and not result_future.done():
-                logger.info(f"[{req_id}] 🔄 Re-queueing failed request due to Quota Exceeded mid-processing...")
+            
+            # 1. Check if client is still connected before re-queuing
+            try:
+                # Ensure we have the function available
+                from api_utils.request_processor import _test_client_connection
+                is_connected = await _test_client_connection(req_id, http_request)
+            except Exception:
+                is_connected = False # Assume disconnected on error to be safe
+                
+            if not is_connected:
+                logger.info(f"[{req_id}] Client disconnected during Quota Exception. Dropping request (NOT re-queuing).")
+                if result_future and not result_future.done():
+                    result_future.set_exception(HTTPException(status_code=499, detail="Client disconnected during Quota Error"))
+            
+            # 2. Only Re-queue if connected
+            elif result_future and not result_future.done():
+                logger.info(f"[{req_id}] 🔄 Re-queueing failed request due to Quota Exceeded mid-processing (Client Connected)...")
                 try:
                     request_queue.put_nowait(request_item)
                     # IMPORTANT: Do NOT set exception on future, keep it pending!
