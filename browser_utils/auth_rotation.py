@@ -384,10 +384,40 @@ async def perform_auth_rotation(target_model_id: str = None) -> bool:
             next_profile_path = _get_next_profile(target_model_id)
 
             if not next_profile_path:
-                logger.critical("❌ Rotation Failed: No available auth profiles found!")
-                logger.critical("♻️ ROTATION FAILED - No profiles available")
-                logger.critical("♻️ =========================================")
-                return False
+                logger.warning("All profiles are on cooldown. Calculating wait time...")
+                
+                now = time.time()
+                min_expiry = float('inf')
+
+                # Find the soonest expiry time among all cooldown profiles
+                for _, cooldown_data in _COOLDOWN_PROFILES.items():
+                    if isinstance(cooldown_data, dict):
+                        for ts in cooldown_data.values():
+                            ts_val = ts.timestamp() if hasattr(ts, 'timestamp') else ts
+                            if ts_val > now and ts_val < min_expiry:
+                                min_expiry = ts_val
+                    else:  # Legacy timestamp format
+                        ts_val = cooldown_data.timestamp() if hasattr(cooldown_data, 'timestamp') else cooldown_data
+                        if isinstance(ts_val, (int, float)) and ts_val > now and ts_val < min_expiry:
+                            min_expiry = ts_val
+
+                if min_expiry != float('inf'):
+                    # Add a small buffer to avoid timing issues
+                    wait_time = (min_expiry - now) + 1
+                    if wait_time > 0:
+                        logger.info(f"🕒 Waiting for {wait_time:.2f} seconds for the next profile to become available.")
+                        await asyncio.sleep(wait_time)
+                        
+                        # Retry getting the profile
+                        logger.info("Retrying to get next profile after waiting.")
+                        next_profile_path = _get_next_profile(target_model_id)
+
+                # Final check after waiting
+                if not next_profile_path:
+                    logger.critical("❌ Rotation Failed: No available auth profiles found even after waiting!")
+                    logger.critical("♻️ ROTATION FAILED - No profiles available")
+                    logger.critical("♻️ =========================================")
+                    return False
 
             # Always place the *previous* profile on cooldown on the first attempt
             if failed_attempts == 0:
