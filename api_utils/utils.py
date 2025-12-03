@@ -4,32 +4,22 @@ API工具函数模块
 """
 
 import asyncio
-import json
-import time
-from typing import Any, Dict, List, Optional, AsyncGenerator, Tuple, Union
-from models import Message
-import re
 import base64
-import requests  # retained for potential outbound helpers; remove if unused later
+import json
 import os
-import hashlib
-from urllib.parse import urlparse, unquote
-from .tools_registry import execute_tool_call, register_runtime_tools
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from urllib.parse import unquote, urlparse
+
+from logging_utils import set_request_id
+from models import Message
+
 from .sse import (
-    generate_sse_chunk,
     generate_sse_stop_chunk,
-    generate_sse_error_chunk,
 )
+from .tools_registry import execute_tool_call, register_runtime_tools
 from .utils_ext import (
-    use_stream_response,
-    clear_stream_queue,
-    use_helper_get_response,
-    validate_chat_request,
-    _extension_for_mime,
     extract_data_url_to_local,
     save_blob_to_local,
-    estimate_tokens,
-    calculate_usage_stats,
 )
 
 
@@ -69,30 +59,54 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
         try:
             tool_lines: List[str] = ["可用工具目录:"]
             for t in tools:
-                name = None
-                params_schema = None
-                if isinstance(t, dict):
-                    fn = t.get('function') if 'function' in t else t
-                    if isinstance(fn, dict):
-                        name = fn.get('name') or t.get('name')
-                        params_schema = fn.get('parameters')
-                    else:
-                        name = t.get('name')
+                name: Optional[str] = None
+                params_schema: Optional[Dict[str, Any]] = None
+                # t is Dict[str, Any] from List[Dict[str, Any]]
+                fn_val: Any = t.get("function") if "function" in t else t
+                if isinstance(fn_val, dict):
+                    # Type narrowed: fn_val is dict
+                    typed_fn: Dict[str, Any] = cast(Dict[str, Any], fn_val)
+                    name_raw: Any = typed_fn.get("name") or t.get("name")
+                    if isinstance(name_raw, str):
+                        name = name_raw
+                    params_raw: Any = typed_fn.get("parameters")
+                    if isinstance(params_raw, dict):
+                        params_schema = cast(Dict[str, Any], params_raw)
+                else:
+                    # fn_val is not dict, get name directly from t
+                    name_raw: Any = t.get("name")
+                    if isinstance(name_raw, str):
+                        name = name_raw
                 if name:
                     tool_lines.append(f"- 函数: {name}")
                     if params_schema:
                         try:
-                            tool_lines.append(f"  参数模式: {json.dumps(params_schema, ensure_ascii=False)}")
+                            tool_lines.append(
+                                f"  参数模式: {json.dumps(params_schema, ensure_ascii=False)}"
+                            )
                         except Exception:
                             pass
             if tool_choice:
                 # 明确要求或提示可调用的函数名
-                chosen_name = None
+                chosen_name: Optional[str] = None
                 if isinstance(tool_choice, dict):
-                    fn = tool_choice.get('function') if tool_choice else None
-                    if isinstance(fn, dict):
-                        chosen_name = fn.get('name')
-                elif isinstance(tool_choice, str) and tool_choice.lower() not in ('auto', 'none', 'no', 'off', 'required', 'any'):
+                    # Type narrowed to dict by isinstance
+                    typed_tool_choice: Dict[str, Any] = tool_choice
+                    fn_val: Any = typed_tool_choice.get("function")
+                    if isinstance(fn_val, dict):
+                        # Type narrowed to dict
+                        typed_fn: Dict[str, Any] = cast(Dict[str, Any], fn_val)
+                        name_raw: Any = typed_fn.get("name")
+                        if isinstance(name_raw, str):
+                            chosen_name = name_raw
+                elif tool_choice.lower() not in (
+                    "auto",
+                    "none",
+                    "no",
+                    "off",
+                    "required",
+                    "any",
+                ):
                     chosen_name = tool_choice
                 if chosen_name:
                     tool_lines.append(f"建议优先使用函数: {chosen_name}")
@@ -141,221 +155,372 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
             content_str = content.strip()
         elif isinstance(content, list):
             # 处理多模态内容（更健壮地识别各类附件项）
-            text_parts = []
+            text_parts: List[str] = []
             for item in content:
                 # 统一获取项类型（可能缺失）
-                item_type = None
-                if hasattr(item, 'type'):
-                    try:
+                item_type: Optional[str] = None
+                try:
+                    # 使用 hasattr/getattr 时需防范 property抛出异常
+                    if hasattr(item, "type"):
                         item_type = item.type
-                    except Exception:
-                        item_type = None
-                if item_type is None and isinstance(item, dict):
-                    item_type = item.get('type')
+                except Exception:
+                    item_type = None
 
-                if item_type == 'text':
+                if item_type is None and isinstance(item, dict):
+                    typed_item: Dict[str, Any] = cast(Dict[str, Any], item)
+                    item_type_raw: Any = typed_item.get("type")
+                    if isinstance(item_type_raw, str):
+                        item_type = item_type_raw
+
+                if item_type == "text":
                     # 文本项
-                    if hasattr(item, 'text'):
-                        text_parts.append(getattr(item, 'text', '') or '')
+                    if hasattr(item, "text"):
+                        text_parts.append(getattr(item, "text", "") or "")
                     elif isinstance(item, dict):
-                        text_parts.append(item.get('text', ''))
+                        typed_item: Dict[str, Any] = cast(Dict[str, Any], item)
+                        text_raw: Any = typed_item.get("text", "")
+                        text_parts.append(str(text_raw))
                     continue
 
                 # 图片/文件/媒体 URL 项（类型缺失时也尝试识别）
-                if item_type in ('image_url', 'file_url', 'media_url', 'input_image') or (
-                    isinstance(item, dict) and (
-                        'image_url' in item or 'input_image' in item or 'file_url' in item or 'media_url' in item or 'url' in item
+                if item_type in (
+                    "image_url",
+                    "file_url",
+                    "media_url",
+                    "input_image",
+                ) or (
+                    isinstance(item, dict)
+                    and (
+                        "image_url" in item
+                        or "input_image" in item
+                        or "file_url" in item
+                        or "media_url" in item
+                        or "url" in item
                     )
                 ):
                     try:
-                        url_value = None
+                        url_value: Optional[str] = None
                         # Pydantic 对象属性
-                        if hasattr(item, 'image_url') and item.image_url:
+                        if hasattr(item, "image_url") and item.image_url:
                             url_value = item.image_url.url
                             try:
-                                detail_val = getattr(item.image_url, 'detail', None)
+                                detail_val: Optional[str] = getattr(
+                                    item.image_url, "detail", None
+                                )
                                 if detail_val:
-                                    text_parts.append(f"[图像细节: detail={detail_val}]")
+                                    text_parts.append(
+                                        f"[图像细节: detail={detail_val}]"
+                                    )
                             except Exception:
                                 pass
-                        elif hasattr(item, 'input_image') and item.input_image:
+                        elif hasattr(item, "input_image") and item.input_image:
                             url_value = item.input_image.url
                             try:
-                                detail_val = getattr(item.input_image, 'detail', None)
+                                detail_val: Optional[str] = getattr(
+                                    item.input_image, "detail", None
+                                )
                                 if detail_val:
-                                    text_parts.append(f"[图像细节: detail={detail_val}]")
+                                    text_parts.append(
+                                        f"[图像细节: detail={detail_val}]"
+                                    )
                             except Exception:
                                 pass
-                        elif hasattr(item, 'file_url') and item.file_url:
+                        elif hasattr(item, "file_url") and item.file_url:
                             url_value = item.file_url.url
-                        elif hasattr(item, 'media_url') and item.media_url:
+                        elif hasattr(item, "media_url") and item.media_url:
                             url_value = item.media_url.url
-                        elif hasattr(item, 'url') and item.url:
+                        elif hasattr(item, "url") and item.url:
                             url_value = item.url
-                        # 字典结构
+                        # 字典结构 (backwards compatibility)
                         if url_value is None and isinstance(item, dict):
-                            if isinstance(item.get('image_url'), dict):
-                                url_value = item['image_url'].get('url')
-                                detail_val = item['image_url'].get('detail')
-                                if detail_val:
-                                    text_parts.append(f"[图像细节: detail={detail_val}]")
-                            elif isinstance(item.get('image_url'), str):
-                                url_value = item.get('image_url')
-                            elif isinstance(item.get('input_image'), dict):
-                                url_value = item['input_image'].get('url')
-                                detail_val = item['input_image'].get('detail')
-                                if detail_val:
-                                    text_parts.append(f"[图像细节: detail={detail_val}]")
-                            elif isinstance(item.get('input_image'), str):
-                                url_value = item.get('input_image')
-                            elif isinstance(item.get('file_url'), dict):
-                                url_value = item['file_url'].get('url')
-                            elif isinstance(item.get('file_url'), str):
-                                url_value = item.get('file_url')
-                            elif isinstance(item.get('media_url'), dict):
-                                url_value = item['media_url'].get('url')
-                            elif isinstance(item.get('media_url'), str):
-                                url_value = item.get('media_url')
-                            elif 'url' in item:
-                                url_value = item.get('url')
-                            elif isinstance(item.get('file'), dict):
-                                # 兼容通用 file 字段
-                                url_value = item['file'].get('url') or item['file'].get('path')
+                            typed_item: Dict[str, Any] = cast(Dict[str, Any], item)
+                            image_url_raw: Any = typed_item.get("image_url")
+                            input_image_raw: Any = typed_item.get("input_image")
 
-                        url_value = (url_value or '').strip()
+                            if isinstance(image_url_raw, dict):
+                                typed_img_url: Dict[str, Any] = cast(
+                                    Dict[str, Any], image_url_raw
+                                )
+                                url_raw: Any = typed_img_url.get("url")
+                                if isinstance(url_raw, str):
+                                    url_value = url_raw
+                                detail_raw: Any = typed_img_url.get("detail")
+                                if isinstance(detail_raw, str):
+                                    text_parts.append(
+                                        f"[图像细节: detail={detail_raw}]"
+                                    )
+                            elif isinstance(image_url_raw, str):
+                                url_value = image_url_raw
+                            elif isinstance(input_image_raw, dict):
+                                typed_input_img: Dict[str, Any] = cast(
+                                    Dict[str, Any], input_image_raw
+                                )
+                                url_raw: Any = typed_input_img.get("url")
+                                if isinstance(url_raw, str):
+                                    url_value = url_raw
+                                detail_raw: Any = typed_input_img.get("detail")
+                                if isinstance(detail_raw, str):
+                                    text_parts.append(
+                                        f"[图像细节: detail={detail_raw}]"
+                                    )
+                            elif isinstance(input_image_raw, str):
+                                url_value = input_image_raw
+                            else:
+                                # Check other URL fields
+                                file_url_raw: Any = typed_item.get("file_url")
+                                media_url_raw: Any = typed_item.get("media_url")
+                                file_raw: Any = typed_item.get("file")
+
+                                if isinstance(file_url_raw, dict):
+                                    typed_file_url: Dict[str, Any] = cast(
+                                        Dict[str, Any], file_url_raw
+                                    )
+                                    url_raw: Any = typed_file_url.get("url")
+                                    if isinstance(url_raw, str):
+                                        url_value = url_raw
+                                elif isinstance(file_url_raw, str):
+                                    url_value = file_url_raw
+                                elif isinstance(media_url_raw, dict):
+                                    typed_media_url: Dict[str, Any] = cast(
+                                        Dict[str, Any], media_url_raw
+                                    )
+                                    url_raw: Any = typed_media_url.get("url")
+                                    if isinstance(url_raw, str):
+                                        url_value = url_raw
+                                elif isinstance(media_url_raw, str):
+                                    url_value = media_url_raw
+                                elif "url" in typed_item:
+                                    url_raw: Any = typed_item.get("url")
+                                    if isinstance(url_raw, str):
+                                        url_value = url_raw
+                                elif isinstance(file_raw, dict):
+                                    # 兼容通用 file 字段
+                                    typed_file: Dict[str, Any] = cast(
+                                        Dict[str, Any], file_raw
+                                    )
+                                    url_raw: Any = typed_file.get(
+                                        "url"
+                                    ) or typed_file.get("path")
+                                    if isinstance(url_raw, str):
+                                        url_value = url_raw
+
+                        url_value = (url_value or "").strip()
                         if not url_value:
                             continue
 
                         # 归一化到本地文件列表，并记录日志
-                        if url_value.startswith('data:'):
-                            file_path = extract_data_url_to_local(url_value, req_id=req_id)
+                        if url_value.startswith("data:"):
+                            file_path = extract_data_url_to_local(
+                                url_value, req_id=req_id
+                            )
                             if file_path:
                                 files_list.append(file_path)
-                                logger.info(f"[{req_id}] (准备提示) 已识别并加入 data:URL 附件: {file_path}")
-                        elif url_value.startswith('file:'):
+                                logger.debug(
+                                    f"(准备提示) 已识别并加入 data:URL 附件: {file_path}"
+                                )
+                        elif url_value.startswith("file:"):
                             parsed = urlparse(url_value)
                             local_path = unquote(parsed.path)
                             if os.path.exists(local_path):
                                 files_list.append(local_path)
-                                logger.info(f"[{req_id}] (准备提示) 已识别并加入本地附件(file://): {local_path}")
+                                logger.debug(
+                                    f"(准备提示) 已识别并加入本地附件(file://): {local_path}"
+                                )
                             else:
-                                logger.warning(f"[{req_id}] (准备提示) file URL 指向的本地文件不存在: {local_path}")
+                                logger.warning(
+                                    f"(准备提示) file URL 指向的本地文件不存在: {local_path}"
+                                )
                         elif os.path.isabs(url_value) and os.path.exists(url_value):
                             files_list.append(url_value)
-                            logger.info(f"[{req_id}] (准备提示) 已识别并加入本地附件(绝对路径): {url_value}")
+                            logger.debug(
+                                f"(准备提示) 已识别并加入本地附件(绝对路径): {url_value}"
+                            )
                         else:
-                            logger.info(f"[{req_id}] (准备提示) 忽略非本地附件 URL: {url_value}")
+                            logger.debug(f"(准备提示) 忽略非本地附件 URL: {url_value}")
                     except Exception as e:
-                        logger.warning(f"[{req_id}] (准备提示) 处理附件 URL 时发生错误: {e}")
+                        logger.warning(f"(准备提示) 处理附件 URL 时发生错误: {e}")
                     continue
 
                 # 音/视频输入
-                if item_type in ('input_audio', 'input_video'):
+                if item_type in ("input_audio", "input_video"):
                     try:
-                        inp = None
-                        if hasattr(item, 'input_audio') and item.input_audio:
+                        inp: Any = None
+                        if hasattr(item, "input_audio") and item.input_audio:
                             inp = item.input_audio
-                        elif hasattr(item, 'input_video') and item.input_video:
+                        elif hasattr(item, "input_video") and item.input_video:
                             inp = item.input_video
                         elif isinstance(item, dict):
-                            inp = item.get('input_audio') or item.get('input_video')
+                            typed_item: Dict[str, Any] = cast(Dict[str, Any], item)
+                            inp = typed_item.get("input_audio") or typed_item.get(
+                                "input_video"
+                            )
 
                         if inp:
-                            url_value = None
-                            data_val = None
-                            mime_val = None
-                            fmt_val = None
+                            url_value: Optional[str] = None
+                            data_val: Optional[str] = None
+                            mime_val: Optional[str] = None
+                            fmt_val: Optional[str] = None
                             if isinstance(inp, dict):
-                                url_value = inp.get('url')
-                                data_val = inp.get('data')
-                                mime_val = inp.get('mime_type')
-                                fmt_val = inp.get('format')
+                                typed_inp: Dict[str, Any] = cast(Dict[str, Any], inp)
+                                url_raw: Any = typed_inp.get("url")
+                                if isinstance(url_raw, str):
+                                    url_value = url_raw
+                                data_raw: Any = typed_inp.get("data")
+                                if isinstance(data_raw, str):
+                                    data_val = data_raw
+                                mime_raw: Any = typed_inp.get("mime_type")
+                                if isinstance(mime_raw, str):
+                                    mime_val = mime_raw
+                                fmt_raw: Any = typed_inp.get("format")
+                                if isinstance(fmt_raw, str):
+                                    fmt_val = fmt_raw
                             else:
-                                url_value = getattr(inp, 'url', None)
-                                data_val = getattr(inp, 'data', None)
-                                mime_val = getattr(inp, 'mime_type', None)
-                                fmt_val = getattr(inp, 'format', None)
+                                # Pydantic model or object with attributes
+                                url_attr: Any = getattr(inp, "url", None)
+                                if isinstance(url_attr, str):
+                                    url_value = url_attr
+                                data_attr: Any = getattr(inp, "data", None)
+                                if isinstance(data_attr, str):
+                                    data_val = data_attr
+                                mime_attr: Any = getattr(inp, "mime_type", None)
+                                if isinstance(mime_attr, str):
+                                    mime_val = mime_attr
+                                fmt_attr: Any = getattr(inp, "format", None)
+                                if isinstance(fmt_attr, str):
+                                    fmt_val = fmt_attr
 
                             if url_value:
-                                if url_value.startswith('data:'):
-                                    saved = extract_data_url_to_local(url_value, req_id=req_id)
+                                if url_value.startswith("data:"):
+                                    saved = extract_data_url_to_local(
+                                        url_value, req_id=req_id
+                                    )
                                     if saved:
                                         files_list.append(saved)
-                                        logger.info(f"[{req_id}] (准备提示) 已识别并加入音视频 data:URL 附件: {saved}")
-                                elif url_value.startswith('file:'):
+                                        logger.debug(
+                                            f"(准备提示) 已识别并加入音视频 data:URL 附件: {saved}"
+                                        )
+                                elif url_value.startswith("file:"):
                                     parsed = urlparse(url_value)
                                     local_path = unquote(parsed.path)
                                     if os.path.exists(local_path):
                                         files_list.append(local_path)
-                                        logger.info(f"[{req_id}] (准备提示) 已识别并加入音视频本地附件(file://): {local_path}")
-                                elif os.path.isabs(url_value) and os.path.exists(url_value):
+                                        logger.debug(
+                                            f"(准备提示) 已识别并加入音视频本地附件(file://): {local_path}"
+                                        )
+                                elif os.path.isabs(url_value) and os.path.exists(
+                                    url_value
+                                ):
                                     files_list.append(url_value)
-                                    logger.info(f"[{req_id}] (准备提示) 已识别并加入音视频本地附件(绝对路径): {url_value}")
+                                    logger.debug(
+                                        f"(准备提示) 已识别并加入音视频本地附件(绝对路径): {url_value}"
+                                    )
                             elif data_val:
-                                if isinstance(data_val, str) and data_val.startswith('data:'):
-                                    saved = extract_data_url_to_local(data_val, req_id=req_id)
+                                if isinstance(data_val, str) and data_val.startswith(
+                                    "data:"
+                                ):
+                                    saved = extract_data_url_to_local(
+                                        data_val, req_id=req_id
+                                    )
                                     if saved:
                                         files_list.append(saved)
-                                        logger.info(f"[{req_id}] (准备提示) 已识别并加入音视频 data:URL 附件: {saved}")
+                                        logger.debug(
+                                            f"(准备提示) 已识别并加入音视频 data:URL 附件: {saved}"
+                                        )
                                 else:
                                     # 认为是纯 base64 数据
                                     try:
                                         raw = base64.b64decode(data_val)
-                                        saved = save_blob_to_local(raw, mime_val, fmt_val, req_id=req_id)
+                                        saved = save_blob_to_local(
+                                            raw, mime_val, fmt_val, req_id=req_id
+                                        )
                                         if saved:
                                             files_list.append(saved)
-                                            logger.info(f"[{req_id}] (准备提示) 已识别并加入音视频 base64 附件: {saved}")
+                                            logger.debug(
+                                                f"(准备提示) 已识别并加入音视频 base64 附件: {saved}"
+                                            )
                                     except Exception:
                                         pass
                     except Exception as e:
-                        logger.warning(f"[{req_id}] (准备提示) 处理音视频输入时出错: {e}")
+                        logger.warning(f"(准备提示) 处理音视频输入时出错: {e}")
                     continue
 
                 # 其他未知项：记录而不影响
-                logger.warning(f"[{req_id}] (准备提示) 警告: 在索引 {i} 的消息中忽略非文本或未知类型的 content item")
+                logger.warning(
+                    f"(准备提示) 警告: 在索引 {i} 的消息中忽略非文本或未知类型的 content item"
+                )
             content_str = "\n".join(text_parts).strip()
         elif isinstance(content, dict):
             # 兼容字典形式的内容，可能包含 'attachments'/'images'/'media'/'files'
+            typed_content: Dict[str, Any] = cast(Dict[str, Any], content)
             text_parts = []
-            attachments_keys = ['attachments', 'images', 'media', 'files']
+            attachments_keys = ["attachments", "images", "media", "files"]
             for key in attachments_keys:
-                items = content.get(key)
+                items: Any = typed_content.get(key)
                 if isinstance(items, list):
                     for it in items:
-                        url_value = None
+                        url_value: Optional[str] = None
                         if isinstance(it, str):
                             url_value = it
                         elif isinstance(it, dict):
-                            url_value = it.get('url') or it.get('path')
-                            if not url_value and isinstance(it.get('image_url'), dict):
-                                url_value = it['image_url'].get('url')
-                            elif not url_value and isinstance(it.get('input_image'), dict):
-                                url_value = it['input_image'].get('url')
-                        url_value = (url_value or '').strip()
+                            typed_it: Dict[str, Any] = cast(Dict[str, Any], it)
+                            url_raw: Any = typed_it.get("url") or typed_it.get("path")
+                            if isinstance(url_raw, str):
+                                url_value = url_raw
+                            if not url_value:
+                                image_url_raw: Any = typed_it.get("image_url")
+                                input_image_raw: Any = typed_it.get("input_image")
+                                if isinstance(image_url_raw, dict):
+                                    typed_img_url: Dict[str, Any] = cast(
+                                        Dict[str, Any], image_url_raw
+                                    )
+                                    url_from_image: Any = typed_img_url.get("url")
+                                    if isinstance(url_from_image, str):
+                                        url_value = url_from_image
+                                elif isinstance(input_image_raw, dict):
+                                    typed_input_img: Dict[str, Any] = cast(
+                                        Dict[str, Any], input_image_raw
+                                    )
+                                    url_from_input: Any = typed_input_img.get("url")
+                                    if isinstance(url_from_input, str):
+                                        url_value = url_from_input
                         if not url_value:
                             continue
-                        if url_value.startswith('data:'):
+                        url_value = url_value.strip()
+                        if not url_value:
+                            continue
+                        if url_value.startswith("data:"):
                             fp = extract_data_url_to_local(url_value)
                             if fp:
                                 files_list.append(fp)
-                                logger.info(f"[{req_id}] (准备提示) 已识别并加入字典附件 data:URL: {fp}")
-                        elif url_value.startswith('file:'):
+                                logger.debug(
+                                    f"(准备提示) 已识别并加入字典附件 data:URL: {fp}"
+                                )
+                        elif url_value.startswith("file:"):
                             parsed = urlparse(url_value)
                             lp = unquote(parsed.path)
                             if os.path.exists(lp):
                                 files_list.append(lp)
-                                logger.info(f"[{req_id}] (准备提示) 已识别并加入字典附件 file://: {lp}")
+                                logger.debug(
+                                    f"(准备提示) 已识别并加入字典附件 file://: {lp}"
+                                )
                         elif os.path.isabs(url_value) and os.path.exists(url_value):
                             files_list.append(url_value)
-                            logger.info(f"[{req_id}] (准备提示) 已识别并加入字典附件绝对路径: {url_value}")
+                            logger.debug(
+                                f"(准备提示) 已识别并加入字典附件绝对路径: {url_value}"
+                            )
                         else:
-                            logger.info(f"[{req_id}] (准备提示) 忽略字典附件的非本地 URL: {url_value}")
+                            logger.debug(
+                                f"(准备提示) 忽略字典附件的非本地 URL: {url_value}"
+                            )
             # 同时将字典中可能的纯文本说明拼入
-            if isinstance(content.get('text'), str):
-                text_parts.append(content.get('text'))
+            text_field: Any = typed_content.get("text")
+            if isinstance(text_field, str):
+                text_parts.append(text_field)
             content_str = "\n".join(text_parts).strip()
         else:
-            logger.warning(f"[{req_id}] (准备提示) 警告: 角色 {role} 在索引 {i} 的内容类型意外 ({type(content)}) 或为 None。")
+            logger.warning(
+                f"(准备提示) 警告: 角色 {role} 在索引 {i} 的内容类型意外 ({type(content)}) 或为 None。"
+            )
             content_str = str(content or "").strip()
         
         if content_str:
@@ -363,35 +528,41 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
         
         # 处理工具调用（不在此处主动执行，只做可视化，避免与对话式循环的客户端执行冲突）
         tool_calls = msg.tool_calls
-        if role == 'assistant' and tool_calls:
+        if role == "assistant" and tool_calls:
             if content_str:
                 current_turn_parts.append("\n")
-            
+
             tool_call_visualizations = []
             for tool_call in tool_calls:
-                if hasattr(tool_call, 'type') and tool_call.type == 'function':
+                if hasattr(tool_call, "type") and tool_call.type == "function":
                     function_call = tool_call.function
                     func_name = function_call.name if function_call else None
                     func_args_str = function_call.arguments if function_call else None
-                    
+
                     try:
-                        parsed_args = json.loads(func_args_str if func_args_str else '{}')
-                        formatted_args = json.dumps(parsed_args, indent=2, ensure_ascii=False)
+                        parsed_args = json.loads(
+                            func_args_str if func_args_str else "{}"
+                        )
+                        formatted_args = json.dumps(
+                            parsed_args, indent=2, ensure_ascii=False
+                        )
                     except (json.JSONDecodeError, TypeError):
-                        formatted_args = func_args_str if func_args_str is not None else "{}"
-                    
+                        formatted_args = (
+                            func_args_str if func_args_str is not None else "{}"
+                        )
+
                     tool_call_visualizations.append(
                         f"请求调用函数: {func_name}\n参数:\n{formatted_args}"
                     )
-            
+
             if tool_call_visualizations:
                 current_turn_parts.append("\n".join(tool_call_visualizations))
 
         # 处理工具结果消息（role = 'tool'）：将其纳入提示，便于模型看到工具返回
-        if role == 'tool':
+        if role == "tool":
             tool_result_lines: List[str] = []
             # 标准 OpenAI 样式：content 为字符串，tool_call_id 关联上一轮调用
-            tool_call_id = getattr(msg, 'tool_call_id', None)
+            tool_call_id = getattr(msg, "tool_call_id", None)
             if tool_call_id:
                 tool_result_lines.append(f"工具结果 (tool_call_id={tool_call_id}):")
             if isinstance(msg.content, str):
@@ -399,10 +570,20 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
             elif isinstance(msg.content, list):
                 # 兼容少数客户端把结果装在列表里
                 try:
-                    merged = "\n".join(
-                        it.get('text') if isinstance(it, dict) and it.get('type') == 'text' else str(it)
-                        for it in msg.content
-                    )
+                    merged_parts: List[str] = []
+                    for it in msg.content:
+                        if isinstance(it, dict):
+                            if it.get("type") == "text":
+                                text_raw = it.get("text", "")
+                                if isinstance(text_raw, str):
+                                    merged_parts.append(text_raw)
+                                else:
+                                    merged_parts.append(str(text_raw))
+                            else:
+                                merged_parts.append(str(it))
+                        else:
+                            merged_parts.append(str(it))
+                    merged = "\n".join(merged_parts)
                     tool_result_lines.append(merged)
                 except Exception:
                     tool_result_lines.append(str(msg.content))
@@ -416,7 +597,9 @@ def prepare_combined_prompt(messages: List[Message], req_id: str, tools: Optiona
         if len(current_turn_parts) > 1 or (role == 'assistant' and tool_calls):
             combined_parts.append("".join(current_turn_parts))
         elif not combined_parts and not current_turn_parts:
-            logger.info(f"[{req_id}] (准备提示) 跳过角色 {role} 在索引 {i} 的空消息 (且无工具调用)。")
+            logger.debug(
+                f"(准备提示) 跳过角色 {role} 在索引 {i} 的空消息 (且无工具调用)。"
+            )
         elif len(current_turn_parts) == 1 and not combined_parts:
             logger.info(f"[{req_id}] (准备提示) 跳过角色 {role} 在索引 {i} 的空消息 (只有前缀)。")
     
@@ -436,10 +619,10 @@ def _extract_json_from_text(text: str) -> Optional[str]:
         return None
     # 简单启发式：找到第一个 '{' 与最后一个匹配的 '}'
     try:
-        start = text.find('{')
-        end = text.rfind('}')
+        start = text.find("{")
+        end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
-            candidate = text[start:end+1].strip()
+            candidate = text[start : end + 1].strip()
             json.loads(candidate)
             return candidate
     except Exception:
@@ -450,24 +633,37 @@ def _extract_json_from_text(text: str) -> Optional[str]:
 def _get_latest_user_text(messages: List[Message]) -> str:
     """提取最近一条用户消息的文本内容（拼接多段 text）。"""
     for msg in reversed(messages):
-        if msg.role == 'user':
+        if msg.role == "user":
             content = msg.content
             if isinstance(content, str):
                 return content
             elif isinstance(content, list):
                 parts: List[str] = []
                 for it in content:
-                    if isinstance(it, dict) and it.get('type') == 'text':
-                        parts.append(it.get('text') or '')
-                    elif hasattr(it, 'type') and it.type == 'text':
-                        parts.append(getattr(it, 'text', '') or '')
+                    if isinstance(it, dict):
+                        if it.get("type") == "text":
+                            text_raw = it.get("text", "")
+                            if isinstance(text_raw, str):
+                                parts.append(text_raw)
+                            else:
+                                parts.append(str(text_raw))
+                    elif hasattr(it, "type") and it.type == "text":
+                        text_attr = getattr(it, "text", "")
+                        if isinstance(text_attr, str):
+                            parts.append(text_attr)
+                        else:
+                            parts.append(str(text_attr))
                 return "\n".join(p for p in parts if p)
             else:
-                return ''
-    return ''
+                return ""
+    return ""
 
 
-async def maybe_execute_tools(messages: List[Message], tools: Optional[List[Dict[str, Any]]], tool_choice: Optional[Union[str, Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+async def maybe_execute_tools(
+    messages: List[Message],
+    tools: Optional[List[Dict[str, Any]]],
+    tool_choice: Optional[Union[str, Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
     """
     基于 tools/tool_choice 的主动函数执行：
     - 若 tool_choice 指明函数名（字符串或 {type:'function', function:{name}}），则尝试执行该函数；
@@ -477,26 +673,37 @@ async def maybe_execute_tools(messages: List[Message], tools: Optional[List[Dict
     """
     try:
         # Track runtime-declared tools和可选 MCP 端点
-        mcp_ep = None
+        mcp_ep: Optional[str] = None
         # support per-request MCP endpoint via request-level message or tool spec extension (if present later)
         # current: read from env only in registry when not provided
         register_runtime_tools(tools, mcp_ep)
         # 若已有工具结果消息（role='tool'），遵循对话式调用循环，由客户端驱动，服务器不主动再次执行
         for m in messages:
-            if getattr(m, 'role', None) == 'tool':
+            if getattr(m, "role", None) == "tool":
                 return None
         chosen_name: Optional[str] = None
         if isinstance(tool_choice, dict):
-            fn = tool_choice.get('function') if tool_choice else None
-            if isinstance(fn, dict):
-                chosen_name = fn.get('name')
+            fn_raw = tool_choice.get("function")
+            if isinstance(fn_raw, dict):
+                name_raw = fn_raw.get("name")
+                if isinstance(name_raw, str):
+                    chosen_name = name_raw
         elif isinstance(tool_choice, str):
             lc = tool_choice.lower()
-            if lc in ('none', 'no', 'off'):
+            if lc in ("none", "no", "off"):
                 return None
-            if lc in ('auto', 'required', 'any'):
+            if lc in ("auto", "required", "any"):
                 if isinstance(tools, list) and len(tools) == 1:
-                    chosen_name = tools[0].get('function', {}).get('name') or tools[0].get('name')
+                    first_tool = tools[0]
+                    func_raw = first_tool.get("function", {})
+                    if isinstance(func_raw, dict):
+                        name_from_func = func_raw.get("name")
+                        if isinstance(name_from_func, str):
+                            chosen_name = name_from_func
+                    if not chosen_name:
+                        name_from_tool = first_tool.get("name")
+                        if isinstance(name_from_tool, str):
+                            chosen_name = name_from_tool
             else:
                 chosen_name = tool_choice
         elif tool_choice is None:
@@ -507,10 +714,11 @@ async def maybe_execute_tools(messages: List[Message], tools: Optional[List[Dict
             return None
 
         user_text = _get_latest_user_text(messages)
-        args_json = _extract_json_from_text(user_text) or '{}'
-        import asyncio
+        args_json = _extract_json_from_text(user_text) or "{}"
         result_str = await execute_tool_call(chosen_name, args_json)
         return [{"name": chosen_name, "arguments": args_json, "result": result_str}]
+    except asyncio.CancelledError:
+        raise
     except Exception:
         return None
 

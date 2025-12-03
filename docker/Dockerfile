@@ -88,7 +88,7 @@ RUN mkdir -p /var/cache/camoufox && \
     mkdir -p /app/.cache && \
     ln -s /var/cache/camoufox /app/.cache/camoufox
 
-RUN python update_browserforge_data.py
+RUN python scripts/update_browserforge_data.py
 
 # 清理代理环境变量
 ENV HTTP_PROXY=""

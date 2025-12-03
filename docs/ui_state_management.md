@@ -1,128 +1,151 @@
-# UI状态强制设置功能
+# UI State Management
 
-## 概述
+## Overview
 
-在 `browser_utils/model_management.py` 中实现了强制设置UI状态的功能，确保 `isAdvancedOpen` 始终为 `true`，`areToolsOpen` 始终为 `false`。
+The proxy actively manages the AI Studio browser UI state to ensure consistent behavior, reliable automation, and correct feature execution. This document details the various state management mechanisms, including LocalStorage configuration, Temporary Chat mode, Thinking Process controls, and Generation state.
 
-## 实现的功能
+## 1. LocalStorage Configuration (Advanced Settings)
 
-### 1. 状态验证函数
+Implemented in `browser_utils/model_management.py`, this system enforces critical UI preferences directly in the browser's `localStorage`.
 
-#### `_verify_ui_state_settings(page, req_id)`
-- **功能**: 验证当前localStorage中的UI状态设置
-- **返回**: 包含验证结果的字典
-  - `exists`: localStorage是否存在
-  - `isAdvancedOpen`: 当前isAdvancedOpen的值
-  - `areToolsOpen`: 当前areToolsOpen的值
-  - `needsUpdate`: 是否需要更新
-  - `prefs`: 当前的preferences对象（如果存在）
-  - `error`: 错误信息（如果有）
+### Core Requirements
 
-### 2. 强制设置函数
+- **`isAdvancedOpen: true`**: Ensures the advanced settings panel is open.
+- **`areToolsOpen: true`**: Ensures the tools panel is open (required for some model interactions).
 
-#### `_force_ui_state_settings(page, req_id)`
-- **功能**: 强制设置UI状态为正确值
-- **设置**: `isAdvancedOpen = true`, `areToolsOpen = false`
-- **返回**: 设置是否成功的布尔值
-- **特点**: 会自动验证设置是否生效
+### Implementation Details
 
-#### `_force_ui_state_with_retry(page, req_id, max_retries=3, retry_delay=1.0)`
-- **功能**: 带重试机制的UI状态强制设置
-- **参数**: 
-  - `max_retries`: 最大重试次数（默认3次）
-  - `retry_delay`: 重试延迟秒数（默认1秒）
-- **返回**: 最终是否设置成功
+#### State Verification
 
-### 3. 完整流程函数
+**`_verify_ui_state_settings(page, req_id)`**
 
-#### `_verify_and_apply_ui_state(page, req_id)`
-- **功能**: 验证并应用UI状态设置的完整流程
-- **流程**: 
-  1. 首先验证当前状态
-  2. 如果需要更新，则调用强制设置功能
-  3. 返回操作是否成功
-- **特点**: 这是推荐使用的主要接口
+- **Function**: Inspects `localStorage.getItem('aiStudioUserPreference')`.
+- **Checks**: Verifies if `isAdvancedOpen` and `areToolsOpen` are set to `true`.
+- **Returns**: Status dictionary indicating if an update is needed.
 
-## 集成点
+#### Force Application
 
-### 1. 模型切换流程
-在 `switch_ai_studio_model()` 函数中的关键节点：
-- 设置localStorage后
-- 页面导航完成后
-- 恢复流程中
+**`_force_ui_state_settings(page, req_id)`**
 
-### 2. 页面初始化流程
-在 `_handle_initial_model_state_and_storage()` 函数中：
-- 检查localStorage状态时
-- 页面重新加载后
+- **Function**: Directly writes the correct JSON object to `localStorage`.
+- **Logic**:
+  1. Reads current preferences.
+  2. Overwrites `isAdvancedOpen` and `areToolsOpen` to `true`.
+  3. Saves back to `localStorage`.
+  4. Verifies the write was successful.
 
-### 3. 模型显示设置流程
-在 `_set_model_from_page_display()` 函数中：
-- 更新localStorage时
+#### Integration Points
 
-## 验证和重试机制
+The system automatically verifies and applies these settings during:
 
-### 验证机制
-- 每次设置后都会验证是否生效
-- 支持检测JSON解析错误
-- 提供详细的状态信息
+1.  **Page Initialization**: When the browser first connects or loads.
+2.  **Model Switching**: Before and after navigating to a new model.
+3.  **Page Reloads**: If a reload is triggered by an error or state mismatch.
 
-### 重试机制
-- 默认最多重试3次
-- 每次重试间隔1秒
-- 记录详细的重试日志
-- 失败后会记录错误信息
+---
 
-### 关键操作后的验证
-系统会在以下操作后自动验证UI状态：
-1. **网页切换模型后**
-2. **页面初始化完成后**
-3. **页面重新加载后**
-4. **任何需要重载页面的操作后**
+## 2. Temporary Chat Mode (Incognito)
 
-如果验证发现设置不正确，系统会：
-1. 继续执行刷新操作
-2. 重新应用设置
-3. 直到验证成功为止
+The proxy enforces "Temporary Chat" (Incognito) mode to prevent chat history from cluttering the user's account and to ensure a clean state for each session.
 
-## 日志记录
+### Implementation
 
-所有操作都有详细的日志记录：
-- `[req_id] 开始验证UI状态设置...`
-- `[req_id] UI状态验证结果: isAdvancedOpen=true, areToolsOpen=false, needsUpdate=false`
-- `[req_id] ✅ UI状态设置在第 1 次尝试中成功`
-- `[req_id] ⚠️ UI状态设置验证失败，可能需要重试`
+**`enable_temporary_chat_mode(page)`** (in `browser_utils/initialization/core.py`)
 
-## 错误处理
+- **Detection**: Checks the "Temporary chat toggle" button for the CSS class `ms-button-active`.
+- **Action**: If the class is missing, it clicks the button to enable the mode.
+- **Verification**: Waits and re-checks the class to confirm activation.
 
-- 捕获并处理JSON解析错误
-- 捕获并处理页面操作异常
-- 提供详细的错误信息
-- 在失败时不会中断主要流程
+### Trigger Points
 
-## 使用示例
+- **Initialization**: Immediately after the page loads.
+- **After Clear Chat**: When the chat history is cleared (`/new_chat`), the mode is re-verified.
+- **After Model Switch**: Switching models may reset UI state, so it is re-applied.
 
-```python
-# 基本验证
-result = await _verify_ui_state_settings(page, req_id)
-if result['needsUpdate']:
-    print("需要更新UI状态")
+---
 
-# 强制设置
-success = await _force_ui_state_settings(page, req_id)
-if success:
-    print("UI状态设置成功")
+## 3. Thinking Process Management
 
-# 完整流程（推荐）
-success = await _verify_and_apply_ui_state(page, req_id)
-if success:
-    print("UI状态验证和应用成功")
-```
+Managed by `browser_utils/page_controller_modules/thinking.py`, this system controls the "Thinking" features of models (e.g., Gemini 2.0 Flash Thinking, Gemini 3 Pro).
 
-## 配置要求
+### Logic Flow
 
-确保以下设置始终生效：
-- `isAdvancedOpen: true` - 高级选项面板始终打开
-- `areToolsOpen: false` - 工具面板始终关闭
+1.  **Normalization**: The `reasoning_effort` parameter (low/high/integer) is normalized into a directive (Enabled/Disabled, Budget Value, or Level).
+2.  **Model Detection**:
+    - **Gemini 3 Pro**: Uses a "Thinking Level" dropdown (High/Low).
+    - **Standard Thinking Models**: Use a "Thinking Budget" toggle and slider/input.
 
-这些设置对于系统的正常运行至关重要，特别是 `areToolsOpen` 必须为 `false`。
+### Control Mechanisms
+
+#### Main Toggle
+
+**`_control_thinking_mode_toggle`**
+
+- Controls the master "Thinking" switch.
+- Verifies state via `aria-checked` attribute.
+
+#### Budget Control (Standard)
+
+**`_control_thinking_budget_toggle`** & **`_set_thinking_budget_value`**
+
+- Enables the manual budget slider.
+- **Input Injection**: Uses JavaScript to directly set the input value, bypassing UI drag-and-drop complexities. It handles `min`/`max` attribute constraints dynamically.
+
+#### Thinking Level (Gemini 3 Pro)
+
+**`_set_thinking_level`**
+
+- Interacts with the specific dropdown for Gemini 3 Pro.
+- Selects "High" (>= 8k tokens) or "Low" (< 8k tokens) based on the requested effort.
+
+---
+
+## 4. Generation Control (Stop Logic)
+
+Managed by `browser_utils/page_controller_modules/response.py`, ensuring the UI is ready for a new request.
+
+### Stop Generation
+
+**`ensure_generation_stopped`**
+
+- **Detection**: Checks the "Submit" button. If it is **enabled** while no text is in the input, it functions as a "Stop" button.
+- **Action**: Clicks the button to halt the current generation.
+- **Wait**: Waits for the button to become **disabled** (indicating the stop command was processed and the UI is resetting).
+
+### Clear Chat Logic
+
+**`clear_chat_history`** (in `browser_utils/page_controller_modules/chat.py`)
+
+- **Pre-check**: Before clearing, it calls `ensure_generation_stopped` to prevent "Clear" button lock-ups caused by active generation.
+- **Execution**: Clicks "Clear Chat", handles the confirmation dialog, and waits for the "New Chat" state.
+- **Recovery**: Re-enables Temporary Chat mode after clearing.
+
+---
+
+## 5. Response Retrieval Interaction
+
+Managed by `browser_utils/operations_modules/interactions.py`, this system handles how the proxy extracts the AI's response from the UI.
+
+### Primary Method: Edit Button
+
+**`get_response_via_edit_button`**
+
+- **Logic**: Hovers over the last message to reveal the "Edit" button, clicks it, and extracts the raw Markdown from the underlying `textarea` or `data-value` attribute.
+- **Advantage**: Provides the most accurate, raw Markdown representation of the response.
+
+### Fallback Method: Copy Button
+
+**`get_response_via_copy_button`**
+
+- **Logic**: If the Edit button fails, it attempts to use the "Copy Markdown" option from the "More Options" menu.
+- **Mechanism**: Clicks "Copy Markdown" and reads the system clipboard.
+
+### Completion Detection
+
+**`_wait_for_response_completion`**
+
+- **Criteria**:
+  1.  Input field is empty.
+  2.  Submit button is disabled.
+  3.  **Final Confirmation**: The "Edit" button becomes visible on the last message.
+- **Heuristic**: If the primary criteria are met for a sustained period but the Edit button doesn't appear, it may assume completion to prevent infinite waits.

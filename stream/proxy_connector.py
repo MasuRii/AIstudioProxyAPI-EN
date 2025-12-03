@@ -1,6 +1,8 @@
 import asyncio
 import ssl as ssl_module
 import urllib.parse
+from typing import Any, Optional, Tuple
+
 from aiohttp import TCPConnector
 from python_socks.async_.asyncio import Proxy
 
@@ -10,7 +12,7 @@ class ProxyConnector:
     Class to handle connections through different types of proxies
     """
 
-    def __init__(self, proxy_url=None):
+    def __init__(self, proxy_url: Optional[str] = None):
         self.proxy_url = proxy_url
         self.connector = None
 
@@ -27,12 +29,14 @@ class ProxyConnector:
         parsed = urllib.parse.urlparse(self.proxy_url)
         proxy_type = parsed.scheme.lower()
 
-        if proxy_type in ('http', 'https', 'socks4', 'socks5'):
+        if proxy_type in ("http", "https", "socks4", "socks5"):
             self.connector = "SocksConnector"
         else:
             raise ValueError(f"Unsupported proxy type: {proxy_type}")
 
-    async def create_connection(self, host, port, ssl=None):
+    async def create_connection(
+        self, host: str, port: int, ssl: Optional[Any] = None
+    ) -> Tuple[Any, Any]:
         """Create a connection to the target host through the proxy"""
         if not self.connector:
             # Direct connection without proxy
@@ -40,7 +44,8 @@ class ProxyConnector:
             return reader, writer
 
         # SOCKS proxy connection
-        proxy = Proxy.from_url(self.proxy_url)
+        assert self.proxy_url is not None  # Type guard for pyright
+        proxy = Proxy.from_url(self.proxy_url)  # type: ignore[misc]
         sock = await proxy.connect(dest_host=host, dest_port=port)
         if ssl is None:
             reader, writer = await asyncio.open_connection(
@@ -54,9 +59,13 @@ class ProxyConnector:
             ssl_context = ssl_module.SSLContext(ssl_module.PROTOCOL_TLS_CLIENT)
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl_module.CERT_NONE
-            ssl_context.minimum_version = ssl_module.TLSVersion.TLSv1_2  # Force TLS 1.2 or higher
-            ssl_context.maximum_version = ssl_module.TLSVersion.TLSv1_3  # Allow TLS 1.3 if supported
-            ssl_context.set_ciphers('DEFAULT@SECLEVEL=2')  # Use secure ciphers
+            ssl_context.minimum_version = (
+                ssl_module.TLSVersion.TLSv1_2
+            )  # Force TLS 1.2 or higher
+            ssl_context.maximum_version = (
+                ssl_module.TLSVersion.TLSv1_3
+            )  # Allow TLS 1.3 if supported
+            ssl_context.set_ciphers("DEFAULT@SECLEVEL=2")  # Use secure ciphers
 
             reader, writer = await asyncio.open_connection(
                 host=None,

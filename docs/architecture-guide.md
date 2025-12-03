@@ -21,17 +21,39 @@ AIstudioProxyAPI/
 ├── api_utils/              # FastAPI 应用核心模块
 │   ├── app.py             # FastAPI 应用入口和生命周期管理
 │   ├── routers/           # API 路由定义（按职责拆分）
-│   ├── routes.py          # 兼容层：重导出 routers/* 端点
 │   ├── request_processor.py # 请求处理核心逻辑
 │   ├── queue_worker.py    # 异步队列工作器
 │   ├── auth_utils.py      # API 密钥认证管理
-│   └── dependencies.py   # FastAPI 依赖注入
+│   ├── dependencies.py    # FastAPI 依赖注入
+│   ├── client_connection.py # 客户端连接管理
+│   ├── sse.py             # SSE 流式响应处理
+│   ├── mcp_adapter.py     # MCP 协议适配器
+│   ├── utils.py           # 通用工具函数
+│   └── utils_ext/         # 扩展工具函数
 ├── browser_utils/          # 浏览器自动化模块
 │   ├── page_controller.py # 页面控制器和生命周期管理
 │   ├── model_management.py # AI Studio 模型管理
 │   ├── script_manager.py  # 脚本注入管理 (v3.0)
-│   ├── operations.py      # 浏览器操作封装
-│   └── initialization.py # 浏览器初始化逻辑
+│   ├── operations.py      # 浏览器操作封装 (入口)
+│   ├── debug_utils.py     # 调试工具
+│   ├── thinking_normalizer.py # 思考过程标准化
+│   ├── page_controller_modules/ # 页面控制器 Mixin 模块
+│   │   ├── base.py        # 基础控制器
+│   │   ├── chat.py        # 聊天控制
+│   │   ├── input.py       # 输入控制
+│   │   ├── parameters.py  # 参数控制
+│   │   ├── response.py    # 响应控制
+│   │   └── thinking.py    # 思考过程控制
+│   ├── initialization/    # 浏览器初始化模块 (新)
+│   │   ├── core.py        # 初始化核心逻辑
+│   │   ├── network.py     # 网络拦截配置
+│   │   ├── auth.py        # 认证状态管理
+│   │   ├── scripts.py     # 脚本注入逻辑
+│   │   └── debug.py       # 调试监听器
+│   └── operations_modules/ # 浏览器操作子模块 (新)
+│       ├── parsers.py     # 数据解析
+│       ├── interactions.py # 页面交互
+│       └── errors.py      # 错误处理
 ├── config/                 # 配置管理模块
 │   ├── settings.py        # 主要设置和环境变量
 │   ├── constants.py       # 系统常量定义
@@ -48,7 +70,12 @@ AIstudioProxyAPI/
 │   └── utils.py          # 流式处理工具
 ├── logging_utils/          # 日志管理模块
 │   └── setup.py          # 日志系统配置
-└── node_stream/            # Node流式处理模块
+├── launcher/               # 启动器模块 (新)
+│   ├── runner.py          # 启动逻辑核心
+│   ├── checks.py          # 环境与依赖检查
+│   ├── config.py          # 启动配置处理
+│   └── process.py         # Camoufox 进程管理
+└── deprecated_javascript_version/ # Node流式处理模块 (已弃用)
 ```
 
 ## 🔧 核心模块详解
@@ -64,7 +91,7 @@ AIstudioProxyAPI/
 - 中间件配置 (API 密钥认证)
 - 全局状态初始化
 
-#### routers/* - API 路由（按职责拆分）
+#### routers/\* - API 路由（按职责拆分）
 
 - static.py: `/`, `/webui.css`, `/webui.js`
 - info.py: `/api/info`
@@ -79,16 +106,20 @@ AIstudioProxyAPI/
 
 #### request_processor.py - 请求处理核心
 
-- 三层响应获取机制实现
+- 响应获取机制实现
 - 流式和非流式响应处理
 - 客户端断开检测
 - 错误处理和重试逻辑
 
 #### queue_worker.py - 队列工作器
 
-- 异步请求队列处理
-- 并发控制和资源管理
-- 请求优先级处理
+- 异步请求队列处理 (FIFO)
+- 并发控制和资源管理 (Processing Lock)
+- 客户端断开检测与自动跳过
+- 流式请求间的智能延迟控制
+- **分级错误恢复机制 (Tiered Recovery)**:
+  - **Tier 1**: 页面快速刷新 (处理临时性 DOM 错误)
+  - **Tier 2**: 认证配置文件切换 (处理配额耗尽或认证失效，无需重启浏览器)
 
 ### 2. browser_utils/ - 浏览器自动化
 
@@ -96,12 +127,36 @@ AIstudioProxyAPI/
 
 #### page_controller.py - 页面控制器
 
-- Camoufox 浏览器生命周期管理
-- 页面导航和状态监控
-- 认证文件管理
+- 基于 Mixin 模式的聚合控制器
+- 继承自 `page_controller_modules` 中的各个子模块
+- 统一管理浏览器页面交互入口
+
+#### page_controller_modules/ - 页面控制子模块 (Mixin)
+
+- **base.py**: 基础控制器，共享状态和日志
+- **chat.py**: 聊天历史管理和清理
+- **input.py**: 提示词输入和提交处理
+- **parameters.py**: 模型参数配置 (温度、TopK 等)
+- **response.py**: 响应获取和流式处理
+- **thinking.py**: 思考过程处理 (Thinking Process)
+
+#### initialization/ - 初始化模块 (新)
+
+- **core.py**: 浏览器上下文创建、导航、登录检测、临时聊天模式启用
+- **network.py**: 网络拦截配置、模型列表注入 (Playwright Route Interception)
+- **auth.py**: 认证状态的保存与恢复
+- **scripts.py**: UserScript 脚本注入
+- **debug.py**: 调试监听器设置
+
+#### operations_modules/ - 操作模块 (新)
+
+- **parsers.py**: 解析 UserScript 和 API 响应中的模型列表
+- **interactions.py**: 处理 UI 交互（等待响应、提取文本、点击按钮）
+- **errors.py**: 页面错误检测与快照保存
 
 #### script_manager.py - 脚本注入管理 (v3.0)
 
+- 动态生成包含模型列表的脚本
 - Playwright 原生网络拦截
 - 油猴脚本解析和注入
 - 模型数据同步
@@ -144,24 +199,18 @@ AIstudioProxyAPI/
 - 响应数据解析
 - 流式数据处理
 
-## 🔄 三层响应获取机制
+## 🔄 响应获取机制
 
-项目实现了三层响应获取机制，确保高可用性和最佳性能：
+项目实现了多层响应获取机制，确保高可用性和最佳性能：
 
-### 第一层: 集成流式代理 (Stream Proxy)
+### 集成流式代理 (Stream Proxy)
 
 - **位置**: `stream/` 模块
 - **端口**: 3120 (可配置)
 - **优势**: 最佳性能，直接处理请求
 - **适用**: 日常使用，生产环境
 
-### 第二层: 外部 Helper 服务
-
-- **配置**: 通过 `--helper` 参数或环境变量
-- **依赖**: 需要有效的认证文件
-- **适用**: 备用方案，特殊环境
-
-### 第三层: Playwright 页面交互
+### Playwright 页面交互
 
 - **位置**: `browser_utils/` 模块
 - **方式**: 浏览器自动化操作
@@ -181,6 +230,7 @@ AIstudioProxyAPI/
   - 适合：作为回退路径，确保功能完整
 
 两条路径均保持：
+
 - 客户端断开检测与提前结束
 - 最终使用统计 `usage` 的输出
 - OpenAI 兼容的 SSE/JSON 格式
@@ -219,16 +269,17 @@ AIstudioProxyAPI/
 ### 工作机制
 
 1. **脚本解析**: 从油猴脚本解析 `MODELS_TO_INJECT` 数组
-2. **网络拦截**: Playwright 拦截 `/api/models` 请求
-3. **数据合并**: 将注入模型与原始模型合并
+2. **网络拦截**: Playwright 拦截 `/api/models` 请求 (`browser_utils/initialization/network.py`)
+3. **数据合并**: 将注入模型与原始模型合并，添加 `__NETWORK_INJECTED__` 标记
 4. **响应修改**: 返回包含注入模型的完整列表
-5. **前端注入**: 同时注入脚本确保显示一致
+5. **脚本注入**: 将脚本注入到页面上下文 (`browser_utils/initialization/scripts.py`)
 
 ### 技术优势
 
 - **100% 可靠**: Playwright 原生拦截，无时序问题
 - **零维护**: 脚本更新自动生效
 - **完全同步**: 前后端使用相同数据源
+- **双重保障**: 网络拦截 + 脚本注入双重机制
 
 ## 🔧 开发和部署
 

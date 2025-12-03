@@ -4,12 +4,23 @@ Handles tasks in the request queue
 """
 
 import asyncio
+import logging
 import time
-from fastapi import HTTPException
-from typing import Any, Dict, Optional, Tuple
+from asyncio import Event, Future, Lock, Queue, Task
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from playwright.async_api import Locator
+
+from logging_utils import set_request_id, set_source
+from models import ChatCompletionRequest
+
+from api_utils.context_types import QueueItem
+
 from .error_utils import (
-    client_disconnected,
     client_cancelled,
+    client_disconnected,
     processing_timeout,
     server_error,
 )

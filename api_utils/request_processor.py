@@ -5,20 +5,20 @@ Contains core request processing logic
 
 import asyncio
 import json
+import logging
 import os
-import random
-import time
-from typing import Optional, Tuple, Callable, AsyncGenerator, List, Any
 from asyncio import Event, Future
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from playwright.async_api import Page as AsyncPage, Locator, Error as PlaywrightAsyncError, expect as expect_async
 
 # --- Configuration Module Imports ---
 from config import (
     MODEL_NAME,
+    ONLY_COLLECT_CURRENT_USER_ATTACHMENTS,
     SUBMIT_BUTTON_SELECTOR,
+    UPLOAD_FILES_DIR,
 )
 from config import ONLY_COLLECT_CURRENT_USER_ATTACHMENTS, UPLOAD_FILES_DIR, RESPONSE_COMPLETION_TIMEOUT
 from config.global_state import GlobalState
@@ -50,10 +50,35 @@ from .page_response import locate_response_elements
 
 from .common_utils import random_id as _random_id
 from .client_connection import (
-    test_client_connection as _test_client_connection,
+    check_client_connection as _check_client_connection,
+)
+from .client_connection import (
     setup_disconnect_monitoring as _setup_disconnect_monitoring,
 )
+from .common_utils import random_id as _random_id
 from .context_init import initialize_request_context as _init_request_context
+from .context_types import RequestContext
+from .model_switching import (
+    analyze_model_requirements as ms_analyze,
+)
+from .model_switching import (
+    handle_model_switching as ms_switch,
+)
+from .model_switching import (
+    handle_parameter_cache as ms_param_cache,
+)
+from .page_response import locate_response_elements
+from .response_generators import gen_sse_from_aux_stream, gen_sse_from_playwright
+from .response_payloads import build_chat_completion_response_json
+
+# --- API Utils Imports ---
+from .utils import (
+    maybe_execute_tools,
+    prepare_combined_prompt,
+)
+from .utils_ext.stream import use_stream_response
+from .utils_ext.tokens import calculate_usage_stats
+from .utils_ext.validation import validate_chat_request
 
 _initialize_request_context = _init_request_context
 
@@ -61,8 +86,8 @@ _initialize_request_context = _init_request_context
 from .error_utils import (
     bad_request,
     client_disconnected,
-    upstream_error,
     server_error,
+    upstream_error,
 )
 
 
@@ -128,10 +153,18 @@ async def _prepare_and_validate_request(
         # Inject mcp_endpoint into utils.maybe_execute_tools registration logic
         if hasattr(request, 'mcp_endpoint') and request.mcp_endpoint:
             from .tools_registry import register_runtime_tools
-            register_runtime_tools(getattr(request, 'tools', None), request.mcp_endpoint)
-        tool_exec_results = await maybe_execute_tools(request.messages, request.tools, getattr(request, 'tool_choice', None))
+
+            register_runtime_tools(
+                getattr(request, "tools", None), request.mcp_endpoint
+            )
+        tool_exec_results = await maybe_execute_tools(
+            request.messages, request.tools, getattr(request, "tool_choice", None)
+        )
+    except asyncio.CancelledError:
+        raise
     except Exception:
         tool_exec_results = None
+
     check_client_disconnected("After Prompt Prep")
     # Inline results at the end of the prompt for submission together
     if tool_exec_results:
@@ -148,13 +181,11 @@ async def _prepare_and_validate_request(
         if ONLY_COLLECT_CURRENT_USER_ATTACHMENTS:
             latest_user = None
             for msg in reversed(request.messages or []):
-                if getattr(msg, 'role', None) == 'user':
+                if getattr(msg, "role", None) == "user":
                     latest_user = msg
                     break
             if latest_user is not None:
                 filtered: List[str] = []
-                from api_utils.utils import extract_data_url_to_local
-                from urllib.parse import urlparse, unquote
                 import os
                 # Collect data:/file:/absolute paths (existing) on this user message
                 content = getattr(latest_user, 'content', None)
@@ -163,36 +194,43 @@ async def _prepare_and_validate_request(
                     arr = getattr(latest_user, key, None)
                     if not isinstance(arr, list):
                         continue
+                    # Type narrowing after isinstance check
                     for it in arr:
-                        url_value = None
+                        url_value: Optional[str] = None
                         if isinstance(it, str):
                             url_value = it
                         elif isinstance(it, dict):
-                            url_value = it.get('url') or it.get('path')
-                        url_value = (url_value or '').strip()
+                            # Type narrowed to dict by isinstance
+                            url_value = str(it.get("url") or it.get("path") or "")
                         if not url_value:
                             continue
-                        if url_value.startswith('data:'):
-                            fp = extract_data_url_to_local(url_value)
+                        url_value = url_value.strip()
+                        if not url_value:
+                            continue
+                        if url_value.startswith("data:"):
+                            fp: Optional[str] = extract_data_url_to_local(url_value)
                             if fp:
                                 filtered.append(fp)
-                        elif url_value.startswith('file:'):
+                        elif url_value.startswith("file:"):
                             parsed = urlparse(url_value)
-                            lp = unquote(parsed.path)
+                            lp: str = unquote(parsed.path)
                             if os.path.exists(lp):
                                 filtered.append(lp)
                         elif os.path.isabs(url_value) and os.path.exists(url_value):
                             filtered.append(url_value)
                 images_list = filtered
+    except asyncio.CancelledError:
+        raise
     except Exception:
         pass
 
     return prepared_prompt, images_list
 
+
 async def _handle_response_processing(
     req_id: str,
     request: ChatCompletionRequest,
-    page: AsyncPage,
+    page: Optional[AsyncPage],
     context: RequestContext,
     result_future: Future,
     submit_button_locator: Locator,
@@ -208,9 +246,10 @@ async def _handle_response_processing(
     
     # Check if auxiliary stream is used
     from config import get_environment_variable
-    stream_port = get_environment_variable('STREAM_PORT')
-    use_stream = stream_port != '0'
-    
+
+    stream_port = get_environment_variable("STREAM_PORT")
+    use_stream = stream_port != "0"
+
     if use_stream:
         return await _handle_auxiliary_stream_response(req_id, request, context, result_future, submit_button_locator, check_client_disconnected, timeout=timeout)
     else:
@@ -221,7 +260,7 @@ async def _handle_auxiliary_stream_response(
     req_id: str,
     request: ChatCompletionRequest,
     context: RequestContext,
-    result_future: Future,
+    result_future: Future[Union[StreamingResponse, JSONResponse]],
     submit_button_locator: Locator,
     check_client_disconnected: Callable,
     timeout: float,
@@ -261,9 +300,19 @@ async def _handle_auxiliary_stream_response(
             else:
                 if not completion_event.is_set():
                     completion_event.set()
-            
-            return completion_event, submit_button_locator, check_client_disconnected
 
+            # Return only first 3 elements to match function signature
+            # stream_state is used internally by the caller but not part of return type
+            return (
+                completion_event,
+                submit_button_locator,
+                check_client_disconnected,
+            )
+
+        except asyncio.CancelledError:
+            if completion_event and not completion_event.is_set():
+                completion_event.set()
+            raise
         except Exception as e:
             logger.error(f"[{req_id}] Error getting stream data from queue: {e}", exc_info=True)
             # Fallback to non-streaming if stream setup fails...
@@ -291,7 +340,8 @@ async def _handle_auxiliary_stream_response(
                     logger.warning(f"[{req_id}] Failed to parse non-stream data JSON: {raw_data}")
                     continue
             elif isinstance(raw_data, dict):
-                data = raw_data
+                # Type narrowed to dict by isinstance check
+                data = raw_data  # type: Dict[str, Any]
             else:
                 continue
             
@@ -329,17 +379,21 @@ async def _handle_auxiliary_stream_response(
         finish_reason_val = "stop"
 
         if functions and len(functions) > 0:
-            tool_calls_list = []
+            tool_calls_list: List[Dict[str, Any]] = []
+            func_idx: int
+            function_call_data: Dict[str, Any]
             for func_idx, function_call_data in enumerate(functions):
-                tool_calls_list.append({
-                    "id": f"call_{_random_id()}",
-                    "index": func_idx,
-                    "type": "function",
-                    "function": {
-                        "name": function_call_data["name"],
-                        "arguments": json.dumps(function_call_data["params"]),
-                    },
-                })
+                tool_calls_list.append(
+                    {
+                        "id": f"call_{_random_id()}",
+                        "index": func_idx,
+                        "type": "function",
+                        "function": {
+                            "name": function_call_data["name"],
+                            "arguments": json.dumps(function_call_data["params"]),
+                        },
+                    }
+                )
             message_payload["tool_calls"] = tool_calls_list
             finish_reason_val = "tool_calls"
             message_payload["content"] = None
@@ -366,8 +420,15 @@ async def _handle_auxiliary_stream_response(
             finish_reason_val,
             usage_stats,
             system_fingerprint="camoufox-proxy",
-            seed=request.seed if hasattr(request, 'seed') else None,
-            response_format=(request.response_format if hasattr(request, 'response_format') else None),
+            seed=request.seed
+            if hasattr(request, "seed") and request.seed is not None
+            else 0,
+            response_format=(
+                request.response_format
+                if hasattr(request, "response_format")
+                and isinstance(request.response_format, dict)
+                else {}
+            ),
         )
 
         if not result_future.done():
@@ -396,8 +457,8 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
     from server import logger
     
     is_streaming = request.stream
-    current_ai_studio_model_id = context.get('current_ai_studio_model_id')
-    
+    current_ai_studio_model_id = context.get("current_ai_studio_model_id")
+
     await locate_response_elements(page, req_id, logger, check_client_disconnected)
 
     check_client_disconnected("After Response Element Located: ")
@@ -506,10 +567,17 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
             finish_reason_val,
             usage_stats,
             system_fingerprint="camoufox-proxy",
-            seed=request.seed if hasattr(request, 'seed') else None,
-            response_format=(request.response_format if hasattr(request, 'response_format') else None),
+            seed=request.seed
+            if hasattr(request, "seed") and request.seed is not None
+            else 0,
+            response_format=(
+                request.response_format
+                if hasattr(request, "response_format")
+                and isinstance(request.response_format, dict)
+                else {}
+            ),
         )
-        
+
         if not result_future.done():
             from server import logger
             logger.info(f"[{req_id}] [DEBUG] Setting non-stream result on future. Payload keys: {list(response_payload.keys())}")
@@ -649,12 +717,13 @@ async def _process_request_refactored(
             result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] Client disconnected before processing started"))
         return None
 
-    stream_port = get_environment_variable('STREAM_PORT')
-    use_stream = stream_port != '0'
+    stream_port = get_environment_variable("STREAM_PORT")
+    use_stream = stream_port != "0"
     if use_stream:
         logger.info(f"[{req_id}] Clearing stream queue before request (preventing residual data)...")
         try:
             from api_utils import clear_stream_queue
+
             await clear_stream_queue()
             logger.info(f"[{req_id}] Stream queue cleared")
         except Exception as clear_err:
@@ -662,19 +731,24 @@ async def _process_request_refactored(
 
     context = await _initialize_request_context(req_id, request)
     context = await _analyze_model_requirements(req_id, context, request)
-    
-    client_disconnected_event, disconnect_check_task, check_client_disconnected = await _setup_disconnect_monitoring(
-        req_id, http_request, result_future
-    )
-    
-    page = context['page']
+
+    (
+        _,  # client_disconnected_event - not used, kept for unpacking
+        disconnect_check_task,
+        check_client_disconnected,
+    ) = await _setup_disconnect_monitoring(req_id, http_request, result_future)
+
+    page = context["page"]
     submit_button_locator = page.locator(SUBMIT_BUTTON_SELECTOR) if page else None
     completion_event = None
-    
+
     try:
         await _validate_page_status(req_id, context, check_client_disconnected)
-        
-        page_controller = PageController(page, context['logger'], req_id)
+
+        if page is None:
+            raise server_error(req_id, "Page is None in _process_request_refactored")
+
+        page_controller = PageController(page, context["logger"], req_id)
 
         await _handle_model_switching(req_id, context, check_client_disconnected)
         await _handle_parameter_cache(req_id, context)
@@ -793,7 +867,7 @@ async def _process_request_refactored(
             req_id, request, page, context, result_future, submit_button_locator, check_client_disconnected, len(prepared_prompt),
             timeout=dynamic_timeout
         )
-        
+
         if response_result:
             # [FIX] Handle dictionary return (non-streaming payload)
             if isinstance(response_result, dict):
@@ -844,4 +918,12 @@ async def _process_request_refactored(
             result_future.set_exception(server_error(req_id, f"Unexpected server error: {e}"))
         return completion_event, submit_button_locator, check_client_disconnected
     finally:
-        await _cleanup_request_resources(req_id, disconnect_check_task, completion_event, result_future, request.stream)
+        await _cleanup_request_resources(
+            req_id,
+            disconnect_check_task,
+            completion_event,
+            result_future,
+            request.stream or False,
+        )
+
+    return None

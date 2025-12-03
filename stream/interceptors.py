@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import sys
 import zlib
 from urllib.parse import unquote
 from config.global_state import GlobalState
@@ -9,32 +10,38 @@ class HttpInterceptor:
     """
     Class to intercept and process HTTP requests and responses
     """
-    def __init__(self, log_dir='logs'):
+
+    def __init__(self, log_dir: str = "logs"):
         self.log_dir = log_dir
         self.logger = logging.getLogger('http_interceptor')
         self.response_buffer = ""  # Persistent buffer for accumulating response data
         self.setup_logging()
-    
+
     @staticmethod
     def setup_logging():
-        """Set up logging configuration"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.StreamHandler()
-            ]
+        """Set up logging configuration with colored output"""
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setFormatter(
+            ColoredFormatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s", use_color=True
+            )
         )
-        logging.getLogger('asyncio').setLevel(logging.ERROR)
-        logging.getLogger('websockets').setLevel(logging.ERROR)
-    
+        console_handler.setLevel(logging.INFO)
+
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(console_handler)
+
+        logging.getLogger("asyncio").setLevel(logging.ERROR)
+        logging.getLogger("websockets").setLevel(logging.ERROR)
+
     @staticmethod
-    def should_intercept(host, path):
+    def should_intercept(host: str, path: str):
         """
         Determine if the request should be intercepted based on host and path
         """
         # Check if the endpoint contains GenerateContent
-        if 'GenerateContent' in path:
+        if "GenerateContent" in path or "generateContent" in path:
             return True
             
         # Check for jserror logging endpoint
@@ -43,14 +50,16 @@ class HttpInterceptor:
         
         # Add more conditions as needed
         return False
-    
-    async def process_request(self, request_data, host, path):
+
+    async def process_request(
+        self, request_data: Union[int, bytes], host: str, path: str
+    ) -> Union[int, bytes]:
         """
         Process the request data before sending to the server
         """
         if not self.should_intercept(host, path):
             return request_data
-        
+
         # Log the request
         self.logger.info(f"Intercepted request to {host}{path}")
         
@@ -78,8 +87,14 @@ class HttpInterceptor:
         except (json.JSONDecodeError, UnicodeDecodeError):
             # Not JSON or not UTF-8, just pass through
             return request_data
-    
-    async def process_response(self, response_data, host, path, headers):
+
+    async def process_response(
+        self,
+        response_data: Union[int, bytes],
+        host: str,
+        path: str,
+        headers: Dict[Any, Any],
+    ) -> Dict[str, Any]:
         """
         Process the response data before sending to the client using persistent buffering
         """
@@ -171,7 +186,7 @@ class HttpInterceptor:
             
         return resp
 
-    def parse_toolcall_params(self, args):
+    def parse_toolcall_params(self, args: Any) -> Dict[str, Any]:
         try:
             params = args[0]
             func_params = {}
@@ -179,29 +194,31 @@ class HttpInterceptor:
                 param_name = param[0]
                 param_value = param[1]
 
-                if type(param_value)==list:
-                    if len(param_value)==1: # null
+                if isinstance(param_value, list):
+                    if len(param_value) == 1:  # null
                         func_params[param_name] = None
-                    elif len(param_value) == 2: # number and integer
+                    elif len(param_value) == 2:  # number and integer
                         func_params[param_name] = param_value[1]
-                    elif len(param_value) == 3: # string
+                    elif len(param_value) == 3:  # string
                         func_params[param_name] = param_value[2]
-                    elif len(param_value) == 4: # boolean
+                    elif len(param_value) == 4:  # boolean
                         func_params[param_name] = param_value[3] == 1
-                    elif len(param_value) == 5: # object
-                        func_params[param_name] = self.parse_toolcall_params(param_value[4])
+                    elif len(param_value) == 5:  # object
+                        func_params[param_name] = self.parse_toolcall_params(
+                            param_value[4]
+                        )
             return func_params
         except Exception as e:
             raise e
 
     @staticmethod
-    def _decompress_zlib_stream(compressed_stream):
+    def _decompress_zlib_stream(compressed_stream: Union[bytearray, bytes]) -> bytes:
         decompressor = zlib.decompressobj(wbits=zlib.MAX_WBITS | 32)  # zlib header
         decompressed = decompressor.decompress(compressed_stream)
         return decompressed
 
     @staticmethod
-    def _decode_chunked(response_body: bytes) -> tuple[bytes, bool]:
+    def _decode_chunked(response_body: bytes) -> Tuple[bytes, bool]:
         chunked_data = bytearray()
         while True:
             # print(' '.join(format(x, '02x') for x in response_body))
@@ -220,14 +237,16 @@ class HttpInterceptor:
             if length == 0:
                 length_crlf_idx = response_body.find(b"0\r\n\r\n")
                 if length_crlf_idx != -1:
-                    return chunked_data, True
+                    return bytes(chunked_data), True
 
             if length + 2 > len(response_body):
                 break
 
-            chunked_data.extend(response_body[length_crlf_idx + 2:length_crlf_idx + 2 + length])
+            chunked_data.extend(
+                response_body[length_crlf_idx + 2 : length_crlf_idx + 2 + length]
+            )
             if length_crlf_idx + 2 + length + 2 > len(response_body):
                 break
 
-            response_body = response_body[length_crlf_idx + 2 + length + 2:]
-        return chunked_data, False
+            response_body = response_body[length_crlf_idx + 2 + length + 2 :]
+        return bytes(chunked_data), False

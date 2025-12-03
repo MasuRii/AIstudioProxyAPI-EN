@@ -26,7 +26,7 @@ nano .env
 ENABLE_SCRIPT_INJECTION=true
 
 # 使用默认脚本（模型数据直接从脚本解析）
-USERSCRIPT_PATH=browser_utils/more_modles.js
+USERSCRIPT_PATH=browser_utils/more_models.js
 ```
 
 ### 2. 启动容器
@@ -41,31 +41,27 @@ docker compose logs -f | grep "脚本注入"
 
 ## 自定义配置
 
-### 方法 1: 直接替换脚本文件
+### 方法 1: 直接修改默认脚本 (需重建)
 
 ```bash
-# 1. 创建自定义油猴脚本
-cp ../browser_utils/more_modles.js ../browser_utils/my_custom_script.js
+# 1. 编辑默认脚本文件
+nano ../browser_utils/more_models.js
 
-# 2. 编辑脚本文件中的 MODELS_TO_INJECT 数组
-nano ../browser_utils/my_custom_script.js
-
-# 3. 重启容器
-docker compose restart
+# 2. 重建并重启容器
+docker compose up -d --build
 ```
 
 ### 方法 2: 挂载自定义脚本
 
 ```bash
 # 1. 创建自定义脚本文件
-cp ../browser_utils/more_modles.js ../browser_utils/my_script.js
+cp ../browser_utils/more_models.js ../browser_utils/my_script.js
 
 # 2. 编辑 docker-compose.yml，取消注释并修改：
 # volumes:
-#   - ../browser_utils/my_script.js:/app/browser_utils/more_modles.js:ro
+#   - ../browser_utils/my_script.js:/app/browser_utils/more_models.js:ro
 
 # 3. 重启服务
-docker compose down
 docker compose up -d
 ```
 
@@ -76,10 +72,10 @@ docker compose up -d
 echo "USERSCRIPT_PATH=browser_utils/my_custom_script.js" >> .env
 
 # 2. 创建对应的脚本文件
-cp ../browser_utils/more_modles.js ../browser_utils/my_custom_script.js
+cp ../browser_utils/more_models.js ../browser_utils/my_custom_script.js
 
-# 3. 重启容器
-docker compose restart
+# 3. 重启容器以应用配置更改
+docker compose up -d
 ```
 
 ## 验证脚本注入
@@ -104,7 +100,7 @@ docker compose logs -f | grep -E "(脚本注入|script.*inject|模型增强)"
 成功解析 6 个模型从油猴脚本
 添加了 6 个注入的模型到API模型列表
 ✅ 脚本注入成功，模型显示效果与油猴脚本100%一致
-   解析的模型: 👑 Kingfall, ✨ Gemini 2.5 Pro, 🦁 Goldmane...
+   解析的模型: 👑 Kingfall, ✨ Gemini Pro, 🦁 Goldmane...
 ```
 
 ### 进入容器检查
@@ -114,7 +110,7 @@ docker compose logs -f | grep -E "(脚本注入|script.*inject|模型增强)"
 docker compose exec ai-studio-proxy /bin/bash
 
 # 检查脚本文件
-cat /app/browser_utils/more_modles.js
+cat /app/browser_utils/more_models.js
 
 # 检查脚本文件列表
 ls -la /app/browser_utils/*.js
@@ -128,13 +124,15 @@ exit
 ### 脚本注入失败
 
 1. **检查配置文件路径**：
+
    ```bash
    docker compose exec ai-studio-proxy ls -la /app/browser_utils/
    ```
 
 2. **检查文件权限**：
+
    ```bash
-   docker compose exec ai-studio-proxy cat /app/browser_utils/more_modles.js
+   docker compose exec ai-studio-proxy cat /app/browser_utils/more_models.js
    ```
 
 3. **查看详细错误日志**：
@@ -145,9 +143,10 @@ exit
 ### 脚本文件无效
 
 1. **验证 JavaScript 格式**：
+
    ```bash
    # 在主机上验证 JavaScript 语法
-   node -c browser_utils/more_modles.js
+   node -c browser_utils/more_models.js
    ```
 
 2. **检查必需字段**：
@@ -161,8 +160,8 @@ exit
 # 在 .env 文件中设置
 echo "ENABLE_SCRIPT_INJECTION=false" >> .env
 
-# 重启容器
-docker compose restart
+# 重启容器以应用配置更改
+docker compose up -d
 ```
 
 ## 高级配置
@@ -176,8 +175,8 @@ cp your_custom_script.js ../browser_utils/custom_injector.js
 # 2. 在 .env 中修改脚本路径
 echo "USERSCRIPT_PATH=browser_utils/custom_injector.js" >> .env
 
-# 3. 重启容器
-docker compose restart
+# 3. 重启容器以应用配置更改
+docker compose up -d
 ```
 
 ### 多环境配置
@@ -203,7 +202,3 @@ docker compose up -d
 3. **重启生效**: 配置更改后需要重启容器
 4. **日志监控**: 通过日志确认脚本注入状态
 5. **备份配置**: 建议备份工作的配置文件
-
-## 示例配置文件
-
-参考 `model_configs_docker_example.json` 文件了解完整的配置格式和选项。

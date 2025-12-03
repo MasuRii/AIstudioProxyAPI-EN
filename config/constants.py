@@ -3,8 +3,9 @@ Constants Configuration Module
 Contains all fixed constant definitions, such as model names, markers, filenames, etc.
 """
 
-import os
 import json
+import os
+
 from dotenv import load_dotenv
 
 # Load .env file
@@ -47,7 +48,11 @@ STREAM_TIMEOUT_LOG_STATE = {
     "consecutive_timeouts": 0,
     "last_error_log_time": 0.0,  # 使用 time.monotonic()
     "suppress_until_time": 0.0,  # 使用 time.monotonic()
-    "max_initial_errors": int(os.environ.get('STREAM_MAX_INITIAL_ERRORS', '3')),
-    "warning_interval_after_suppress": float(os.environ.get('STREAM_WARNING_INTERVAL_AFTER_SUPPRESS', '60.0')),
-    "suppress_duration_after_initial_burst": float(os.environ.get('STREAM_SUPPRESS_DURATION_AFTER_INITIAL_BURST', '400.0')),
+    "max_initial_errors": int(os.environ.get("STREAM_MAX_INITIAL_ERRORS", "3")),
+    "warning_interval_after_suppress": float(
+        os.environ.get("STREAM_WARNING_INTERVAL_AFTER_SUPPRESS", "60.0")
+    ),
+    "suppress_duration_after_initial_burst": float(
+        os.environ.get("STREAM_SUPPRESS_DURATION_AFTER_INITIAL_BURST", "400.0")
+    ),
 }

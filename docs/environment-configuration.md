@@ -52,24 +52,6 @@ python launch_camoufox.py --debug
 
 **就这么简单！** 无需复杂的命令行参数，所有配置都在 `.env` 文件中预设好了。
 
-## 启动命令对比
-
-### 使用 `.env` 配置前（复杂）
-
-```bash
-# 之前需要这样的复杂命令
-python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper '' --internal-camoufox-proxy 'http://127.0.0.1:7890'
-```
-
-### 使用 `.env` 配置后（简单）
-
-```bash
-# 现在只需要这样
-python launch_camoufox.py --headless
-```
-
-**配置一次，终身受益！** 所有复杂的参数都在 `.env` 文件中预设，启动命令变得极其简洁。
-
 ## 主要配置项
 
 ### 服务端口配置
@@ -79,6 +61,9 @@ python launch_camoufox.py --headless
 PORT=8000
 DEFAULT_FASTAPI_PORT=2048
 DEFAULT_CAMOUFOX_PORT=9222
+
+# Camoufox WebSocket 端点捕获超时（秒）
+ENDPOINT_CAPTURE_TIMEOUT=45
 
 # 流式代理服务配置
 STREAM_PORT=3120
@@ -123,6 +108,19 @@ AUTH_SAVE_TIMEOUT=30
 
 # 自动确认登录
 AUTO_CONFIRM_LOGIN=true
+
+# 仅收集当前用户消息中的附件（true/false）
+ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=false
+```
+
+### 浏览器配置
+
+```env
+# Camoufox WebSocket 端点
+# CAMOUFOX_WS_ENDPOINT=ws://127.0.0.1:9222
+
+# 启动模式 (normal, headless, virtual_display, direct_debug_no_browser)
+LAUNCH_MODE=normal
 ```
 
 ### API 默认参数
@@ -142,9 +140,10 @@ DEFAULT_STOP_SEQUENCES=["用户:"]
 
 # 是否在处理请求时自动打开并使用 "URL Context" 功能
 # 参考: https://ai.google.dev/gemini-api/docs/url-context
-ENABLE_URL_CONTEXT=true
+ENABLE_URL_CONTEXT=false
 
-# 是否默认启用 "指定思考预算" 功能 (true/false),不启用时模型一般将自行决定思考预算
+# 是否默认启用 "指定思考预算" 功能 (true/false)
+# 不启用时模型一般将自行决定思考预算
 # 当 API 请求中未提供 reasoning_effort 参数时,将使用此值。
 ENABLE_THINKING_BUDGET=false
 
@@ -169,6 +168,28 @@ POLLING_INTERVAL_STREAM=180
 
 # 静默超时 (毫秒)
 SILENCE_TIMEOUT_MS=60000
+
+# 初始等待时间 (毫秒)
+INITIAL_WAIT_MS_BEFORE_POLLING=500
+
+# 页面操作超时 (毫秒)
+POST_SPINNER_CHECK_DELAY_MS=500
+FINAL_STATE_CHECK_TIMEOUT_MS=1500
+POST_COMPLETION_BUFFER=700
+
+# 清理聊天相关超时 (毫秒)
+CLEAR_CHAT_VERIFY_TIMEOUT_MS=5000
+CLEAR_CHAT_VERIFY_INTERVAL_MS=2000
+
+# 点击和剪贴板操作超时 (毫秒)
+CLICK_TIMEOUT_MS=3000
+CLIPBOARD_READ_TIMEOUT_MS=3000
+
+# 元素等待超时 (毫秒)
+WAIT_FOR_ELEMENT_TIMEOUT_MS=10000
+
+# 流相关配置
+PSEUDO_STREAM_DELAY=0.01
 ```
 
 ### GUI 启动器配置
@@ -184,7 +205,7 @@ GUI_DEFAULT_STREAM_PORT=3120
 GUI_DEFAULT_HELPER_ENDPOINT=
 ```
 
-### 脚本注入配置 v3.0 🆕
+### 脚本注入配置
 
 ```env
 # 是否启用油猴脚本注入功能
@@ -192,31 +213,18 @@ ENABLE_SCRIPT_INJECTION=true
 
 # 油猴脚本文件路径（相对于项目根目录）
 # 模型数据直接从此脚本文件中解析，无需额外配置文件
-USERSCRIPT_PATH=browser_utils/more_modles.js
+USERSCRIPT_PATH=browser_utils/more_models.js
 ```
 
-**脚本注入功能 v3.0 重大升级**：
-- **🚀 Playwright 原生拦截**: 使用 Playwright 路由拦截，100% 可靠性
-- **🔄 双重保障机制**: 网络拦截 + 脚本注入，确保万无一失
-- **📝 直接脚本解析**: 从油猴脚本中自动解析模型列表，无需配置文件
-- **🔗 前后端同步**: 前端和后端使用相同的模型数据源
-- **⚙️ 零配置维护**: 脚本更新时自动获取新的模型列表
-- **🔄 自动适配**: 油猴脚本更新时无需手动更新配置
+**功能特点**：
 
-**与 v1.x 的主要区别**：
-- 移除了 `MODEL_CONFIG_PATH` 配置项（已废弃）
-- 不再需要手动维护模型配置文件
-- 工作机制从"配置文件 + 脚本注入"改为"直接脚本解析 + 网络拦截"
+- **Playwright 原生拦截**: 使用 Playwright 路由拦截，确保可靠性
+- **双重保障机制**: 网络拦截 + 脚本注入
+- **直接脚本解析**: 从油猴脚本中自动解析模型列表，无需配置文件
+- **前后端同步**: 前端和后端使用相同的模型数据源
+- **零配置维护**: 脚本更新时自动获取新的模型列表
 
 详细使用方法请参见 [脚本注入指南](script_injection_guide.md)。
-
-## 配置优先级
-
-配置项的优先级顺序（从高到低）：
-
-1. **命令行参数** - 直接传递给程序的参数
-2. **环境变量** - 系统环境变量或 `.env` 文件中的变量
-3. **默认值** - 代码中定义的默认值
 
 ## 常见配置场景
 
@@ -263,10 +271,10 @@ DEFAULT_CAMOUFOX_PORT=9223
 STREAM_PORT=3121
 ```
 
-### 场景 5：启用脚本注入 v3.0 🆕
+### 场景 5：启用脚本注入
 
 ```env
-# 启用脚本注入功能 v3.0
+# 启用脚本注入功能
 ENABLE_SCRIPT_INJECTION=true
 
 # 使用自定义脚本（模型数据直接从脚本解析）
@@ -279,32 +287,33 @@ DEBUG_LOGS_ENABLED=true
 STREAM_PORT=3120
 ```
 
-**v3.0 脚本注入优势**：
-- 使用 Playwright 原生网络拦截，无时序问题
-- 前后端模型数据100%同步
-- 零配置维护，脚本更新自动生效
-
 ## 配置优先级
 
 项目采用分层配置系统，按以下优先级顺序确定最终配置：
 
 1. **命令行参数** (最高优先级)
+
    ```bash
-   # 命令行参数会覆盖 .env 文件中的设置
+   # 命令行参数会覆盖环境变量和 .env 设置
    python launch_camoufox.py --headless --server-port 3048
    ```
 
-2. **`.env` 文件配置** (推荐)
+2. **系统环境变量**
+
+   ```bash
+   # 系统环境变量会覆盖 .env 文件中的设置
+   export DEFAULT_FASTAPI_PORT=2048
+   ```
+
+3. **`.env` 文件配置** (推荐)
+
    ```env
    # .env 文件中的配置
    DEFAULT_FASTAPI_PORT=2048
    ```
 
-3. **系统环境变量** (最低优先级)
-   ```bash
-   # 系统环境变量
-   export DEFAULT_FASTAPI_PORT=2048
-   ```
+4. **默认值** (最低优先级)
+   代码中定义的默认值。
 
 ### 使用建议
 

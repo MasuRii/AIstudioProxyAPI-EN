@@ -1,18 +1,7 @@
-import asyncio
-import multiprocessing
-import random
-import time
-import json
-from typing import List, Optional, Dict, Any, Union, AsyncGenerator, Tuple, Callable, Set
 import os
-import traceback
-from contextlib import asynccontextmanager
-import sys
-import platform
-import logging
-import logging.handlers
-import socket # 保留 socket 以便在 __main__ 中进行简单的直接运行提示
-from asyncio import Queue, Lock, Future, Task, Event
+from typing import (
+    Any,
+)
 
 # Add: Import load_dotenv
 from dotenv import load_dotenv
@@ -20,18 +9,74 @@ from dotenv import load_dotenv
 # Add: Load .env file before other imports
 load_dotenv()
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
-from fastapi import WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
-from playwright.async_api import Page as AsyncPage, Browser as AsyncBrowser, Playwright as AsyncPlaywright, Error as PlaywrightAsyncError, expect as expect_async, BrowserContext as AsyncBrowserContext, Locator, TimeoutError
-from playwright.async_api import async_playwright
-from urllib.parse import urljoin, urlparse
-import uuid
-import datetime
-import aiohttp
-import stream
-import queue
+
+# --- 导入集中状态模块 ---
+from api_utils.server_state import state
+
+# --- 向后兼容：通过 __getattr__ 将属性访问转发到 state 对象 ---
+# 这允许现有代码继续使用 `import server; server.page_instance`
+# 同时保持状态的集中管理
+
+# 定义需要转发到 state 的属性名称
+_STATE_ATTRS = {
+    # Stream Queue
+    "STREAM_QUEUE",
+    "STREAM_PROCESS",
+    # Playwright/Browser State
+    "playwright_manager",
+    "browser_instance",
+    "page_instance",
+    "is_playwright_ready",
+    "is_browser_connected",
+    "is_page_ready",
+    "is_initializing",
+    # Proxy Configuration
+    "PLAYWRIGHT_PROXY_SETTINGS",
+    # Model State
+    "global_model_list_raw_json",
+    "parsed_model_list",
+    "model_list_fetch_event",
+    "current_ai_studio_model_id",
+    "model_switching_lock",
+    "excluded_model_ids",
+    # Request Processing State
+    "request_queue",
+    "processing_lock",
+    "worker_task",
+    # Parameter Cache
+    "page_params_cache",
+    "params_cache_lock",
+    # Debug Logging State
+    "console_logs",
+    "network_log",
+    # Logging
+    "logger",
+    "log_ws_manager",
+    # Control Flags
+    "should_exit",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Forward attribute access to the state object for backward compatibility."""
+    if name in _STATE_ATTRS:
+        return getattr(state, name)
+    raise AttributeError(f"module 'server' has no attribute '{name}'")
+
+
+def __setattr__(name: str, value: Any) -> None:
+    """Forward attribute assignment to the state object for backward compatibility."""
+    if name in _STATE_ATTRS:
+        setattr(state, name, value)
+    else:
+        # For non-state attributes, use the module's __dict__
+        globals()[name] = value
+
+
+def clear_debug_logs() -> None:
+    """Clear console and network logs (called after each request)."""
+    state.clear_debug_logs()
+
 
 # --- Config Module Import ---
 from config import (
@@ -75,17 +120,7 @@ from browser_utils import (
 
 # --- API Utils Module Import ---
 from api_utils import (
-    generate_sse_chunk,
-    generate_sse_stop_chunk, 
-    generate_sse_error_chunk,
-    use_helper_get_response,
-    use_stream_response,
-    clear_stream_queue,
-    prepare_combined_prompt,
-    validate_chat_request,
-    _process_request_refactored,
     create_app,
-    queue_worker
 )
 
 # --- stream queue ---
@@ -180,11 +215,8 @@ async def quota_watchdog():
 # --- Main Guard ---
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.environ.get("PORT", 2048))
     uvicorn.run(
-        "server:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        access_log=False
+        "server:app", host="0.0.0.0", port=port, log_level="info", access_log=False
     )

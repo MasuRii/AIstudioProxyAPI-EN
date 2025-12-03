@@ -173,7 +173,7 @@ curl http://127.0.0.1:2048/v1/models
 # Test chat (non-streaming)
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"gemini-2.5-pro","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"gemini-3-pro-preview","messages":[{"role":"user","content":"Hello"}]}'
 
 # Test streaming chat
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \

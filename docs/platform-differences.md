@@ -78,6 +78,7 @@ $env:Path += ";$env:APPDATA\Python\Scripts"
 #### 1. 虚拟环境激活
 
 **PowerShell**:
+
 ```powershell
 # Poetry Shell
 poetry shell
@@ -87,6 +88,7 @@ poetry run python gui_launcher.py
 ```
 
 **CMD**:
+
 ```cmd
 poetry shell
 ```
@@ -96,11 +98,12 @@ poetry shell
 Windows 使用反斜杠 `\`，但 Python 代码中使用 `/` 或 `os.path.join()` 自动处理。
 
 **配置文件路径**:
+
 ```env
 # .env 文件中使用正斜杠或双反斜杠
-USERSCRIPT_PATH=browser_utils/more_modles.js
+USERSCRIPT_PATH=browser_utils/more_models.js
 # 或
-USERSCRIPT_PATH=browser_utils\\more_modles.js
+USERSCRIPT_PATH=browser_utils\\more_models.js
 ```
 
 #### 3. uvloop 不可用
@@ -144,6 +147,16 @@ taskkill /PID <进程ID> /F
 3. 设置 `LongPathsEnabled` 为 `1`
 4. 重启计算机
 
+#### 7. 时区支持 (tzdata)
+
+Windows 不像 Linux/macOS 那样内置 IANA 时区数据库。本项目依赖 `tzdata` 包来提供时区支持。
+
+- **自动安装**: Poetry 会根据 `pyproject.toml` 自动安装 `tzdata`。
+- **故障排除**: 如果遇到 `ZoneInfoNotFoundError` 错误，请检查 `tzdata` 是否已安装：
+  ```powershell
+  poetry run pip show tzdata
+  ```
+
 ### 推荐终端
 
 - **Windows Terminal** (推荐): 现代化、支持多标签页
@@ -155,6 +168,7 @@ taskkill /PID <进程ID> /F
 **问题**: `poetry` 命令未找到
 
 **解决方案**:
+
 ```powershell
 # 检查 Poetry 安装路径
 $env:APPDATA\Python\Scripts\poetry --version
@@ -166,6 +180,7 @@ $env:APPDATA\Python\Scripts\poetry --version
 **问题**: SSL 证书错误
 
 **解决方案**:
+
 ```powershell
 # 临时禁用 SSL 验证（不推荐用于生产环境）
 $env:PYTHONHTTPSVERIFY = "0"
@@ -242,6 +257,7 @@ softwareupdate --install-rosetta
 ```
 
 **确认架构**:
+
 ```bash
 # 查看 Python 架构
 python3 -c "import platform; print(platform.machine())"
@@ -250,6 +266,7 @@ python3 -c "import platform; print(platform.machine())"
 ```
 
 **使用 x86_64 版本** (如果遇到兼容性问题):
+
 ```bash
 # 在 Rosetta 2 下运行
 arch -x86_64 python3 script.py
@@ -309,6 +326,7 @@ kill -9 <PID>
 **问题**: `command not found: poetry`
 
 **解决方案**:
+
 ```bash
 # 添加 Poetry 到 PATH
 export PATH="$HOME/.local/bin:$PATH"
@@ -325,6 +343,7 @@ source ~/.bash_profile
 **问题**: SSL 证书错误
 
 **解决方案**:
+
 ```bash
 # 安装证书
 /Applications/Python\ 3.11/Install\ Certificates.command
@@ -343,17 +362,20 @@ source ~/.bash_profile
 ### 安装 Python
 
 **Ubuntu/Debian**:
+
 ```bash
 sudo apt update
 sudo apt install python3.11 python3.11-venv python3.11-dev
 ```
 
 **Fedora**:
+
 ```bash
 sudo dnf install python3.11 python3.11-devel
 ```
 
 **Arch Linux**:
+
 ```bash
 sudo pacman -S python
 ```
@@ -472,6 +494,7 @@ sudo setcap 'cap_net_bind_service=+ep' $(which python3)
 #### 4. 防火墙配置
 
 **Ubuntu/Debian (ufw)**:
+
 ```bash
 sudo ufw allow 2048/tcp
 sudo ufw allow 3120/tcp
@@ -479,6 +502,7 @@ sudo ufw reload
 ```
 
 **Fedora/RHEL (firewalld)**:
+
 ```bash
 sudo firewall-cmd --permanent --add-port=2048/tcp
 sudo firewall-cmd --permanent --add-port=3120/tcp
@@ -486,6 +510,7 @@ sudo firewall-cmd --reload
 ```
 
 **iptables**:
+
 ```bash
 sudo iptables -A INPUT -p tcp --dport 2048 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 3120 -j ACCEPT
@@ -515,6 +540,7 @@ WantedBy=multi-user.target
 ```
 
 **启用服务**:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable aistudio-proxy
@@ -546,6 +572,7 @@ sudo setenforce 0
 **问题**: `libgbm.so.1: cannot open shared object file`
 
 **解决方案**:
+
 ```bash
 sudo apt-get install libgbm1
 # 或
@@ -555,6 +582,7 @@ sudo dnf install libgbm
 **问题**: Playwright 浏览器安装失败
 
 **解决方案**:
+
 ```bash
 # 使用 Playwright 自动安装依赖
 playwright install-deps
@@ -597,6 +625,7 @@ docker compose up -d
 - 💡 **提示**: 分配足够的内存和 CPU
 
 **Docker Desktop 配置**:
+
 - 内存: 至少 4GB
 - CPU: 至少 2 核
 
@@ -608,6 +637,7 @@ docker compose up -d
 - 💡 **提示**: 确保启用 WSL 2
 
 **WSL 2 配置**:
+
 ```bash
 # 检查 WSL 版本
 wsl --list --verbose
@@ -628,47 +658,23 @@ volumes:
 ```
 
 **步骤**:
-1. 在主机上运行调试模式获取认证
-2. 将 `auth_profiles/active/` 目录挂载到容器
-3. 重启容器
+
+1. 在主机上运行调试模式获取认证。
+2. 确保 `auth_profiles` 目录（包含 `active/` 子目录）已正确挂载到容器。
+3. 重启容器。
 
 ---
 
-## 性能对比
+## 性能概览
 
-### 启动时间
+不同平台的性能表现会有所差异，主要取决于底层架构和虚拟化开销：
 
-| 平台 | 环境 | 平均启动时间 | 说明 |
-|------|------|-------------|------|
-| Linux | 原生 | 15-25 秒 | 最快 |
-| macOS | 原生 (Intel) | 20-30 秒 | 标准 |
-| macOS | 原生 (Apple Silicon) | 18-28 秒 | 接近 Linux |
-| Windows | 原生 | 25-35 秒 | 稍慢 |
-| Linux | Docker | 20-30 秒 | 接近原生 |
-| macOS | Docker | 30-45 秒 | 虚拟机开销 |
-| Windows | Docker (WSL2) | 35-50 秒 | WSL2 + 虚拟机开销 |
-
-### 响应延迟
-
-| 平台 | 首字节时间 (TTFB) | 流式延迟 | 说明 |
-|------|-------------------|---------|------|
-| Linux | 200-500ms | <50ms | 最优 |
-| macOS | 250-600ms | <80ms | 良好 |
-| Windows | 300-700ms | <100ms | 可接受 |
-| Docker (Linux) | 250-600ms | <80ms | 接近原生 |
-| Docker (macOS) | 400-900ms | <150ms | 虚拟机开销 |
-| Docker (Windows) | 500-1000ms | <200ms | 多层虚拟化 |
-
-### 内存占用
-
-| 平台 | 基础占用 | 浏览器占用 | 总计 | 说明 |
-|------|---------|-----------|------|------|
-| Linux | ~150MB | ~400MB | ~550MB | 最低 |
-| macOS | ~180MB | ~450MB | ~630MB | 标准 |
-| Windows | ~200MB | ~500MB | ~700MB | 稍高 |
-| Docker (Linux) | ~200MB | ~450MB | ~650MB | 容器开销 |
-| Docker (macOS) | ~300MB | ~600MB | ~900MB | 虚拟机开销 |
-| Docker (Windows) | ~350MB | ~650MB | ~1000MB | 多层开销 |
+1.  **Linux (原生)**: 通常提供最佳性能和最低延迟，受益于 `uvloop` 支持和高效的进程管理。
+2.  **macOS**: 性能良好，Apple Silicon 芯片表现优异。
+3.  **Windows**: 由于缺乏 `uvloop` 支持以及文件系统差异，性能略低于 Linux/macOS，但完全满足日常使用。
+4.  **Docker**:
+    - **Linux**: 性能接近原生。
+    - **macOS/Windows**: 由于 Docker Desktop 使用虚拟机，会有额外的 CPU 和内存开销，启动时间和响应延迟可能略高。
 
 ---
 
@@ -701,8 +707,5 @@ volumes:
 - [故障排除指南](troubleshooting.md) - 平台特定问题
 
 ---
-
-**最后更新**: 2024年11月  
-**当前版本**: v0.6.0
 
 如有平台特定问题，请查看故障排除指南或提交 Issue。

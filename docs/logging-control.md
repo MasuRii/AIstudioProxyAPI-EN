@@ -150,11 +150,19 @@ python launch_camoufox.py --headless
 - `logs/launch_app.log`: 启动器日志
 - 文件日志通常包含比终端或 Web UI 更详细的信息
 
+### 实时日志 (WebSocket)
+
+除了文件和终端，您还可以通过 WebSocket 获取实时的日志流。这在 Web UI 的右侧边栏中已有应用。
+
+- **端点**: `/ws/logs` (例如 `ws://127.0.0.1:2048/ws/logs`)
+- **功能**: 实时推送主服务器的 `INFO` 及以上级别的日志
+- **格式**: 纯文本日志行，格式与 `app.log` 保持一致
+- **用途**: 供 Web UI 显示或集成到外部监控系统中
+
 ### Web UI 日志
 
-- Web UI 右侧边栏实时显示来自主服务器的 `INFO` 及以上级别的日志
-- 通过 WebSocket (`/ws/logs`) 连接获取实时日志
-- 包含日志级别、时间戳和消息内容
+- Web UI 右侧边栏集成了上述 WebSocket 功能
+- 实时显示来自主服务器的日志
 - 提供清理日志的按钮
 
 ### 终端日志
@@ -258,5 +266,6 @@ python launch_camoufox.py --headless
 ## 下一步
 
 日志控制配置完成后，请参考：
+
 - [故障排除指南](troubleshooting.md)
 - [高级配置指南](advanced-configuration.md)

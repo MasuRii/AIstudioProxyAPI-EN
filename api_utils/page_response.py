@@ -1,12 +1,21 @@
-from fastapi import HTTPException
-from playwright.async_api import Page as AsyncPage
-from playwright.async_api import expect as expect_async, Error as PlaywrightAsyncError
 import asyncio
+import logging
+from typing import Callable
+
+from playwright.async_api import Error as PlaywrightAsyncError
+from playwright.async_api import Page as AsyncPage
+from playwright.async_api import expect as expect_async
 
 from config import RESPONSE_CONTAINER_SELECTOR, RESPONSE_TEXT_SELECTOR
+from logging_utils import set_request_id
 
 
-async def locate_response_elements(page: AsyncPage, req_id: str, logger, check_client_disconnected) -> None:
+async def locate_response_elements(
+    page: AsyncPage,
+    req_id: str,
+    logger: logging.Logger,
+    check_client_disconnected: Callable[[str], bool],
+) -> None:
     """定位响应容器与文本元素，包含超时与错误处理。"""
     logger.info(f"[{req_id}] Locating response elements...")
     response_container = page.locator(RESPONSE_CONTAINER_SELECTOR).last

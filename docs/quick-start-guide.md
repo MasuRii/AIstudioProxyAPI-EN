@@ -188,7 +188,7 @@ SERVER_LOG_LEVEL=INFO
 
 ```bash
 # 启动调试模式（会打开浏览器窗口）
-python launch_camoufox.py --debug
+poetry run python launch_camoufox.py --debug
 ```
 
 ### 认证步骤
@@ -218,10 +218,11 @@ python launch_camoufox.py --debug
 ### 方式 1: GUI 启动器（推荐新手）
 
 ```bash
-python gui_launcher.py
+poetry run python gui_launcher.py
 ```
 
 **特点**:
+
 - ✅ 图形界面，直观易用
 - ✅ 可视化配置选项
 - ✅ 实时查看日志
@@ -232,26 +233,26 @@ python gui_launcher.py
 **无头模式**（推荐，后台运行浏览器）:
 
 ```bash
-python launch_camoufox.py --headless
+poetry run python launch_camoufox.py --headless
 ```
 
 **普通模式**（显示浏览器窗口）:
 
 ```bash
-python launch_camoufox.py
+poetry run python launch_camoufox.py
 ```
 
 **虚拟显示模式**（Linux 无显示环境）:
 
 ```bash
-python launch_camoufox.py --virtual-display
+poetry run python launch_camoufox.py --virtual-display
 ```
 
 ### 方式 3: 直接启动 FastAPI (开发调试)
 
 ```bash
 # 仅启动 API 服务器（不启动浏览器）
-python -m uvicorn server:app --host 0.0.0.0 --port 2048
+poetry run python -m uvicorn server:app --host 0.0.0.0 --port 2048
 ```
 
 **注意**: 这种方式需要手动配置 `CAMOUFOX_WS_ENDPOINT` 环境变量。
@@ -292,7 +293,7 @@ curl http://127.0.0.1:2048/v1/models
   "object": "list",
   "data": [
     {
-      "id": "gemini-2.5-pro",
+      "id": "gemini-1.5-pro",
       "object": "model",
       "created": 1699999999,
       "owned_by": "google"
@@ -310,7 +311,7 @@ curl http://127.0.0.1:2048/v1/models
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-2.5-pro",
+    "model": "gemini-1.5-pro",
     "messages": [
       {"role": "user", "content": "Hello, how are you?"}
     ],
@@ -324,7 +325,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-2.5-pro",
+    "model": "gemini-1.5-pro",
     "messages": [
       {"role": "user", "content": "Tell me a short story"}
     ],
@@ -341,6 +342,7 @@ http://127.0.0.1:2048
 ```
 
 **Web UI 功能**:
+
 - 💬 实时聊天测试
 - 📊 服务状态监控
 - 🔑 API 密钥管理
@@ -383,7 +385,7 @@ PORT=3048
 rm -rf auth_profiles/active/*.json
 
 # 2. 重新运行调试模式认证
-python launch_camoufox.py --debug
+poetry run python launch_camoufox.py --debug
 
 # 3. 重新登录 Google 账号
 ```
@@ -400,11 +402,11 @@ Error downloading Camoufox binary
 
 ```bash
 # 方案 A: 使用项目提供的下载脚本
-python fetch_camoufox_data.py
+poetry run python fetch_camoufox_data.py
 
 # 方案 B: 手动下载（需要代理）
 export HTTPS_PROXY=http://127.0.0.1:7890
-camoufox fetch
+poetry run camoufox fetch
 
 # 方案 C: 使用不带 geoip 的版本
 pip install camoufox --no-deps
@@ -495,8 +497,5 @@ ls -la auth_profiles/active/
 全部勾选？🎊 恭喜您已经掌握了基本用法！
 
 ---
-
-**最后更新**: 2024年11月  
-**当前版本**: v0.6.0
 
 祝您使用愉快！如有问题，欢迎反馈。

@@ -1,7 +1,7 @@
 import asyncio
-import multiprocessing
 
 from stream import main
+
 
 def start(*args, **kwargs):
     """

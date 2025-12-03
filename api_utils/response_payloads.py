@@ -1,5 +1,5 @@
 import time
-from typing import Dict
+from typing import Any, Dict, Optional
 
 from config import CHAT_COMPLETION_ID_PREFIX
 
@@ -7,26 +7,28 @@ from config import CHAT_COMPLETION_ID_PREFIX
 def build_chat_completion_response_json(
     req_id: str,
     model_name: str,
-    message_payload: Dict,
+    message_payload: Dict[str, Any],
     finish_reason: str,
-    usage_stats: Dict,
+    usage_stats: Dict[str, int],
     system_fingerprint: str = "camoufox-proxy",
-    seed: int = None,
-    response_format: Dict = None,
-) -> Dict:
+    seed: Optional[int] = None,
+    response_format: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """构造 OpenAI 兼容的非流式 chat.completion JSON 响应。"""
     created_ts = int(time.time())
-    resp: Dict = {
+    resp: Dict[str, Any] = {
         "id": f"{CHAT_COMPLETION_ID_PREFIX}{req_id}-{created_ts}",
         "object": "chat.completion",
         "created": created_ts,
         "model": model_name,
-        "choices": [{
-            "index": 0,
-            "message": message_payload,
-            "finish_reason": finish_reason,
-            "native_finish_reason": finish_reason,
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "message": message_payload,
+                "finish_reason": finish_reason,
+                "native_finish_reason": finish_reason,
+            }
+        ],
         "usage": usage_stats,
         "system_fingerprint": system_fingerprint,
     }

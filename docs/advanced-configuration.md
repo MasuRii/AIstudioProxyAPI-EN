@@ -12,11 +12,11 @@
    - 明确指定代理：`--internal-camoufox-proxy 'http://127.0.0.1:7890'`
    - 明确禁用代理：`--internal-camoufox-proxy ''`
 2. **`UNIFIED_PROXY_CONFIG` 环境变量** (推荐，.env 文件配置)
-3. **`HTTP_PROXY` 环境变量**
-4. **`HTTPS_PROXY` 环境变量**
-5. **系统代理设置** (Linux 下的 gsettings，最低优先级)
+3. **`HTTP_PROXY` / `HTTPS_PROXY` 环境变量**
+4. **系统代理设置** (Linux 下的 gsettings，最低优先级)
 
 **推荐配置方式**:
+
 ```env
 # .env 文件中统一配置代理
 UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
@@ -33,6 +33,7 @@ UNIFIED_PROXY_CONFIG=
 ### 模式1: 优先使用集成的流式代理 (默认推荐)
 
 **推荐使用 .env 配置方式**:
+
 ```env
 # .env 文件配置
 DEFAULT_FASTAPI_PORT=2048
@@ -48,6 +49,7 @@ python launch_camoufox.py --headless
 python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper '' --internal-camoufox-proxy ''
 ```
 
+```bash
 # 启用统一代理配置（同时应用于浏览器和流式代理）
 python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper '' --internal-camoufox-proxy 'http://127.0.0.1:7890'
 ```
@@ -108,7 +110,7 @@ python launch_camoufox.py --headless --server-port 2048 --stream-port 0 --helper
 
 ```bash
 openssl genrsa -out certs/ca.key 2048
-openssl req -new -x509 -days 3650 -key certs/ca.key -out certs/ca.crt -subj "/C=CN/ST=Shanghai/L=Shanghai/O=AiStudioProxyHelper/OU=CA/CN=AiStudioProxyHelper CA/emailAddress=ca@example.com"
+openssl req -new -x509 -days 3650 -key certs/ca.key -out certs/ca.crt -subj "/C=US/ST=State/L=City/O=AiStudioProxyHelper/OU=CA/CN=AiStudioProxyHelper CA/emailAddress=ca@example.com"
 openssl rsa -in certs/ca.key -out certs/ca.key
 ```
 
@@ -128,177 +130,70 @@ openssl rsa -in certs/ca.key -out certs/ca.key
 项目根目录下的 `excluded_models.txt` 文件可用于从 `/v1/models` 端点返回的列表中排除特定的模型 ID。
 
 每行一个模型ID，例如：
+
 ```
 gemini-1.0-pro
 gemini-1.0-pro-vision
 deprecated-model-id
 ```
 
-## 脚本注入高级配置 🆕
+## 脚本注入配置
 
-### 概述
+脚本注入功能允许您动态挂载油猴脚本来增强 AI Studio 的模型列表。该功能使用 Playwright 原生网络拦截技术，确保可靠性。
 
-脚本注入功能允许您动态挂载油猴脚本来增强 AI Studio 的模型列表。该功能使用 Playwright 原生网络拦截技术，确保 100% 可靠性。
+详细的使用指南、工作原理和故障排除请参考 [脚本注入指南](script_injection_guide.md)。
 
-### 工作原理
-
-1. **双重拦截机制**：
-   - **Playwright 路由拦截**：在网络层面直接拦截和修改模型列表响应
-   - **JavaScript 脚本注入**：作为备用方案，确保万无一失
-
-2. **自动模型解析**：
-   - 从油猴脚本中自动解析 `MODELS_TO_INJECT` 数组
-   - 前端和后端使用相同的模型数据源
-   - 无需手动维护模型配置文件
-
-### 高级配置选项
-
-#### 自定义脚本路径
+### 关键配置
 
 ```env
-# 使用自定义脚本文件
+# 启用脚本注入功能
+ENABLE_SCRIPT_INJECTION=true
+
+# 指定自定义脚本路径 (默认为 browser_utils/more_models.js)
 USERSCRIPT_PATH=custom_scripts/my_enhanced_script.js
 ```
 
-#### 自定义脚本配置
+### 调试
+
+如果遇到问题，可以启用详细日志：
 
 ```env
-# 使用自定义脚本文件（模型数据直接从脚本解析）
-USERSCRIPT_PATH=configs/production_script.js
-```
-
-#### 调试模式
-
-```env
-# 启用详细的脚本注入日志
 DEBUG_LOGS_ENABLED=true
-ENABLE_SCRIPT_INJECTION=true
 ```
 
-### 自定义脚本开发
+## 功能特性开关 (Feature Flags)
 
-#### 脚本格式要求
+以下环境变量可用于启用实验性功能或调整特定行为：
 
-您的自定义脚本必须包含 `MODELS_TO_INJECT` 数组：
+### 思考模型预算控制
 
-```javascript
-const MODELS_TO_INJECT = [
-    {
-        name: 'models/your-custom-model',
-        displayName: '🚀 Your Custom Model',
-        description: 'Custom model description'
-    },
-    // 更多模型...
-];
+```env
+# 启用思考模型的 Token 预算控制
+ENABLE_THINKING_BUDGET=true
+# 设置默认思考预算 (Token数)
+DEFAULT_THINKING_BUDGET=8192
 ```
 
-#### 脚本模型数组格式
+### 联网搜索增强
 
-```javascript
-const MODELS_TO_INJECT = [
-    {
-        name: 'models/custom-model-1',
-        displayName: `🎯 Custom Model 1 (Script ${SCRIPT_VERSION})`,
-        description: `First custom model injected by script ${SCRIPT_VERSION}`
-    },
-    {
-        name: 'models/custom-model-2',
-        displayName: `⚡ Custom Model 2 (Script ${SCRIPT_VERSION})`,
-        description: `Second custom model injected by script ${SCRIPT_VERSION}`
-    }
-];
-```
+```env
+# 启用 Google 搜索工具 (如果模型支持)
+ENABLE_GOOGLE_SEARCH=true
 ```
 
-### 网络拦截技术细节
+### URL 上下文获取
 
-#### Playwright 路由拦截
-
-```javascript
-// 系统会自动设置类似以下的路由拦截
-await context.route("**/*", async (route) => {
-    const request = route.request();
-    if (request.url().includes('alkalimakersuite') &&
-        request.url().includes('ListModels')) {
-        // 拦截并修改模型列表响应
-        const response = await route.fetch();
-        const modifiedBody = await modifyModelListResponse(response);
-        await route.fulfill({ response, body: modifiedBody });
-    } else {
-        await route.continue_();
-    }
-});
+```env
+# 允许解析 Prompt 中的 URL 内容
+ENABLE_URL_CONTEXT=true
 ```
 
-#### 响应修改流程
+### 附件处理优化
 
-1. **请求识别**：检测包含 `alkalimakersuite` 和 `ListModels` 的请求
-2. **响应获取**：获取原始模型列表响应
-3. **数据解析**：解析 JSON 响应并处理反劫持前缀
-4. **模型注入**：将自定义模型注入到响应中
-5. **响应返回**：返回修改后的响应给浏览器
-
-### 故障排除
-
-#### 脚本注入失败
-
-1. **检查脚本文件**：
-   ```bash
-   # 验证脚本文件存在且可读
-   ls -la browser_utils/more_modles.js
-   cat browser_utils/more_modles.js | head -20
-   ```
-
-2. **检查日志输出**：
-   ```bash
-   # 查看脚本注入相关日志
-   python launch_camoufox.py --debug | grep -i "script\|inject"
-   ```
-
-3. **验证配置**：
-   ```bash
-   # 检查环境变量配置
-   grep SCRIPT .env
-   ```
-
-#### 模型未显示
-
-1. **前端检查**：在浏览器开发者工具中查看是否有 JavaScript 错误
-2. **后端检查**：查看 API 响应是否包含注入的模型
-3. **网络检查**：确认网络拦截是否正常工作
-
-### 性能优化
-
-#### 脚本缓存
-
-系统会自动缓存解析的模型列表，避免重复解析：
-
-```python
-# 系统内部缓存机制
-if not hasattr(self, '_cached_models'):
-    self._cached_models = parse_userscript_models(script_content)
-return self._cached_models
+```env
+# 仅收集当前用户消息中的附件 (忽略历史消息中的附件，减少 Token 消耗)
+ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=true
 ```
-
-#### 网络拦截优化
-
-- 只拦截必要的请求，其他请求直接通过
-- 使用高效的 JSON 解析和序列化
-- 最小化响应修改的开销
-
-### 安全考虑
-
-#### 脚本安全
-
-- 脚本在受控的浏览器环境中执行
-- 不会影响主机系统安全
-- 建议只使用可信的脚本源
-
-#### 网络安全
-
-- 网络拦截仅限于特定的模型列表请求
-- 不会拦截或修改其他敏感请求
-- 所有修改都在本地进行，不会发送到外部服务器
 
 ## GUI 启动器高级功能
 
@@ -325,8 +220,7 @@ GUI 提供端口进程管理功能：
 
 ```bash
 # 使用环境变量配置代理（不推荐，建议明确指定）
-export HTTP_PROXY=http://127.0.0.1:7890
-export HTTPS_PROXY=http://127.0.0.1:7890
+export UNIFIED_PROXY_CONFIG=http://127.0.0.1:7890
 python launch_camoufox.py --headless --server-port 2048 --stream-port 3120 --helper ''
 ```
 
@@ -351,10 +245,12 @@ API 请求中的模型参数（如 `temperature`, `max_output_tokens`, `top_p`, 
 ## 下一步
 
 高级配置完成后，请参考：
+
 - [脚本注入指南](script_injection_guide.md) - 详细的脚本注入功能使用说明
 - [日志控制指南](logging-control.md)
 - [故障排除指南](troubleshooting.md)
-## Toolcall / MCP 兼容使用说明（OpenAI Completions 协议）
+
+## Toolcall / MCP 兼容性说明
 
 - 请求结构需遵循 OpenAI Completions 兼容格式：
   - `messages`: 标准消息数组，含 `role` 与 `content`
@@ -408,5 +304,6 @@ for line in resp.iter_lines():
 ```
 
 ### 行为说明
+
 - 当工具执行发生时，响应中会包含 `tool_calls` 片段与 `finish_reason: "tool_calls"`；客户端需按 OpenAI Completions 的解析方式处理。
 - 若声明非内置工具且提供 `mcp_endpoint`（或设置环境 `MCP_HTTP_ENDPOINT`），服务器会将调用转发到 MCP 服务并返回其结果。

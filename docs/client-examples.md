@@ -34,7 +34,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "gemini-2.5-pro",
+    "model": "gemini-1.5-pro",
     "messages": [
       {
         "role": "user",
@@ -54,7 +54,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "gemini-2.5-flash",
+    "model": "gemini-1.5-flash",
     "messages": [
       {
         "role": "user",
@@ -71,7 +71,7 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-2.5-pro",
+    "model": "gemini-1.5-pro",
     "messages": [
       {
         "role": "system",
@@ -116,13 +116,13 @@ client = OpenAI(
 # 非流式请求
 def basic_chat():
     response = client.chat.completions.create(
-        model="gemini-2.5-pro",
+        model="gemini-1.5-pro",
         messages=[
             {"role": "system", "content": "你是一个有用的助手"},
             {"role": "user", "content": "什么是 FastAPI?"}
         ]
     )
-    
+
     print(response.choices[0].message.content)
 
 basic_chat()
@@ -140,13 +140,13 @@ client = OpenAI(
 
 def streaming_chat():
     stream = client.chat.completions.create(
-        model="gemini-2.5-pro",
+        model="gemini-1.5-pro",
         messages=[
             {"role": "user", "content": "请讲一个关于机器学习的故事"}
         ],
         stream=True
     )
-    
+
     print("AI: ", end="", flush=True)
     for chunk in stream:
         if chunk.choices[0].delta.content:
@@ -168,7 +168,7 @@ client = OpenAI(
 
 def advanced_chat():
     response = client.chat.completions.create(
-        model="gemini-2.5-pro",
+        model="gemini-1.5-pro",
         messages=[
             {"role": "system", "content": "你是一个 Python 专家"},
             {"role": "user", "content": "解释装饰器的工作原理"}
@@ -178,7 +178,7 @@ def advanced_chat():
         top_p=0.9,
         stop=["\n\n用户:", "\n\n助手:"]
     )
-    
+
     print(response.choices[0].message.content)
     print(f"\n使用的 tokens: {response.usage.total_tokens}")
 
@@ -202,18 +202,18 @@ def chat_with_retry(messages, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model="gemini-2.5-pro",
+                model="gemini-1.5-pro",
                 messages=messages
             )
             return response.choices[0].message.content
-        
+
         except APIConnectionError as e:
             print(f"连接错误 (尝试 {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)  # 指数退避
                 continue
             raise
-        
+
         except APIError as e:
             print(f"API 错误: {e}")
             raise
@@ -249,15 +249,15 @@ def chat_non_streaming():
         "Authorization": "Bearer your-api-key"
     }
     data = {
-        "model": "gemini-2.5-pro",
+        "model": "gemini-1.5-pro",
         "messages": [
             {"role": "user", "content": "什么是深度学习?"}
         ],
         "stream": False
     }
-    
+
     response = requests.post(url, headers=headers, json=data)
-    
+
     if response.status_code == 200:
         result = response.json()
         print(result['choices'][0]['message']['content'])
@@ -280,26 +280,26 @@ def chat_streaming():
         "Authorization": "Bearer your-api-key"
     }
     data = {
-        "model": "gemini-2.5-pro",
+        "model": "gemini-1.5-pro",
         "messages": [
             {"role": "user", "content": "请讲一个故事"}
         ],
         "stream": True
     }
-    
+
     response = requests.post(url, headers=headers, json=data, stream=True)
-    
+
     print("AI: ", end="", flush=True)
     for line in response.iter_lines():
         if line:
             line = line.decode('utf-8')
             if line.startswith('data: '):
                 data_str = line[6:]  # 移除 'data: ' 前缀
-                
+
                 if data_str.strip() == '[DONE]':
                     print("\n")
                     break
-                
+
                 try:
                     chunk = json.loads(data_str)
                     if 'choices' in chunk:
@@ -317,6 +317,8 @@ chat_streaming()
 
 ## JavaScript / Node.js
 
+> **注意**: 以下代码示例展示了如何作为**客户端**连接到 AI Studio Proxy API。这些代码旨在您的应用程序中运行，用于向 Proxy 服务器发送请求，而不是作为服务器代码运行。
+
 ### 使用 OpenAI SDK
 
 #### 安装
@@ -328,23 +330,25 @@ npm install openai
 #### 基本用法
 
 ```javascript
-import OpenAI from 'openai';
+// 注意：此示例使用 ES Modules 语法。
+// 如果您使用 CommonJS (require)，请改用: const OpenAI = require('openai');
+import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: 'http://127.0.0.1:2048/v1',
-  apiKey: 'your-api-key',
+  baseURL: "http://127.0.0.1:2048/v1",
+  apiKey: "your-api-key",
 });
 
 // 非流式请求
 async function basicChat() {
   const response = await client.chat.completions.create({
-    model: 'gemini-2.5-pro',
+    model: "gemini-1.5-pro",
     messages: [
-      { role: 'system', content: '你是一个有用的助手' },
-      { role: 'user', content: '什么是 Node.js?' }
+      { role: "system", content: "你是一个有用的助手" },
+      { role: "user", content: "什么是 Node.js?" },
     ],
   });
-  
+
   console.log(response.choices[0].message.content);
 }
 
@@ -354,28 +358,26 @@ basicChat();
 #### 流式响应
 
 ```javascript
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: 'http://127.0.0.1:2048/v1',
-  apiKey: 'your-api-key',
+  baseURL: "http://127.0.0.1:2048/v1",
+  apiKey: "your-api-key",
 });
 
 async function streamingChat() {
   const stream = await client.chat.completions.create({
-    model: 'gemini-2.5-pro',
-    messages: [
-      { role: 'user', content: '请讲一个关于编程的故事' }
-    ],
+    model: "gemini-1.5-pro",
+    messages: [{ role: "user", content: "请讲一个关于编程的故事" }],
     stream: true,
   });
-  
-  process.stdout.write('AI: ');
+
+  process.stdout.write("AI: ");
   for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content || '';
+    const content = chunk.choices[0]?.delta?.content || "";
     process.stdout.write(content);
   }
-  console.log('\n');
+  console.log("\n");
 }
 
 streamingChat();
@@ -384,11 +386,11 @@ streamingChat();
 #### 错误处理
 
 ```javascript
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: 'http://127.0.0.1:2048/v1',
-  apiKey: 'your-api-key',
+  baseURL: "http://127.0.0.1:2048/v1",
+  apiKey: "your-api-key",
   timeout: 60 * 1000, // 60秒超时
 });
 
@@ -396,98 +398,98 @@ async function chatWithRetry(messages, maxRetries = 3) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const response = await client.chat.completions.create({
-        model: 'gemini-2.5-pro',
+        model: "gemini-1.5-pro",
         messages: messages,
       });
-      
+
       return response.choices[0].message.content;
     } catch (error) {
       console.error(`尝试 ${attempt + 1}/${maxRetries} 失败:`, error.message);
-      
+
       if (attempt < maxRetries - 1) {
         // 指数退避
-        await new Promise(resolve => setTimeout(resolve, 2 ** attempt * 1000));
+        await new Promise((resolve) =>
+          setTimeout(resolve, 2 ** attempt * 1000),
+        );
         continue;
       }
-      
+
       throw error;
     }
   }
 }
 
 // 使用示例
-chatWithRetry([
-  { role: 'user', content: '你好' }
-]).then(result => {
-  console.log(result);
-}).catch(error => {
-  console.error('请求失败:', error);
-});
+chatWithRetry([{ role: "user", content: "你好" }])
+  .then((result) => {
+    console.log(result);
+  })
+  .catch((error) => {
+    console.error("请求失败:", error);
+  });
 ```
 
 ### 使用 Fetch API
 
+> **注意**: Node.js 18+ 内置了 fetch API。如果您使用旧版本，可能需要安装 `node-fetch`。
+
 ```javascript
 // 非流式请求
 async function chatNonStreaming() {
-  const response = await fetch('http://127.0.0.1:2048/v1/chat/completions', {
-    method: 'POST',
+  const response = await fetch("http://127.0.0.1:2048/v1/chat/completions", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer your-api-key',
+      "Content-Type": "application/json",
+      Authorization: "Bearer your-api-key",
     },
     body: JSON.stringify({
-      model: 'gemini-2.5-pro',
-      messages: [
-        { role: 'user', content: '什么是 JavaScript?' }
-      ],
+      model: "gemini-1.5-pro",
+      messages: [{ role: "user", content: "什么是 JavaScript?" }],
       stream: false,
     }),
   });
-  
+
   const data = await response.json();
   console.log(data.choices[0].message.content);
 }
 
 // 流式请求
 async function chatStreaming() {
-  const response = await fetch('http://127.0.0.1:2048/v1/chat/completions', {
-    method: 'POST',
+  const response = await fetch("http://127.0.0.1:2048/v1/chat/completions", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer your-api-key',
+      "Content-Type": "application/json",
+      Authorization: "Bearer your-api-key",
     },
     body: JSON.stringify({
-      model: 'gemini-2.5-pro',
-      messages: [
-        { role: 'user', content: '请讲一个故事' }
-      ],
+      model: "gemini-1.5-pro",
+      messages: [{ role: "user", content: "请讲一个故事" }],
       stream: true,
     }),
   });
-  
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  
-  process.stdout.write('AI: ');
+
+  process.stdout.write("AI: ");
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    
+
     const chunk = decoder.decode(value);
-    const lines = chunk.split('\n');
-    
+    const lines = chunk.split("\n");
+
     for (const line of lines) {
-      if (line.startsWith('data: ')) {
+      if (line.startsWith("data: ")) {
         const data = line.slice(6);
-        if (data.trim() === '[DONE]') {
-          console.log('\n');
+        if (data.trim() === "[DONE]") {
+          console.log("\n");
           return;
         }
-        
+
         try {
           const parsed = JSON.parse(data);
-          const content = parsed.choices[0]?.delta?.content || '';
+          const content = parsed.choices[0]?.delta?.content || "";
           process.stdout.write(content);
         } catch (e) {
           // 忽略解析错误
@@ -558,7 +560,7 @@ chatStreaming();
     {
       "title": "AI Studio Gemini",
       "provider": "openai",
-      "model": "gemini-2.5-pro",
+      "model": "gemini-1.5-pro",
       "apiBase": "http://127.0.0.1:2048/v1",
       "apiKey": "your-api-key"
     }
@@ -581,7 +583,7 @@ def robust_chat(client, messages, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model="gemini-2.5-pro",
+                model="gemini-1.5-pro",
                 messages=messages,
                 timeout=60
             )
@@ -610,7 +612,7 @@ client = OpenAI(
 
 ```python
 stream = client.chat.completions.create(
-    model="gemini-2.5-pro",
+    model="gemini-1.5-pro",
     messages=[{"role": "user", "content": "写一篇长文"}],
     stream=True
 )
@@ -628,7 +630,7 @@ for chunk in stream:
 ```python
 # 创意写作 - 高温度
 response = client.chat.completions.create(
-    model="gemini-2.5-pro",
+    model="gemini-1.5-pro",
     messages=[{"role": "user", "content": "写一首诗"}],
     temperature=0.9,
     max_tokens=2048
@@ -636,7 +638,7 @@ response = client.chat.completions.create(
 
 # 技术问答 - 低温度
 response = client.chat.completions.create(
-    model="gemini-2.5-pro",
+    model="gemini-1.5-pro",
     messages=[{"role": "user", "content": "什么是REST API?"}],
     temperature=0.3,
     max_tokens=1024
@@ -652,6 +654,7 @@ response = client.chat.completions.create(
 **问题**: 无法连接到服务器
 
 **解决方案**:
+
 ```bash
 # 检查服务器是否运行
 curl http://127.0.0.1:2048/health
@@ -665,6 +668,7 @@ curl http://127.0.0.1:2048/health
 **问题**: 401 Unauthorized
 
 **解决方案**:
+
 ```python
 # 确保提供了有效的 API 密钥
 client = OpenAI(
@@ -678,6 +682,7 @@ client = OpenAI(
 **问题**: 请求超时
 
 **解决方案**:
+
 ```python
 # 增加超时时间
 client = OpenAI(
@@ -696,8 +701,5 @@ client = OpenAI(
 - [故障排除指南](troubleshooting.md) - 常见问题解决
 
 ---
-
-**最后更新**: 2024年11月  
-**当前版本**: v0.6.0
 
 如有问题或需要更多示例，请提交 Issue。

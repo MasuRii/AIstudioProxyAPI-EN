@@ -1,9 +1,10 @@
 import asyncio
 import json
-import time
+import logging
 import random
-from typing import Any, AsyncGenerator, Callable
+import time
 from asyncio import Event
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, cast
 
 from playwright.async_api import Page as AsyncPage
 
@@ -14,6 +15,10 @@ from .utils import use_stream_response, calculate_usage_stats, generate_sse_chun
 from .common_utils import random_id
 from api_utils.utils_ext.usage_tracker import increment_profile_usage
 
+from .common_utils import random_id
+from .sse import generate_sse_chunk, generate_sse_stop_chunk
+from .utils_ext.stream import use_stream_response
+from .utils_ext.tokens import calculate_usage_stats
 
 async def resilient_stream_generator(
     req_id: str,
@@ -99,7 +104,7 @@ async def gen_sse_from_aux_stream(
     req_id: str,
     request: ChatCompletionRequest,
     model_name_for_stream: str,
-    check_client_disconnected: Callable,
+    check_client_disconnected: Callable[[str], bool],
     event_to_set: Event,
     timeout: float,
     page: AsyncPage = None,
@@ -107,6 +112,10 @@ async def gen_sse_from_aux_stream(
     """辅助流队列 -> OpenAI 兼容 SSE 生成器。
 
     产出增量、tool_calls、最终 usage 与 [DONE]。
+
+    Args:
+        stream_state: 可选的状态字典，用于向调用者报告流状态。
+                      如果提供，将设置 'has_content' 键表示是否收到内容。
     """
     import server
     from server import logger
@@ -124,6 +133,8 @@ async def gen_sse_from_aux_stream(
     # [ID-01] Latch & Backfill State Variables
     has_started_body = False
     has_sent_reasoning = False
+
+    loop_count = 0
 
     try:
         async for raw_data in use_stream_response(req_id, timeout=timeout, page=page, check_client_disconnected=check_client_disconnected):
@@ -209,6 +220,7 @@ async def gen_sse_from_aux_stream(
                     event_to_set.set()
                 break
 
+            data: Any
             if isinstance(raw_data, str):
                 try:
                     data = json.loads(raw_data)
@@ -216,7 +228,7 @@ async def gen_sse_from_aux_stream(
                     logger.warning(f"[{req_id}] Failed to parse stream data JSON: {raw_data}")
                     continue
             elif isinstance(raw_data, dict):
-                data = raw_data
+                data = cast(Dict[str, Any], raw_data)
             else:
                 logger.warning(f"[{req_id}] Unknown stream data type: {type(raw_data)}")
                 continue
@@ -225,10 +237,19 @@ async def gen_sse_from_aux_stream(
                 logger.warning(f"[{req_id}] Data is not a dict: {data}")
                 continue
 
-            reason = data.get("reason", "")
-            body = data.get("body", "")
-            done = data.get("done", False)
-            function = data.get("function", [])
+            # After isinstance check, data is confirmed to be dict - use cast for type narrowing
+            typed_data: Dict[str, Any] = cast(Dict[str, Any], data)
+
+            reason_raw: Any = typed_data.get("reason", "")
+            reason: str = reason_raw if isinstance(reason_raw, str) else ""
+            body_raw: Any = typed_data.get("body", "")
+            body: str = body_raw if isinstance(body_raw, str) else ""
+            done_raw: Any = typed_data.get("done", False)
+            done: bool = done_raw if isinstance(done_raw, bool) else False
+            function_raw: Any = typed_data.get("function", [])
+            function: List[Any] = (
+                cast(List[Any], function_raw) if isinstance(function_raw, list) else []
+            )
 
             if reason:
                 full_reasoning_content = reason
@@ -354,26 +375,38 @@ async def gen_sse_from_aux_stream(
 
                 # Handle Tool Calls or Stop
                 if function and len(function) > 0:
-                    tool_calls_list = []
+                    tool_calls_list: List[Dict[str, Any]] = []
                     for func_idx, function_call_data in enumerate(function):
-                        tool_calls_list.append({
-                            "id": f"call_{random_id()}",
-                            "index": func_idx,
-                            "type": "function",
-                            "function": {
-                                "name": function_call_data["name"],
-                                "arguments": json.dumps(function_call_data["params"]),
-                            },
-                        })
-                    delta_content = {"role": "assistant", "content": None, "tool_calls": tool_calls_list}
-                    choice_item = {
+                        if isinstance(function_call_data, dict):
+                            typed_func_data: Dict[str, Any] = cast(
+                                Dict[str, Any], function_call_data
+                            )
+                            tool_calls_list.append(
+                                {
+                                    "id": f"call_{random_id()}",
+                                    "index": func_idx,
+                                    "type": "function",
+                                    "function": {
+                                        "name": typed_func_data.get("name", ""),
+                                        "arguments": json.dumps(
+                                            typed_func_data.get("params", {})
+                                        ),
+                                    },
+                                }
+                            )
+                    delta_content: Dict[str, Any] = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": tool_calls_list,
+                    }
+                    choice_item: Dict[str, Any] = {
                         "index": 0,
                         "delta": delta_content,
                         "finish_reason": "tool_calls",
                         "native_finish_reason": "tool_calls",
                     }
                 else:
-                    choice_item = {
+                    choice_item: Dict[str, Any] = {
                         "index": 0,
                         "delta": {"role": "assistant"},
                         "finish_reason": "stop",
@@ -401,6 +434,11 @@ async def gen_sse_from_aux_stream(
         if data_receiving and not event_to_set.is_set():
             logger.info(f"[{req_id}] Setting done signal immediately in client disconnect handler")
             event_to_set.set()
+    except asyncio.CancelledError:
+        logger.info("流式生成器被取消")
+        if not event_to_set.is_set():
+            event_to_set.set()
+        raise
     except Exception as e:
         logger.error(f"[{req_id}] Error in stream generator processing: {e}", exc_info=True)
         try:
@@ -420,6 +458,7 @@ async def gen_sse_from_aux_stream(
         except Exception:
             pass
     finally:
+        logger.info("SSE 响应流生成结束")
         try:
             usage_stats = calculate_usage_stats(
                 [msg.model_dump() for msg in request.messages],
@@ -443,20 +482,26 @@ async def gen_sse_from_aux_stream(
                 "object": "chat.completion.chunk",
                 "model": model_name_for_stream,
                 "created": created_timestamp,
-                "choices": [{
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop",
-                    "native_finish_reason": "stop",
-                }],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop",
+                        "native_finish_reason": "stop",
+                    }
+                ],
                 "usage": usage_stats,
             }
             yield f"data: {json.dumps(final_chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        except asyncio.CancelledError:
+            raise
         except Exception as usage_err:
             logger.error(f"[{req_id}] Error calculating or sending usage stats: {usage_err}")
         try:
             logger.info(f"[{req_id}] Stream generator completed, sending [DONE] marker")
             yield "data: [DONE]\n\n"
+        except asyncio.CancelledError:
+            raise
         except Exception as done_err:
             logger.error(f"[{req_id}] Error sending [DONE] marker: {done_err}")
         if not event_to_set.is_set():
@@ -466,26 +511,27 @@ async def gen_sse_from_aux_stream(
 
 async def gen_sse_from_playwright(
     page: AsyncPage,
-    logger: Any,
+    logger: logging.Logger,
     req_id: str,
     model_name_for_stream: str,
     request: ChatCompletionRequest,
-    check_client_disconnected: Callable,
+    check_client_disconnected: Callable[[str], bool],
     completion_event: Event,
     prompt_length: int,
     timeout: float,
 ) -> AsyncGenerator[str, None]:
     """Playwright 最终响应 -> OpenAI 兼容 SSE 生成器。"""
     # Reuse already-imported helpers from utils to avoid repeated imports
-    from models import ClientDisconnectedError
     from browser_utils.page_controller import PageController
+    from models import ClientDisconnectedError
 
+    set_request_id(req_id)
     data_receiving = False
     try:
         page_controller = PageController(page, logger, req_id)
         final_content = await page_controller.get_response(check_client_disconnected, prompt_length=prompt_length, timeout=timeout)
         data_receiving = True
-        lines = final_content.split('\n')
+        lines = final_content.split("\n")
         for line_idx, line in enumerate(lines):
             try:
                 check_client_disconnected(f"Playwright stream generator loop ({req_id}): ")
@@ -498,14 +544,20 @@ async def gen_sse_from_playwright(
             if line:
                 chunk_size = 5
                 for i in range(0, len(line), chunk_size):
-                    chunk = line[i:i+chunk_size]
+                    chunk = line[i : i + chunk_size]
                     yield generate_sse_chunk(chunk, req_id, model_name_for_stream)
                     await asyncio.sleep(0.03)
             if line_idx < len(lines) - 1:
-                yield generate_sse_chunk('\n', req_id, model_name_for_stream)
+                yield generate_sse_chunk("\n", req_id, model_name_for_stream)
                 await asyncio.sleep(0.01)
         usage_stats = calculate_usage_stats(
-            [msg.model_dump() for msg in request.messages], final_content, "",
+            [msg.model_dump() for msg in request.messages],
+            final_content,
+            "",
+        )
+        logger.info(f"Playwright非流式计算的token使用统计: {usage_stats}")
+        yield generate_sse_stop_chunk(
+            req_id, model_name_for_stream, "stop", usage_stats
         )
         logger.info(f"[{req_id}] Playwright non-stream calculated token usage stats: {usage_stats}")
         
@@ -527,6 +579,11 @@ async def gen_sse_from_playwright(
         if data_receiving and not completion_event.is_set():
             logger.info(f"[{req_id}] Setting done signal immediately in Playwright client disconnect handler")
             completion_event.set()
+    except asyncio.CancelledError:
+        logger.info("Playwright流式生成器被取消")
+        if not completion_event.is_set():
+            completion_event.set()
+        raise
     except Exception as e:
         logger.error(f"[{req_id}] Error in Playwright stream generator processing: {e}", exc_info=True)
         try:

@@ -23,13 +23,22 @@ pyjwt = "==2.8.0"
 Flask = "==3.0.3"
 aiosocks = "~=0.2.6"
 python-socks = "~=2.7.1"
+tzdata = "^2025.2"
+colorama = "^0.4.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
-black = "^23.0.0"
-isort = "^5.12.0"
-mypy = "^1.0.0"
-flake8 = "^6.0.0"
+pytest-cov = "^7.0.0"
+pytest-mock = "^3.15.1"
+httpx = "^0.28.1"
+pytest-asyncio = "0.23.7"
+pytest-env = "0.8.2"
+pytest-timeout = "^2.4.0"
+pyright = "^1.1.407"
+ruff = "^0.14.6"
+pytest-testmon = "^2.1.4"
+monkeytype = "^23.3.0"
+pytest-xdist = "^3.8.0"
 
 [build-system]
 requires = ["poetry-core"]

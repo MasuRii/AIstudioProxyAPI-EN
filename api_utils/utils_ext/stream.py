@@ -34,6 +34,10 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     )
     import queue
 
+    from api_utils.server_state import state
+    from server import STREAM_QUEUE, logger
+
+    set_request_id(req_id)
     if STREAM_QUEUE is None:
         logger.warning(f"[{req_id}] STREAM_QUEUE is None, cannot use stream response")
         return
@@ -773,6 +777,8 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
                 await asyncio.sleep(0.1)
                 continue
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         if isinstance(e, ClientDisconnectedError):
              logger.info(f"[{req_id}] Stopping stream response: Client disconnected.")
@@ -793,8 +799,9 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
 
 async def clear_stream_queue():
-    from server import STREAM_QUEUE, logger
     import queue
+
+    from server import STREAM_QUEUE, logger
 
     if STREAM_QUEUE is None:
         logger.info("Stream queue not initialized or disabled, skipping cleanup.")
@@ -810,10 +817,12 @@ async def clear_stream_queue():
         except queue.Empty:
             logger.info(f"Stream queue cleared (caught queue.Empty). Cleared items: {cleared_count}")
             break
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Unexpected error clearing stream queue (Cleared {cleared_count} items): {e}", exc_info=True)
             break
-    
+
     if cleared_count > 0:
         logger.warning(f"⚠️ Stream queue cache cleared, cleaned {cleared_count} residual items!")
     else:

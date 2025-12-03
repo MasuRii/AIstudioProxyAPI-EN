@@ -1,5 +1,7 @@
-from typing import List, Optional, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Union
+
 from pydantic import BaseModel
+
 from config import MODEL_NAME
 
 
@@ -13,10 +15,12 @@ class ToolCall(BaseModel):
     type: str = "function"
     function: FunctionCall
 
+
 class ImageURL(BaseModel):
     url: str
     # OpenAI 兼容: detail 可为 'auto' | 'low' | 'high'
     detail: Optional[str] = None
+
 
 class AudioInput(BaseModel):
     # 允许 url 或 data 二选一
@@ -25,14 +29,17 @@ class AudioInput(BaseModel):
     format: Optional[str] = None  # 如 'wav', 'mp3'
     mime_type: Optional[str] = None  # 如 'audio/wav'
 
+
 class VideoInput(BaseModel):
     url: Optional[str] = None
     data: Optional[str] = None
     format: Optional[str] = None
     mime_type: Optional[str] = None
 
+
 class URLRef(BaseModel):
     url: str
+
 
 class MessageContentItem(BaseModel):
     type: str
@@ -47,6 +54,7 @@ class MessageContentItem(BaseModel):
     # 扩展支持 input_audio/input_video
     input_audio: Optional[AudioInput] = None
     input_video: Optional[VideoInput] = None
+
 
 class Message(BaseModel):
     role: str
@@ -68,7 +76,7 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = None
     max_output_tokens: Optional[int] = None
     stop: Optional[Union[str, List[str]]] = None
-    top_p: Optional[float] = None 
+    top_p: Optional[float] = None
     reasoning_effort: Optional[Union[str, int]] = None
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None

@@ -25,6 +25,8 @@ lib-cov
 # Coverage directory used by tools like istanbul
 coverage
 *.lcov
+coverage_*.txt
+coverage_*.html
 
 # nyc test coverage
 .nyc_output
@@ -77,6 +79,12 @@ web_modules/
 .env.test.local
 .env.production.local
 .env.local
+
+# Windows artifacts
+NUL
+
+# Test backup files
+*.backup
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -179,6 +187,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.testmondata*
 
 # Environments
 .venv
@@ -213,8 +222,11 @@ env.bak/
 venv.bak/
 
 # Error snapshots directory (Python specific)
-errors_py/
+# New date-based structure: errors_py/YYYY-MM-DD/HH-MM-SS_reqid_errorname/
+errors_py/*/
+!errors_py/.gitkeep
 logs/
+errors_py
 
 # Authentication Profiles (Sensitive)
 auth_profiles/active/*

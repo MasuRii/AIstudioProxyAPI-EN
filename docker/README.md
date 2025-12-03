@@ -11,10 +11,24 @@
 
 ## 🚀 快速开始
 
+### 0. 准备认证文件 (重要)
+
+Docker 模式仅支持运行已认证的会话。请确保项目根目录下存在 `auth_profiles` 目录，并且其中包含有效的认证文件（通常由主机直接运行程序生成）。
+
+**目录结构示例：**
+
+```text
+项目根目录/
+  ├── auth_profiles/
+  │   └── active/
+  │       └── account_xxx.json  <-- 必需的认证文件
+  └── docker/
+```
+
 ### 1. 准备配置文件
 
 ```bash
-# 进入 docker 目录
+cd docker
 cp .env.docker .env
 nano .env  # 编辑配置文件
 ```
@@ -22,9 +36,6 @@ nano .env  # 编辑配置文件
 ### 2. 启动服务
 
 ```bash
-# 进入 docker 目录
-cd docker
-
 # 构建并启动服务
 docker compose up -d
 
@@ -71,7 +82,7 @@ docker compose exec ai-studio-proxy /bin/bash
 
 ## ⚠️ 注意事项
 
-1. **认证文件**: 首次运行需要在主机上获取认证文件
-2. **端口配置**: 确保主机端口未被占用
-3. **配置文件**: `.env` 文件需要放在 `docker/` 目录下，确保正确获取环境变量
-4. **目录结构**: Docker 文件已移至 `docker/` 目录，保持项目根目录整洁
+1. **认证文件**: 必须在主机上预先获取认证文件并放入 `auth_profiles/active/` 目录。
+2. **端口配置**: 默认占用主机端口 `2048` (API) 和 `3120` (Stream)。如需修改，请编辑 `.env` 文件中的 `HOST_FASTAPI_PORT` 和 `HOST_STREAM_PORT`。
+3. **配置文件**: `.env` 文件必须位于 `docker/` 目录下，以便 Docker Compose 正确加载。
+4. **脚本注入**: 如需使用脚本注入功能，请参考 [README-Docker.md](README-Docker.md) 中的详细配置说明。

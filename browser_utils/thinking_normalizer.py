@@ -5,7 +5,6 @@ Normalizes the reasoning_effort parameter into a standardized thinking directive
 This module is responsible for converting various formats of the reasoning_effort parameter into a unified internal directive structure.
 """
 
-from typing import Optional, Any, Dict
 from dataclasses import dataclass
 from config import ENABLE_THINKING_BUDGET, DEFAULT_THINKING_BUDGET
 from config.settings import (
@@ -26,6 +25,7 @@ class ThinkingDirective:
         budget_value: Budget token count (valid only when budget_enabled=True)
         original_value: Original reasoning_effort value (for logging)
     """
+
     thinking_enabled: bool
     budget_enabled: bool
     budget_value: Optional[int]
@@ -67,7 +67,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             thinking_enabled=ENABLE_THINKING_BUDGET,
             budget_enabled=ENABLE_THINKING_BUDGET,
             budget_value=DEFAULT_THINKING_BUDGET if ENABLE_THINKING_BUDGET else None,
-            original_value=None
+            original_value=None,
         )
 
     # Scenario 2: Disable thinking mode (reasoning_effort = 0 or "0")
@@ -76,25 +76,36 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             thinking_enabled=False,
             budget_enabled=False,
             budget_value=None,
-            original_value=reasoning_effort
+            original_value=reasoning_effort,
         )
 
     # Scenario 3: Enable thinking but unlimited budget (reasoning_effort = "none" / "-1" / -1)
     if isinstance(reasoning_effort, str):
         reasoning_str = reasoning_effort.strip().lower()
+        # "none"/"-1" → 开启思考，不限预算
         if reasoning_str in ["none", "-1"]:
             return ThinkingDirective(
                 thinking_enabled=True,
                 budget_enabled=False,
                 budget_value=None,
-                original_value=reasoning_effort
+                original_value=reasoning_effort,
+            )
+        # "high"/"low"/"medium" → 开启思考，使用 _should_enable_from_raw 逻辑
+        # 注意：这些值由 _handle_thinking_budget 中的 _should_enable_from_raw 处理
+        # 这里需要返回 thinking_enabled=True 避免与 desired_enabled 冲突
+        if reasoning_str in ["high", "low", "medium"]:
+            return ThinkingDirective(
+                thinking_enabled=True,
+                budget_enabled=False,  # 具体值由 _should_enable_from_raw 确定
+                budget_value=None,
+                original_value=reasoning_effort,
             )
     elif reasoning_effort == -1:
         return ThinkingDirective(
             thinking_enabled=True,
             budget_enabled=False,
             budget_value=None,
-            original_value=reasoning_effort
+            original_value=reasoning_effort,
         )
 
     # Scenario 4: Enable thinking and limit budget (specific number or preset value)
@@ -105,7 +116,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
             thinking_enabled=True,
             budget_enabled=True,
             budget_value=budget_value,
-            original_value=reasoning_effort
+            original_value=reasoning_effort,
         )
 
     # Invalid value: Use default configuration
@@ -113,7 +124,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
         thinking_enabled=ENABLE_THINKING_BUDGET,
         budget_enabled=ENABLE_THINKING_BUDGET,
         budget_value=DEFAULT_THINKING_BUDGET if ENABLE_THINKING_BUDGET else None,
-        original_value=reasoning_effort
+        original_value=reasoning_effort,
     )
 
 
