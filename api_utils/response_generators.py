@@ -7,12 +7,92 @@ from asyncio import Event
 
 from playwright.async_api import Page as AsyncPage
 
-from models import ClientDisconnectedError, ChatCompletionRequest, QuotaExceededRetry
+from models import ClientDisconnectedError, ChatCompletionRequest, QuotaExceededRetry, QuotaExceededError
 from config import CHAT_COMPLETION_ID_PREFIX
 from config.global_state import GlobalState
 from .utils import use_stream_response, calculate_usage_stats, generate_sse_chunk, generate_sse_stop_chunk
 from .common_utils import random_id
 from api_utils.utils_ext.usage_tracker import increment_profile_usage
+
+
+async def resilient_stream_generator(
+    req_id: str,
+    model_name: str,
+    generator_factory: Callable[[Event], AsyncGenerator[str, None]],
+    completion_event: Event,
+) -> AsyncGenerator[str, None]:
+    """
+    Wraps a stream generator with resiliency logic.
+    Handles QuotaExceededError by triggering auth rotation and retrying.
+    """
+    import json
+    from server import logger
+    from browser_utils.auth_rotation import perform_auth_rotation
+    
+    max_retries = 3
+    retry_count = 0
+    
+    # Create a dummy event for the inner generator to control/signal
+    # We manage the real completion_event ourselves in the finally block
+    inner_event = Event()
+    
+    try:
+        while retry_count <= max_retries:
+            try:
+                # Clear inner event for each attempt
+                if inner_event.is_set():
+                    inner_event.clear()
+                
+                async for chunk in generator_factory(inner_event):
+                    yield chunk
+                
+                # If we get here, the stream finished normally
+                return
+                
+            except (QuotaExceededError, QuotaExceededRetry) as e:
+                retry_count += 1
+                if retry_count > max_retries:
+                    logger.error(f"[{req_id}] Max retries ({max_retries}) exhausted for quota recovery.")
+                    yield f"data: {json.dumps({'error': 'Max retries exhausted for quota recovery.'}, ensure_ascii=False)}\n\n"
+                    return
+
+                logger.warning(f"[{req_id}] Quota limit hit during stream: {str(e)}. Initiating rotation (Attempt {retry_count}/{max_retries})...")
+                
+                # Yield keep-alive
+                yield f": processing auth rotation (attempt {retry_count})...\n\n"
+                
+                # Trigger Rotation
+                rotation_task = asyncio.create_task(perform_auth_rotation(target_model_id=model_name))
+                
+                # Wait for rotation while yielding heartbeats
+                rotation_start = time.time()
+                while not rotation_task.done():
+                    if time.time() - rotation_start > 120: # 120s timeout for rotation
+                        logger.error(f"[{req_id}] Rotation timed out.")
+                        yield f"data: {json.dumps({'error': 'Auth rotation timed out.'}, ensure_ascii=False)}\n\n"
+                        return
+                        
+                    yield ": processing auth rotation...\n\n"
+                    await asyncio.sleep(2)
+                
+                success = await rotation_task
+                
+                if success:
+                    logger.info(f"[{req_id}] Auth rotation successful. Retrying stream generation...")
+                    yield f": auth rotation complete, retrying...\n\n"
+                    continue # Retry loop
+                else:
+                    logger.error(f"[{req_id}] Auth rotation failed.")
+                    yield f"data: {json.dumps({'error': 'Auth rotation failed.'}, ensure_ascii=False)}\n\n"
+                    return
+            except Exception:
+                # Re-raise other exceptions to be handled by the caller/FastAPI
+                raise
+    finally:
+        # Ensure completion event is set when we are truly done
+        if not completion_event.is_set():
+            completion_event.set()
+            logger.info(f"[{req_id}] Resilient stream completion event set")
 
 
 async def gen_sse_from_aux_stream(
@@ -313,6 +393,9 @@ async def gen_sse_from_aux_stream(
                 is_response_finalized = True
                 logger.info(f"[{req_id}] ✅ Response finalized. Subsequent messages will be ignored.")
 
+    except (QuotaExceededError, QuotaExceededRetry):
+        # Propagate Quota exceptions for resilient wrapper to handle
+        raise
     except ClientDisconnectedError:
         logger.info(f"[{req_id}] Client disconnection detected in stream generator")
         if data_receiving and not event_to_set.is_set():
@@ -436,6 +519,9 @@ async def gen_sse_from_playwright(
             await increment_profile_usage(server.current_auth_profile_path, total_tokens)
 
         yield generate_sse_stop_chunk(req_id, model_name_for_stream, "stop", usage_stats)
+    except (QuotaExceededError, QuotaExceededRetry):
+        # Propagate Quota exceptions for resilient wrapper to handle
+        raise
     except ClientDisconnectedError:
         logger.info(f"[{req_id}] Client disconnection detected in Playwright stream generator")
         if data_receiving and not completion_event.is_set():

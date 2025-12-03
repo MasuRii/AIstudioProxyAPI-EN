@@ -43,7 +43,7 @@ from .utils import (
 from api_utils.utils_ext.usage_tracker import increment_profile_usage
 from browser_utils.page_controller import PageController
 from .context_types import RequestContext
-from .response_generators import gen_sse_from_aux_stream, gen_sse_from_playwright
+from .response_generators import gen_sse_from_aux_stream, gen_sse_from_playwright, resilient_stream_generator
 from .response_payloads import build_chat_completion_response_json
 from .model_switching import analyze_model_requirements as ms_analyze, handle_model_switching as ms_switch, handle_parameter_cache as ms_param_cache
 from .page_response import locate_response_elements
@@ -237,20 +237,27 @@ async def _handle_auxiliary_stream_response(
             completion_event = Event()
             page = context['page']
             
-            # [FIXED] Removed duplicate call.
-            # Ensure we use the one that passes 'page=page'
-            stream_gen_func = gen_sse_from_aux_stream(
+            # [RESILIENT-WRAPPER] Wrap the stream generator with retry/rotation logic
+            def aux_stream_factory(event_to_signal: Event):
+                return gen_sse_from_aux_stream(
+                    req_id,
+                    request,
+                    current_ai_studio_model_id or MODEL_NAME,
+                    check_client_disconnected,
+                    event_to_signal,
+                    timeout=timeout,
+                    page=page,  # <--- CRITICAL: This enables the auto-scroll logic in stream.py
+                )
+
+            resilient_gen = resilient_stream_generator(
                 req_id,
-                request,
                 current_ai_studio_model_id or MODEL_NAME,
-                check_client_disconnected,
-                completion_event,
-                timeout=timeout,
-                page=page,  # <--- CRITICAL: This enables the auto-scroll logic in stream.py
+                aux_stream_factory,
+                completion_event
             )
             
             if not result_future.done():
-                result_future.set_result(StreamingResponse(stream_gen_func, media_type="text/event-stream"))
+                result_future.set_result(StreamingResponse(resilient_gen, media_type="text/event-stream"))
             else:
                 if not completion_event.is_set():
                     completion_event.set()
@@ -397,19 +404,30 @@ async def _handle_playwright_response(req_id: str, request: ChatCompletionReques
 
     if is_streaming:
         completion_event = Event()
-        stream_gen_func = gen_sse_from_playwright(
-            page,
-            logger,
+        
+        # [RESILIENT-WRAPPER] Wrap the Playwright stream generator
+        def playwright_stream_factory(event_to_signal: Event):
+            return gen_sse_from_playwright(
+                page,
+                logger,
+                req_id,
+                current_ai_studio_model_id or MODEL_NAME,
+                request,
+                check_client_disconnected,
+                event_to_signal,
+                prompt_length=prompt_length,
+                timeout=timeout,
+            )
+
+        resilient_gen = resilient_stream_generator(
             req_id,
             current_ai_studio_model_id or MODEL_NAME,
-            request,
-            check_client_disconnected,
-            completion_event,
-            prompt_length=prompt_length,
-            timeout=timeout,
+            playwright_stream_factory,
+            completion_event
         )
+
         if not result_future.done():
-            result_future.set_result(StreamingResponse(stream_gen_func, media_type="text/event-stream"))
+            result_future.set_result(StreamingResponse(resilient_gen, media_type="text/event-stream"))
         
         return completion_event, submit_button_locator, check_client_disconnected
     else:

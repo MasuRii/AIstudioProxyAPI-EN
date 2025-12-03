@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Set
 from collections import defaultdict
 from config.settings import QUOTA_SOFT_LIMIT, QUOTA_HARD_LIMIT, MODEL_QUOTA_LIMITS
+from models.exceptions import QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,8 @@ class GlobalState:
             cls.current_profile_exhausted_models.add(model_key)
             # Trigger global rotation signal
             cls.set_quota_exceeded(message=f"Quota exceeded for model {model_key}")
-            return
+            # Raise exception to propagate up to request processor
+            raise QuotaExceededError(f"Quota exceeded for model {model_key} ({current_usage} >= {limit})")
 
         # Check Soft Limit (Graceful Signal)
         # Note: Using global soft limit as baseline for rotation signal
