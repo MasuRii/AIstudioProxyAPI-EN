@@ -301,8 +301,13 @@ async def queue_worker() -> None:
 
                                 async def enhanced_disconnect_monitor():
                                     nonlocal client_disconnected_early
+                                    disconnect_detection_count = 0
+                                    consecutive_checks = 0
+                                    check_interval = 0.2  # More frequent checks for faster detection
+                                    
                                     while not completion_event.is_set():
                                         try:
+                                            consecutive_checks += 1
                                             # [SHUTDOWN-08] Cooperative cancellation in stream monitor
                                             if GlobalState.IS_SHUTTING_DOWN.is_set():
                                                 logger.info(f"[{req_id}] (Worker) 🚨 Shutdown detected in stream monitor. Aborting wait.")
@@ -362,16 +367,29 @@ async def queue_worker() -> None:
                                                         completion_event.set()
                                                     break
 
-                                            # Proactively check if client is disconnected
+                                            # Enhanced client disconnect detection with debouncing
                                             is_connected = await _test_client_connection(req_id, http_request)
                                             if not is_connected:
-                                                logger.info(f"[{req_id}] (Worker) ✅ Client disconnect detected during streaming, triggering done signal early")
-                                                client_disconnected_early = True
-                                                # Set completion_event immediately to end wait early
-                                                if not completion_event.is_set():
-                                                    completion_event.set()
-                                                break
-                                            await asyncio.sleep(0.3)  # More frequent check interval
+                                                disconnect_detection_count += 1
+                                                logger.debug(f"[{req_id}] (Worker) Client disconnect detected (count: {disconnect_detection_count}/3)")
+                                                
+                                                # Require 3 consecutive disconnects to confirm (debouncing)
+                                                if disconnect_detection_count >= 3:
+                                                    logger.info(f"[{req_id}] (Worker) ✅ Confirmed client disconnect during streaming (3 consecutive checks), triggering done signal early")
+                                                    client_disconnected_early = True
+                                                    # Set completion_event immediately to end wait early
+                                                    if not completion_event.is_set():
+                                                        completion_event.set()
+                                                    break
+                                            else:
+                                                # Reset counter on successful connection
+                                                disconnect_detection_count = 0
+                                            
+                                            # Log status every 50 checks to show we're still monitoring
+                                            if consecutive_checks % 50 == 0:
+                                                logger.debug(f"[{req_id}] (Worker) Stream monitor still active (checks: {consecutive_checks}, disconnect_count: {disconnect_detection_count})")
+                                            
+                                            await asyncio.sleep(check_interval)
                                         except Exception as e:
                                             logger.error(f"[{req_id}] (Worker) Enhanced disconnect monitor error: {e}")
                                             break

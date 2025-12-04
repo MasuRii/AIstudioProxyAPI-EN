@@ -802,7 +802,7 @@ class TestAuxiliaryStreamResponse:
             {"body": None, "done": True, "reason": None, "function": []},
         ]
 
-        async def mock_stream_gen(req_id):
+        async def mock_stream_gen(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for data in mock_stream_data:
                 yield data
 
@@ -848,7 +848,7 @@ class TestAuxiliaryStreamResponse:
             {"body": "Final content", "done": True, "reason": None},
         ]
 
-        async def mock_stream_gen(req_id):
+        async def mock_stream_gen(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for data in mock_stream_data:
                 yield data
 
@@ -906,7 +906,7 @@ class TestAuxiliaryStreamResponse:
             {"body": "Valid content", "done": True, "reason": None},
         ]
 
-        async def mock_stream_gen(req_id):
+        async def mock_stream_gen(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for data in mock_stream_data:
                 yield data
 
@@ -1333,7 +1333,7 @@ async def test_handle_auxiliary_stream_response_non_streaming_success(
     mock_future = asyncio.Future()
     mock_locator = MagicMock()
 
-    async def mock_use_stream_response(req_id):
+    async def mock_use_stream_response(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         yield {"done": False, "body": "part1"}
         yield {"done": True, "body": "full_content", "reason": "stop"}
 
@@ -1371,7 +1371,7 @@ async def test_handle_auxiliary_stream_response_non_streaming_internal_timeout(
     mock_future = asyncio.Future()
     mock_locator = MagicMock()
 
-    async def mock_use_stream_response(req_id):
+    async def mock_use_stream_response(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         yield {"done": True, "reason": "internal_timeout"}
 
     with patch(

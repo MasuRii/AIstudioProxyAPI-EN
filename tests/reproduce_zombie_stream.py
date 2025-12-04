@@ -71,9 +71,9 @@ async def reproduce():
     
     # We expect it to exit immediately. If it hangs, we'll catch the timeout.
     try:
-        # Use a short timeout for the generator itself, but inside the function 
+        # Use a short timeout for the generator itself, but inside the function
         # the loop might wait up to 'timeout' arg (which we set to 2.0s for test)
-        async for chunk in use_stream_response(req_id="test_req", timeout=1.0):
+        async for chunk in use_stream_response(req_id="test_req", timeout=1.0, enable_silence_detection=True):
             print(f"Received chunk: {chunk}")
             if chunk.get("done"):
                 print("Received DONE signal. Checking if generator exits...")

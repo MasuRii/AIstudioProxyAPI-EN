@@ -254,6 +254,11 @@ async def _perform_canary_test(page: Page) -> bool:
         logger.warning("⚠️ Canary Test: Page is not available.")
         return False
 
+    # Early exit during shutdown to avoid proxy connection issues
+    if GlobalState.IS_SHUTTING_DOWN.is_set():
+        logger.info("🔬 Canary Test Skipped: System is shutting down.")
+        return True  # Return True to allow rotation to complete during shutdown
+
     try:
         logger.info("🔬 Performing Canary Test on new profile...")
         target_url = f"https://{AI_STUDIO_URL_PATTERN}prompts/new_chat"
@@ -268,6 +273,11 @@ async def _perform_canary_test(page: Page) -> bool:
         logger.warning("❌ Canary Test Failed: Timed out waiting for key element. Profile is likely bad.")
         return False
     except Exception as e:
+        # Special handling for proxy connection errors during shutdown
+        if "NS_ERROR_PROXY_CONNECTION_REFUSED" in str(e) and GlobalState.IS_SHUTTING_DOWN.is_set():
+            logger.info("🔬 Canary Test Skipped: Proxy connection refused during shutdown.")
+            return True  # Allow rotation to complete during shutdown
+        
         logger.error(f"❌ Canary Test Failed: Unexpected error - {e}", exc_info=True)
         return False
 

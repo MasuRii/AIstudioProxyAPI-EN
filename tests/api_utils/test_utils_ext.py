@@ -258,7 +258,7 @@ async def test_use_stream_response_success():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         assert len(chunks) == 2
@@ -270,7 +270,7 @@ async def test_use_stream_response_success():
 async def test_use_stream_response_queue_none():
     with patch("server.STREAM_QUEUE", None), patch("server.logger") as mock_logger:
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         assert len(chunks) == 0
@@ -289,7 +289,7 @@ async def test_use_stream_response_timeout():
         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         # Should yield timeout error
@@ -314,7 +314,7 @@ async def test_use_stream_response_mixed_types():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         assert len(chunks) == 3
@@ -339,7 +339,7 @@ async def test_use_stream_response_ignore_stale_done():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         # Should contain 2 items: real content and final done. Stale done ignored.
@@ -395,7 +395,7 @@ async def test_use_stream_response_none_signal():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         assert len(chunks) == 0  # None 信号不产生任何输出
@@ -416,7 +416,7 @@ async def test_use_stream_response_quota_exceeded_error():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         with pytest.raises(QuotaExceededError) as exc_info:
-            async for chunk in use_stream_response("req1"):
+            async for chunk in use_stream_response("req1", enable_silence_detection=True):
                 pass
 
         assert "AI Studio quota exceeded" in str(exc_info.value)
@@ -438,7 +438,7 @@ async def test_use_stream_response_quota_error_by_message():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         with pytest.raises(QuotaExceededError):
-            async for chunk in use_stream_response("req1"):
+            async for chunk in use_stream_response("req1", enable_silence_detection=True):
                 pass
 
 
@@ -457,7 +457,7 @@ async def test_use_stream_response_upstream_error():
 
     with patch("server.STREAM_QUEUE", mock_queue), patch("server.logger"):
         with pytest.raises(UpstreamError) as exc_info:
-            async for chunk in use_stream_response("req1"):
+            async for chunk in use_stream_response("req1", enable_silence_detection=True):
                 pass
 
         assert "AI Studio error" in str(exc_info.value)
@@ -486,7 +486,7 @@ async def test_use_stream_response_dict_with_stale_done():
         patch("server.logger") as mock_logger,
     ):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         # Dict always yields first, so all 3 chunks yielded
@@ -522,7 +522,7 @@ async def test_use_stream_response_timeout_after_data():
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         chunks = []
-        async for chunk in use_stream_response("req1"):
+        async for chunk in use_stream_response("req1", enable_silence_detection=True):
             chunks.append(chunk)
 
         # Should have data chunk + timeout chunk
@@ -553,7 +553,7 @@ async def test_use_stream_response_generic_exception():
         patch("server.logger") as mock_logger,
     ):
         with pytest.raises(RuntimeError, match="Unexpected error"):
-            async for chunk in use_stream_response("req1"):
+            async for chunk in use_stream_response("req1", enable_silence_detection=True):
                 pass
 
         # Verify error was logged (line 157)

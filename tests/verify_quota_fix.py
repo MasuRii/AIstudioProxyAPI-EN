@@ -21,7 +21,7 @@ def create_mock_request():
         model="test-model"
     )
 
-async def mock_use_stream_response(*args, **kwargs):
+async def mock_use_stream_response(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
     # Simulate empty stream that finishes immediately
     yield json.dumps({"done": True})
 
@@ -31,7 +31,8 @@ async def mock_check_quota_limit(page, req_id):
     GlobalState.IS_QUOTA_EXCEEDED = True
     return
 
-async def run_test():
+@pytest.mark.asyncio
+async def test_quota_fix_logic():
     print("Starting test_quota_fix")
     
     # Reset GlobalState
@@ -118,6 +119,6 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(run_test())
+        loop.run_until_complete(test_quota_fix_logic())
     finally:
         loop.close()

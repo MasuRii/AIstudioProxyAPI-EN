@@ -12,7 +12,7 @@ from api_utils.response_generators import gen_sse_from_aux_stream
 from models import ChatCompletionRequest, Message
 
 # Mock use_stream_response to yield sequence including messages after done
-async def mock_use_stream_response_generator(req_id, timeout, page, check_client_disconnected):
+async def mock_use_stream_response_generator(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
     # 1. Normal body message
     yield '{"reason": "", "body": "Hello", "done": false}'
     # 2. Done message

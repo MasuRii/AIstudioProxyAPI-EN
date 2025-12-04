@@ -47,7 +47,7 @@ class TestStreamingGeneratorBehavior:
 
         iteration_log = []
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for idx, item in enumerate(stream_data):
                 iteration_log.append(f"yield_{idx}")
                 await asyncio.sleep(0.01)  # Simulate async delay
@@ -103,12 +103,12 @@ class TestStreamingGeneratorBehavior:
             {"body": "Stream2 Data", "reason": "", "done": True},
         ]
 
-        async def mock_stream_gen1(rid):
+        async def mock_stream_gen1(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data1:
                 await asyncio.sleep(0.02)
                 yield item
 
-        async def mock_stream_gen2(rid):
+        async def mock_stream_gen2(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data2:
                 await asyncio.sleep(0.01)
                 yield item
@@ -175,7 +175,7 @@ class TestStreamingGeneratorBehavior:
             {"body": f"Chunk {i}", "reason": "", "done": i == 49} for i in range(50)
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
 
@@ -240,7 +240,7 @@ class TestStreamingGeneratorBehavior:
 
         event_check_log = []
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
 
@@ -287,7 +287,7 @@ class TestStreamingErrorHandling:
         completion_event = asyncio.Event()
         check_disconnect = MagicMock()
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             yield {"body": "First chunk", "reason": "", "done": False}
             raise Exception("Stream error")
 
@@ -334,7 +334,7 @@ class TestStreamingErrorHandling:
             {"body": f"Chunk {i}", "reason": "", "done": False} for i in range(10)
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
 
@@ -381,7 +381,7 @@ class TestStreamingDataIntegrity:
             {"body": "Hello world!", "reason": "", "done": True},
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
 
@@ -446,7 +446,7 @@ class TestStreamingDataIntegrity:
             {"body": "Test", "reason": "", "done": True},
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
 

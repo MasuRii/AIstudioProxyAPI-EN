@@ -44,10 +44,10 @@ class TestGenSSEFromAuxStream:
             {"body": "Hello World!", "reason": "", "done": True},
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-
+    
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -102,10 +102,10 @@ class TestGenSSEFromAuxStream:
             {"reason": "", "body": "The solution is 42", "done": True},
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-
+    
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -159,10 +159,10 @@ class TestGenSSEFromAuxStream:
             {"body": "", "reason": "", "done": True, "function": function_data}
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-
+    
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -216,10 +216,10 @@ class TestGenSSEFromAuxStream:
             {"body": "Second chunk", "reason": "", "done": False},
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-
+    
         with patch(
             "api_utils.response_generators.use_stream_response",
             side_effect=mock_stream_gen,
@@ -253,10 +253,10 @@ class TestGenSSEFromAuxStream:
             {"body": "Valid content", "reason": "", "done": True},
         ]
 
-        async def mock_stream_gen(rid):
+        async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-
+    
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -558,7 +558,7 @@ async def test_gen_sse_from_aux_stream_state_with_content(
 
     stream_data = [{"body": "Hello World", "reason": "", "done": True}]
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         for item in stream_data:
             yield item
 
@@ -597,7 +597,7 @@ async def test_gen_sse_from_aux_stream_state_no_content(
     stream_state = {}
 
     # Empty stream
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         return
         yield  # pragma: no cover - make it a generator
 
@@ -637,7 +637,7 @@ async def test_gen_sse_from_aux_stream_state_reasoning_only(
 
     stream_data = [{"body": "", "reason": "Thinking deeply...", "done": True}]
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         for item in stream_data:
             yield item
 
@@ -689,7 +689,7 @@ async def test_gen_sse_from_aux_stream_body_with_tool_calls(
         },
     ]
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         for item in stream_data:
             yield item
 
@@ -750,7 +750,7 @@ async def test_gen_sse_from_aux_stream_tool_calls_only_in_final_chunk(
     # No body content, just tool calls in final done chunk
     stream_data = [{"body": "", "reason": "", "done": True, "function": function_data}]
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         for item in stream_data:
             yield item
 
@@ -806,7 +806,7 @@ async def test_gen_sse_from_aux_stream_error_in_processing(
     """Test exception handling when error occurs during processing - should re-raise."""
     req_id = "test_error_chunk"
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         yield {"body": "Start"}
         # Raise an error during stream processing
         raise ValueError("Simulated stream processing error")
@@ -842,7 +842,7 @@ async def test_gen_sse_from_aux_stream_usage_stats_error(
 
     stream_data = [{"body": "Complete", "done": True}]
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         for item in stream_data:
             yield item
 
@@ -875,7 +875,7 @@ async def test_gen_sse_from_aux_stream_cancelled_error(
     """Test CancelledError handling (lines 210-214)."""
     req_id = "test_cancelled"
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         yield {"body": "Start"}
         await asyncio.sleep(0.1)
         raise asyncio.CancelledError()
@@ -1048,7 +1048,7 @@ async def test_gen_sse_from_aux_stream_non_dict_data(
     """Test handling of non-dict data in stream (lines 81-83)."""
     req_id = "test_non_dict"
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         yield "string_data"  # Not JSON, not dict
         yield 12345  # Integer
         yield {"body": "Valid"}  # Valid dict
@@ -1080,7 +1080,7 @@ async def test_gen_sse_from_aux_stream_list_instead_of_dict(
     """Test handling when parsed JSON is a list instead of dict (lines 81-83)."""
     req_id = "test_list_data"
 
-    async def mock_stream_gen(rid):
+    async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
         yield json.dumps([1, 2, 3])  # Valid JSON but not a dict
         yield {"body": "OK"}
 
