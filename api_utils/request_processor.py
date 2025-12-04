@@ -112,7 +112,7 @@ async def _validate_page_status(req_id: str, context: RequestContext, check_clie
     is_page_ready = context['is_page_ready']
     
     if not page or page.is_closed() or not is_page_ready:
-        raise HTTPException(status_code=503, detail=f"[{req_id}] AI Studio page missing or not ready.", headers={"Retry-After": "30"})
+        raise HTTPException(status_code=503, detail=f"[{req_id}] AI Studio page lost or not ready.", headers={"Retry-After": "30"})
     
     check_client_disconnected("Initial Page Check")
 
@@ -124,11 +124,11 @@ async def _handle_model_switching(req_id: str, context: RequestContext, check_cl
 
 async def _handle_model_switch_failure(req_id: str, page: AsyncPage, model_id_to_use: str, model_before_switch: str, logger) -> None:
     """Handle model switch failure"""
-    import server
+    from api_utils.server_state import state
     
     logger.warning(f"[{req_id}] Failed to switch model to {model_id_to_use}.")
     # Attempt to restore global state
-    server.current_ai_studio_model_id = model_before_switch
+    state.current_ai_studio_model_id = model_before_switch
     
     raise HTTPException(
         status_code=422,
@@ -192,6 +192,10 @@ async def _prepare_and_validate_request(
             if latest_user is not None:
                 filtered: List[str] = []
                 import os
+                from urllib.parse import urlparse, unquote
+                from urllib.request import url2pathname
+                from api_utils.utils import extract_data_url_to_local
+
                 # Collect data:/file:/absolute paths (existing) on this user message
                 content = getattr(latest_user, 'content', None)
                 # Extract uniformly from messages attachment fields
@@ -213,12 +217,17 @@ async def _prepare_and_validate_request(
                         if not url_value:
                             continue
                         if url_value.startswith("data:"):
-                            fp: Optional[str] = extract_data_url_to_local(url_value)
+                            fp: Optional[str] = extract_data_url_to_local(url_value, req_id=req_id)
                             if fp:
                                 filtered.append(fp)
                         elif url_value.startswith("file:"):
                             parsed = urlparse(url_value)
-                            lp: str = unquote(parsed.path)
+                            if parsed.netloc and parsed.netloc.endswith(':'):
+                                lp = url2pathname(parsed.netloc + parsed.path)
+                            else:
+                                host = "{0}{0}{1}".format(os.path.sep, parsed.netloc) if parsed.netloc else ""
+                                lp = host + url2pathname(parsed.path)
+                            
                             if os.path.exists(lp):
                                 filtered.append(lp)
                         elif os.path.isabs(url_value) and os.path.exists(url_value):
@@ -242,6 +251,7 @@ async def _handle_response_processing(
     check_client_disconnected: Callable,
     prompt_length: int,
     timeout: float,
+    silence_threshold: float = 60.0,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
     """Handle response generation"""
     from server import logger
@@ -256,7 +266,7 @@ async def _handle_response_processing(
     use_stream = stream_port != "0"
 
     if use_stream:
-        return await _handle_auxiliary_stream_response(req_id, request, context, result_future, submit_button_locator, check_client_disconnected, timeout=timeout)
+        return await _handle_auxiliary_stream_response(req_id, request, context, result_future, submit_button_locator, check_client_disconnected, timeout=timeout, silence_threshold=silence_threshold)
     else:
         return await _handle_playwright_response(req_id, request, page, context, result_future, submit_button_locator, check_client_disconnected, prompt_length, timeout=timeout)
 
@@ -269,6 +279,7 @@ async def _handle_auxiliary_stream_response(
     submit_button_locator: Locator,
     check_client_disconnected: Callable,
     timeout: float,
+    silence_threshold: float = 60.0,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
     """Auxiliary stream response processing path"""
     from server import logger
@@ -290,6 +301,7 @@ async def _handle_auxiliary_stream_response(
                     check_client_disconnected,
                     event_to_signal,
                     timeout=timeout,
+                    silence_threshold=silence_threshold,
                     page=page,  # <--- CRITICAL: This enables the auto-scroll logic in stream.py
                 )
 
@@ -322,7 +334,7 @@ async def _handle_auxiliary_stream_response(
             logger.error(f"[{req_id}] Error getting stream data from queue: {e}", exc_info=True)
             # Fallback to non-streaming if stream setup fails...
             page = context['page']
-            async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected):
+            async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout, enable_silence_detection=is_streaming):
                 if completion_event and not completion_event.is_set():
                     completion_event.set()
             raise
@@ -335,7 +347,8 @@ async def _handle_auxiliary_stream_response(
 
         # Pass page here too for non-streaming requests so they don't time out
         page = context['page']
-        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout):
+        # [FIX] Disable silence detection for non-streaming requests to prevent premature timeouts on large generations
+        async for raw_data in use_stream_response(req_id, page=page, check_client_disconnected=check_client_disconnected, timeout=timeout, silence_threshold=silence_threshold, enable_silence_detection=False):
             check_client_disconnected(f"Non-streaming aux stream - loop ({req_id}): ")
             
             if isinstance(raw_data, str):
@@ -777,6 +790,7 @@ async def _process_request_refactored(
         try:
             from api_utils.utils import extract_data_url_to_local
             from urllib.parse import urlparse, unquote
+            from urllib.request import url2pathname
             import os
             # Top-level attachments
             top_level_atts = getattr(request, 'attachments', None)
@@ -796,7 +810,12 @@ async def _process_request_refactored(
                             image_list.append(fp)
                     elif url_value.startswith('file:'):
                         parsed = urlparse(url_value)
-                        lp = unquote(parsed.path)
+                        if parsed.netloc and parsed.netloc.endswith(':'):
+                            lp = url2pathname(parsed.netloc + parsed.path)
+                        else:
+                            host = "{0}{0}{1}".format(os.path.sep, parsed.netloc) if parsed.netloc else ""
+                            lp = host + url2pathname(parsed.path)
+                        
                         if os.path.exists(lp):
                             image_list.append(lp)
                     elif os.path.isabs(url_value) and os.path.exists(url_value):
@@ -822,7 +841,12 @@ async def _process_request_refactored(
                                 image_list.append(fp)
                         elif url_value.startswith('file:'):
                             parsed = urlparse(url_value)
-                            lp = unquote(parsed.path)
+                            if parsed.netloc and parsed.netloc.endswith(':'):
+                                lp = url2pathname(parsed.netloc + parsed.path)
+                            else:
+                                host = "{0}{0}{1}".format(os.path.sep, parsed.netloc) if parsed.netloc else ""
+                                lp = host + url2pathname(parsed.path)
+
                             if os.path.exists(lp):
                                 image_list.append(lp)
                         elif os.path.isabs(url_value) and os.path.exists(url_value):
@@ -865,12 +889,20 @@ async def _process_request_refactored(
         config_timeout = RESPONSE_COMPLETION_TIMEOUT / 1000.0
         dynamic_timeout = max(calc_timeout, config_timeout)
         
+        # [STREAM-FIX] Calculate dynamic silence threshold
+        # Base logic: max(DEFAULT_SILENCE (60s), dynamic_timeout / 2)
+        # This ensures that if we allow a 5-minute request, we also allow for significant pauses (e.g., 2.5 mins)
+        DEFAULT_SILENCE_THRESHOLD = 60.0  # 60 seconds
+        dynamic_silence_threshold = max(DEFAULT_SILENCE_THRESHOLD, dynamic_timeout / 2.0)
+        
         logger.info(f"[{req_id}] Calculated dynamic TTFB timeout: {dynamic_timeout:.2f}s (Calc: {calc_timeout:.2f}s, Config: {config_timeout:.2f}s)")
+        logger.info(f"[{req_id}] Calculated dynamic silence threshold: {dynamic_silence_threshold:.2f}s")
 
         # Response processing is still needed here as it determines if it's streaming or non-streaming, and sets future
         response_result = await _handle_response_processing(
             req_id, request, page, context, result_future, submit_button_locator, check_client_disconnected, len(prepared_prompt),
-            timeout=dynamic_timeout
+            timeout=dynamic_timeout,
+            silence_threshold=dynamic_silence_threshold
         )
 
         if response_result:

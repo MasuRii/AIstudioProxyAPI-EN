@@ -104,6 +104,7 @@ async def gen_sse_from_aux_stream(
     check_client_disconnected: Callable[[str], bool],
     event_to_set: Event,
     timeout: float,
+    silence_threshold: float = 60.0,
     page: AsyncPage = None,
 ) -> AsyncGenerator[str, None]:
     """辅助流队列 -> OpenAI 兼容 SSE 生成器。
@@ -134,7 +135,8 @@ async def gen_sse_from_aux_stream(
     loop_count = 0
 
     try:
-        async for raw_data in use_stream_response(req_id, timeout=timeout, page=page, check_client_disconnected=check_client_disconnected):
+        # [FIX] Enable silence detection for streaming requests to prevent stuck connections
+        async for raw_data in use_stream_response(req_id, timeout=timeout, silence_threshold=silence_threshold, page=page, check_client_disconnected=check_client_disconnected, enable_silence_detection=True):
             # [CONCURRENCY-FIX] Zombie Kill Switch
             # If the global active request ID has changed, this generator is a zombie. Die immediately.
             if GlobalState.CURRENT_STREAM_REQ_ID and GlobalState.CURRENT_STREAM_REQ_ID != req_id:
@@ -332,7 +334,10 @@ async def gen_sse_from_aux_stream(
                         # We just catch generic Exception to be safe and proceed to re-check flags
                         logger.warning(f"[{req_id}] Quota check during done-handling triggered exception: {e}")
 
-                    await asyncio.sleep(0.5) # 500ms grace period
+                    # [FIX-DELAY] Increased grace period from 0.5s to 2.0s to allow network interceptor
+                    # to catch late-arriving 'jserror' signals (seen taking ~550ms in logs).
+                    logger.info(f"[{req_id}] Empty response detected. Waiting 2.0s for potential delayed Quota/Error signals...")
+                    await asyncio.sleep(2.0)
                     is_quota_exceeded = GlobalState.IS_QUOTA_EXCEEDED # Re-check
                     is_recovering = GlobalState.IS_RECOVERING # Re-check recovery status too
 

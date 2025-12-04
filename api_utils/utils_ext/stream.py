@@ -14,15 +14,17 @@ from logging_utils import set_request_id
 # 4. Trigger: XML Tag Start (<tagname) followed by Space (for attributes) or > (immediate close)
 TOOL_STRUCTURE_PATTERN = re.compile(r'(?:^|\n)\s*(?:```[a-zA-Z0-9]*\s*)?<[a-zA-Z0-9_\-]+(?:\s|>)')
 
-async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, check_client_disconnected: Optional[Callable] = None, stream_start_time: float = 0.0) -> AsyncGenerator[Any, None]:
+async def use_stream_response(req_id: str, timeout: float = 5.0, silence_threshold: float = 60.0, page=None, check_client_disconnected: Optional[Callable] = None, stream_start_time: float = 0.0, enable_silence_detection: bool = True) -> AsyncGenerator[Any, None]:
     """Enhanced stream response handler with UI-based generation active checks.
     
     Args:
         req_id: Request identifier for logging
         timeout: TTFB timeout in seconds
+        silence_threshold: Dynamic silence detection threshold in seconds (how long to wait without data before assuming stream is dead)
         page: Playwright page instance for UI state checks
         check_client_disconnected: Optional callback to check if client disconnected
         stream_start_time: Timestamp when this specific stream request was initiated. Used to filter out stale queue data.
+        enable_silence_detection: Whether to enable the silence watchdog that terminates streams if no data is received for a set duration.
     """
     from server import STREAM_QUEUE, logger
     from models import ClientDisconnectedError, QuotaExceededError
@@ -50,7 +52,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     if stream_start_time == 0.0:
         stream_start_time = time.time() - 10.0 # Fallback: 10s buffer if not provided
 
-    logger.info(f"[{req_id}] Starting stream response (TTFB Timeout: {timeout:.2f}s, Start Time: {stream_start_time})")
+    logger.info(f"[{req_id}] Starting stream response (TTFB Timeout: {timeout:.2f}s, Silence Threshold: {silence_threshold:.2f}s, Max Retries: {max_empty_retries}, Start Time: {stream_start_time})")
 
     accumulated_body = ""
     accumulated_reason_len = 0
@@ -73,8 +75,17 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
     # Enhanced timeout settings for thinking models
     empty_count = 0
-    max_empty_retries = 900  # Increased to 90 seconds (900 * 0.1s)
-    initial_wait_limit = int(timeout * 10)
+    initial_wait_limit = int(timeout * 10)  # TTFB timeout in ticks (0.1s each)
+    
+    # [STREAM-FIX] Dynamic max_empty_retries based on silence_threshold
+    # Convert silence_threshold (seconds) to ticks (0.1s each)
+    # Ensure it's at least as long as initial_wait_limit to prevent general timeout from undercutting TTFB
+    silence_wait_limit = int(silence_threshold * 10)
+    max_empty_retries = max(silence_wait_limit, initial_wait_limit)
+    
+    # [STREAM-FIX] Hard timeout limit (3x the dynamic timeout) to prevent infinite zombie loops
+    hard_timeout_limit = int(timeout * 10 * 3)
+    
     data_received = False
     has_content = False
     received_items_count = 0
@@ -86,7 +97,7 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
     
     # [LOGIC-FIX] Last Packet Watchdog for silence detection
     last_packet_time = time.time()
-    silence_detection_threshold = SILENCE_TIMEOUT_MS / 1000.0  # Use configured value, converted to seconds
+    silence_detection_threshold = silence_threshold  # Use passed dynamic silence threshold
     min_items_before_silence_check = 10  # Only check silence after receiving some data
     
     # UI-based generation check helper
@@ -118,10 +129,17 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
 
     try:
         while True:
-            # [CONCURRENCY-FIX] Zombie Stream Check
+            # [CONCURRENCY-FIX] Enhanced Zombie Stream Check with Graceful Termination
             if GlobalState.CURRENT_STREAM_REQ_ID and GlobalState.CURRENT_STREAM_REQ_ID != req_id:
-                logger.warning(f"[{req_id}] 🧟 Zombie Stream detected in wait loop (Active: {GlobalState.CURRENT_STREAM_REQ_ID}). Aborting.")
+                logger.warning(f"[{req_id}] 🧟 Zombie Stream detected in wait loop (Active: {GlobalState.CURRENT_STREAM_REQ_ID}). Aborting gracefully.")
+                
+                # Add a small delay to allow the old stream to clean up properly
+                await asyncio.sleep(0.1)
+                
+                # Send termination signal and yield final state
                 yield {"done": True, "reason": "zombie_stream_aborted", "body": "", "function": []}
+                
+                # Force immediate return to avoid any further processing
                 return
 
             # [FIX-SCROLL] Active Viewport Tracking (Auto-Scroll)
@@ -711,7 +729,8 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                 empty_count += 1
 
                 # [LOGIC-FIX] Silence Detection: Check if stream has been silent for too long
-                if (received_items_count >= min_items_before_silence_check and
+                if (enable_silence_detection and
+                    received_items_count >= min_items_before_silence_check and
                     time.time() - last_packet_time > silence_detection_threshold):
                     logger.info(f"[{req_id}] 🔇 Stream silence detected ({silence_detection_threshold}s). Assuming generation complete.")
                     yield {"done": True, "reason": "silence_detected", "body": "", "function": []}
@@ -741,21 +760,35 @@ async def use_stream_response(req_id: str, timeout: float = 5.0, page=None, chec
                     yield {"done": True, "reason": "ttfb_timeout", "body": "", "function": []}
                     return
 
-                # [CRITICAL-FIX] Network State Priority: Trust data flow over UI state
-                if empty_count >= max_empty_retries:
+                # [STREAM-FIX] Smart Timeout Logic: Distinguish between TTFB Phase and Streaming Phase
+                # Determine which timeout limit to use based on whether we've received data
+                effective_timeout_limit = initial_wait_limit if received_items_count == 0 else max_empty_retries
+                
+                if empty_count >= effective_timeout_limit:
                     # [ID-03] Dynamic Timeout Extension during Recovery
                     if GlobalState.IS_RECOVERING:
                         logger.info(f"[{req_id}] ⏳ Stream timeout reached, but system is RECOVERING. Extending wait...")
                         empty_count = 0 # Reset counter to give more time
                         continue
 
-                    # CRITICAL FIX: Remove UI-based timeout extension
-                    # Trust Network State over UI State - force exit on timeout
+                    # [STREAM-FIX] Restore UI Trust ("Thinking" Fix)
+                    # Check if UI reports active generation
                     is_thinking = await check_ui_generation_active()
-                    if is_thinking:
-                        logger.warning(f"[{req_id}] 🚨 TIMEOUT REACHED despite active UI! Forcing stream completion.")
+                    
+                    if is_thinking and empty_count < hard_timeout_limit:
+                        # UI reports active generation and we haven't hit hard limit yet
+                        # "Snooze" the timeout by resetting counter
+                        logger.warning(f"[{req_id}] ⏰ Timeout reached ({empty_count}/{effective_timeout_limit}) but UI active. Snoozing timeout (Hard limit: {hard_timeout_limit})...")
+                        empty_count = max(0, empty_count - int(effective_timeout_limit * 0.5))  # Reduce by 50% instead of full reset
+                        continue
+                    elif empty_count >= hard_timeout_limit:
+                        # Hit hard timeout limit - force termination even if UI is active
+                        logger.error(f"[{req_id}] 🚨 HARD TIMEOUT REACHED ({hard_timeout_limit} ticks)! Forcing stream completion despite UI state.")
+                        yield {"done": True, "reason": "hard_timeout", "body": "", "function": []}
+                        return
                     else:
-                        logger.warning(f"[{req_id}] ⏰ Stream timeout reached ({max_empty_retries} attempts). Ending stream.")
+                        # Timeout reached and UI is not active
+                        logger.warning(f"[{req_id}] ⏰ Stream timeout reached ({empty_count}/{effective_timeout_limit}). UI not active. Ending stream.")
                     
                     if not data_received:
                         logger.error(f"[{req_id}] Stream timeout: no data received, likely auxiliary stream failed")
