@@ -252,7 +252,24 @@ async def _handle_model_list_response(response: Any):
         else:
             logger.info(f"捕获到潜在的模型列表响应来自: {response.url} (状态: {response.status})")
         try:
-            data = await response.json()
+            # Fix: Handle Network.getResponseBody protocol error by using fallback methods
+            try:
+                data = await response.json()
+            except Exception as protocol_err:
+                if "Network.getResponseBody" in str(protocol_err) or "Protocol error" in str(protocol_err):
+                    logger.warning(f"Playwright Protocol Error detected in model list response: {protocol_err}")
+                    # Fallback: Try to get response body text and parse manually
+                    try:
+                        response_text = await response.text()
+                        data = json.loads(response_text)
+                        logger.info("Successfully parsed model list response using fallback method")
+                    except Exception as fallback_err:
+                        logger.error(f"Fallback parsing also failed for model list response: {fallback_err}")
+                        if model_list_fetch_event and not model_list_fetch_event.is_set():
+                            model_list_fetch_event.set()
+                        return
+                else:
+                    raise  # Re-raise if it's not the specific protocol error we're handling
             models_array_container = None
             if isinstance(data, list) and data:
                 if isinstance(data[0], list) and data[0] and isinstance(data[0][0], list):

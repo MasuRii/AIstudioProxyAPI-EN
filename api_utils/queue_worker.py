@@ -451,14 +451,26 @@ async def queue_worker() -> None:
                             if submit_btn_loc and client_disco_checker and completion_event and not client_disconnected_early:
                                     # Wait for send button disable to confirm stream response fully ended
                                     logger.info(f"[{req_id}] (Worker) Stream response completed, checking and handling send button status...")
-                                    wait_timeout_ms = 30000  # 30 seconds
+                                    wait_timeout_ms = 10000  # Reduced from 30s to 10s to avoid long waits
                                     try:
                                         from playwright.async_api import expect as expect_async
                                         from api_utils.request_processor import ClientDisconnectedError
 
-                                        # Check client connection status
-                                        client_disco_checker("Post-stream button status check - Pre-check: ")
+                                        # Check client connection status before starting button operations
+                                        try:
+                                            client_disco_checker("Post-stream button status check - Pre-check: ")
+                                        except ClientDisconnectedError:
+                                            logger.info(f"[{req_id}] Client disconnected during pre-check, skipping button handling.")
+                                            raise
+                                        
                                         await asyncio.sleep(0.5)  # Give UI some time to update
+
+                                        # Re-check client connection after the sleep
+                                        try:
+                                            client_disco_checker("Post-stream button status check - Post-sleep: ")
+                                        except ClientDisconnectedError:
+                                            logger.info(f"[{req_id}] Client disconnected during post-sleep check, skipping button handling.")
+                                            raise
 
                                         # Check if button is still enabled, if so click stop directly
                                         logger.info(f"[{req_id}] (Worker) Checking send button status...")
@@ -466,6 +478,13 @@ async def queue_worker() -> None:
                                             # [AUTO-01] Harden Submit Button Logic
                                             is_button_enabled = await submit_btn_loc.is_enabled(timeout=2000)
                                             logger.info(f"[{req_id}] (Worker) Send button enabled status: {is_button_enabled}")
+
+                                            # Check client connection before clicking
+                                            try:
+                                                client_disco_checker("Post-stream button status check - Before click: ")
+                                            except ClientDisconnectedError:
+                                                logger.info(f"[{req_id}] Client disconnected before button click, aborting.")
+                                                raise
 
                                             if is_button_enabled:
                                                 # Button still enabled after stream completion, click stop
@@ -477,17 +496,24 @@ async def queue_worker() -> None:
                                         except Exception as button_check_err:
                                             logger.warning(f"[{req_id}] (Worker) Failed to check button status: {button_check_err}")
 
+                                        # Final client connection check before waiting for button disabled
+                                        try:
+                                            client_disco_checker("Post-stream button status check - Before final wait: ")
+                                        except ClientDisconnectedError:
+                                            logger.info(f"[{req_id}] Client disconnected before final wait, skipping disable wait.")
+                                            raise
+
                                         # Wait for button to be finally disabled
                                         logger.info(f"[{req_id}] (Worker) Waiting for send button to be finally disabled...")
                                         await expect_async(submit_btn_loc).to_be_disabled(timeout=wait_timeout_ms)
                                         logger.info(f"[{req_id}] ✅ Send button disabled.")
 
+                                    except ClientDisconnectedError:
+                                        logger.info(f"[{req_id}] Client disconnected during stream post-response button status handling.")
                                     except Exception as e_pw_disabled:
                                         logger.warning(f"[{req_id}] ⚠️ Stream post-response button status handling timeout or error: {e_pw_disabled}")
                                         from api_utils.request_processor import save_error_snapshot
                                         await save_error_snapshot(f"stream_post_submit_button_handling_timeout_{req_id}")
-                                    except ClientDisconnectedError:
-                                        logger.info(f"[{req_id}] Client disconnected during stream post-response button status handling.")
                             elif completion_event and current_request_was_streaming:
                                 logger.warning(f"[{req_id}] (Worker) Streaming request but submit_btn_loc or client_disco_checker missing. Skipping button disable wait.")
 
