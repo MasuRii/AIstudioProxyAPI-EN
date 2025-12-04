@@ -218,6 +218,12 @@ def parse_args() -> argparse.Namespace:
         help="[无头模式/调试模式可选] 指定要使用的活动认证JSON文件的路径 (在 auth_profiles/active/ 或 auth_profiles/saved/ 中，或绝对路径)。"
         "如果未提供，无头模式将使用 active/ 目录中最新的JSON文件，调试模式将提示选择或不使用。",
     )
+    
+    # 修复: 从环境变量读取默认值，而不是使用 argparse 的默认 False
+    debug_logs_default = os.environ.get('DEBUG_LOGS_ENABLED', 'false').lower() == 'true'
+    trace_logs_default = os.environ.get('TRACE_LOGS_ENABLED', 'false').lower() == 'true'
+    auto_save_auth_default = os.environ.get('AUTO_SAVE_AUTH', 'false').lower() == 'true'
+    
     parser.add_argument(  # from dev
         "--auto-save-auth",
         action="store_true",
@@ -256,12 +262,41 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--debug-logs",
         action="store_true",
+        default=debug_logs_default,
         help="启用 server.py 内部的 DEBUG 级别详细日志 (环境变量 DEBUG_LOGS_ENABLED)。",
     )
     parser.add_argument(
         "--trace-logs",
         action="store_true",
+        default=trace_logs_default,
         help="启用 server.py 内部的 TRACE 级别更详细日志 (环境变量 TRACE_LOGS_ENABLED)。",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    
+    # 标记哪些参数是通过命令行明确设置的
+    # 这样我们可以在运行时区分默认值（来自.env）和用户显式设置
+    if '--debug-logs' in sys.argv:
+        args.debug_logs_from_cli = True
+    else:
+        args.debug_logs_from_cli = False
+        
+    if '--trace-logs' in sys.argv:
+        args.trace_logs_from_cli = True
+    else:
+        args.trace_logs_from_cli = False
+        
+    if '--auto-save-auth' in sys.argv:
+        args.auto_save_auth_from_cli = True
+    else:
+        args.auto_save_auth_from_cli = False
+    
+    # 如果没有通过命令行设置，则使用环境变量值
+    if not args.debug_logs_from_cli:
+        args.debug_logs = debug_logs_default
+    if not args.trace_logs_from_cli:
+        args.trace_logs = trace_logs_default
+    if not args.auto_save_auth_from_cli:
+        args.auto_save_auth = auto_save_auth_default
+
+    return args

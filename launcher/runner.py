@@ -224,6 +224,7 @@ class Launcher:
 
                 if new_auth_filename:
                     self.args.auto_save_auth = True
+                    self.args.auto_save_auth_from_cli = True
                     self.args.save_auth_as = new_auth_filename
                     logger.info(
                         f"  好的，登录成功后将自动保存认证文件为: {new_auth_filename}.json"
@@ -578,11 +579,24 @@ class Launcher:
         os.environ["SERVER_REDIRECT_PRINT"] = str(
             self.args.server_redirect_print
         ).lower()
-        os.environ["DEBUG_LOGS_ENABLED"] = str(self.args.debug_logs).lower()
-        os.environ["TRACE_LOGS_ENABLED"] = str(self.args.trace_logs).lower()
+        
+        # 修复: 如果命令行参数未提供，则保持环境变量中的原始值
+        # 这样可以尊重 .env 文件中的配置
+        if hasattr(self.args, 'debug_logs_from_cli') and self.args.debug_logs_from_cli:
+            os.environ["DEBUG_LOGS_ENABLED"] = str(self.args.debug_logs).lower()
+        # 否则保持现有的环境变量值（已从 .env 加载）
+        
+        if hasattr(self.args, 'trace_logs_from_cli') and self.args.trace_logs_from_cli:
+            os.environ["TRACE_LOGS_ENABLED"] = str(self.args.trace_logs).lower()
+        # 否则保持现有的环境变量值（已从 .env 加载）
+        
         if self.effective_active_auth_json_path:
             os.environ["ACTIVE_AUTH_JSON_PATH"] = self.effective_active_auth_json_path
-        os.environ["AUTO_SAVE_AUTH"] = str(self.args.auto_save_auth).lower()
+            
+        # 对于 AUTO_SAVE_AUTH，只有在调试模式且通过命令行明确指定时才覆盖
+        if self.final_launch_mode == "debug" and hasattr(self.args, 'auto_save_auth_from_cli') and self.args.auto_save_auth_from_cli:
+            os.environ["AUTO_SAVE_AUTH"] = str(self.args.auto_save_auth).lower()
+        # 否则保持现有的环境变量值（已从 .env 加载）
         if self.args.save_auth_as:
             os.environ["SAVE_AUTH_FILENAME"] = self.args.save_auth_as
         os.environ["AUTH_SAVE_TIMEOUT"] = str(self.args.auth_save_timeout)

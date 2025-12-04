@@ -833,6 +833,7 @@ if __name__ == "__main__":
 
             if new_auth_filename:
                 args.auto_save_auth = True
+                args.auto_save_auth_from_cli = True
                 args.save_auth_as = new_auth_filename
                 logger.info(f"  Okay, will auto-save auth file as: {new_auth_filename}.json after successful login")
                 # In this mode, should not load any existing auth files
@@ -1157,11 +1158,24 @@ if __name__ == "__main__":
     os.environ['LAUNCH_MODE'] = final_launch_mode
     os.environ['SERVER_LOG_LEVEL'] = args.server_log_level.upper()
     os.environ['SERVER_REDIRECT_PRINT'] = str(args.server_redirect_print).lower()
-    os.environ['DEBUG_LOGS_ENABLED'] = str(args.debug_logs).lower()
-    os.environ['TRACE_LOGS_ENABLED'] = str(args.trace_logs).lower()
+    
+    # 修复: 如果命令行参数未提供，则保持环境变量中的原始值
+    # 这样可以尊重 .env 文件中的配置
+    if hasattr(args, 'debug_logs_from_cli') and args.debug_logs_from_cli:
+        os.environ['DEBUG_LOGS_ENABLED'] = str(args.debug_logs).lower()
+    # 否则保持现有的环境变量值（已从 .env 加载）
+    
+    if hasattr(args, 'trace_logs_from_cli') and args.trace_logs_from_cli:
+        os.environ['TRACE_LOGS_ENABLED'] = str(args.trace_logs).lower()
+    # 否则保持现有的环境变量值（已从 .env 加载）
+    
     if effective_active_auth_json_path:
         os.environ['ACTIVE_AUTH_JSON_PATH'] = effective_active_auth_json_path
-    os.environ['AUTO_SAVE_AUTH'] = str(args.auto_save_auth).lower()
+        
+    # 对于 AUTO_SAVE_AUTH，只有在调试模式且通过命令行明确指定时才覆盖
+    if final_launch_mode == 'debug' and hasattr(args, 'auto_save_auth_from_cli') and args.auto_save_auth_from_cli:
+        os.environ['AUTO_SAVE_AUTH'] = str(args.auto_save_auth).lower()
+    # 否则保持现有的环境变量值（已从 .env 加载）
     if args.save_auth_as:
         os.environ['SAVE_AUTH_FILENAME'] = args.save_auth_as
     os.environ['AUTH_SAVE_TIMEOUT'] = str(args.auth_save_timeout)

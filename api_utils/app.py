@@ -84,10 +84,17 @@ def _setup_logging():
 
 def _initialize_globals():
     import server
+    from api_utils.server_state import state
+    
     server.request_queue = Queue()
     server.processing_lock = Lock()
     server.model_switching_lock = Lock()
     server.params_cache_lock = Lock()
+    
+    # Initialize model_list_fetch_event
+    server.model_list_fetch_event = asyncio.Event()
+    state.model_list_fetch_event = server.model_list_fetch_event
+    
     auth_utils.initialize_keys()
     
     # Initialize Auth Rotation Lock
@@ -161,14 +168,26 @@ async def _initialize_browser_and_page():
         server.browser_instance = await server.playwright_manager.firefox.connect(ws_endpoint, timeout=30000)
         server.is_browser_connected = True
         server.logger.info(f"Connected to browser: {server.browser_instance.version}")
+        # Update the global server state
+        from api_utils.server_state import state
+        state.is_browser_connected = True
         
         server.page_instance, server.is_page_ready = await _initialize_page_logic(server.browser_instance)
         if server.is_page_ready:
             await _handle_initial_model_state_and_storage(server.page_instance)
             await enable_temporary_chat_mode(server.page_instance)
             server.logger.info("Page initialized successfully.")
+            # Update the global server state
+            state.page_instance = server.page_instance
+            state.is_page_ready = True
+            # Also sync current_ai_studio_model_id from server to state
+            state.current_ai_studio_model_id = server.current_ai_studio_model_id
         else:
             server.logger.error("Page initialization failed.")
+            # Update the global server state
+            state.page_instance = None
+            state.is_page_ready = False
+            state.current_ai_studio_model_id = None
     
     if not server.model_list_fetch_event.is_set():
         server.model_list_fetch_event.set()
@@ -205,7 +224,7 @@ async def _shutdown_resources():
 async def lifespan(app: FastAPI):
     """FastAPI application life cycle management"""
     import server
-    from server import queue_worker
+    from .queue_worker import queue_worker
 
     original_streams = sys.stdout, sys.stderr
     initial_stdout, initial_stderr = _setup_logging()

@@ -11,14 +11,11 @@ from playwright.async_api import Page as AsyncPage
 from models import ClientDisconnectedError, ChatCompletionRequest, QuotaExceededRetry, QuotaExceededError
 from config import CHAT_COMPLETION_ID_PREFIX
 from config.global_state import GlobalState
-from .utils import use_stream_response, calculate_usage_stats, generate_sse_chunk, generate_sse_stop_chunk
-from .common_utils import random_id
-from api_utils.utils_ext.usage_tracker import increment_profile_usage
-
 from .common_utils import random_id
 from .sse import generate_sse_chunk, generate_sse_stop_chunk
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
+from api_utils.utils_ext.usage_tracker import increment_profile_usage
 
 async def resilient_stream_generator(
     req_id: str,

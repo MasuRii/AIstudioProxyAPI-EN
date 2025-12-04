@@ -113,4 +113,8 @@ def _get_thinking_budget_value(env_key: str, default: int, level_name: str) -> i
 THINKING_BUDGET_LOW = _get_thinking_budget_value('THINKING_BUDGET_LOW', 8000, "LOW")
 THINKING_BUDGET_MEDIUM = _get_thinking_budget_value('THINKING_BUDGET_MEDIUM', 16000, "MEDIUM")
 THINKING_BUDGET_HIGH = _get_thinking_budget_value('THINKING_BUDGET_HIGH', 32000, "HIGH")
+
+# Default thinking level for Gemini 3 Pro models (fallback when not specified)
+DEFAULT_THINKING_LEVEL = os.environ.get('DEFAULT_THINKING_LEVEL', 'low')
+
 ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC = get_int_env('ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC', 10)

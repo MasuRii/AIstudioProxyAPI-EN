@@ -3,8 +3,10 @@ import logging
 import re
 import sys
 import zlib
+from typing import Any, Dict, Tuple, Union
 from urllib.parse import unquote
 from config.global_state import GlobalState
+from logging_utils.grid_logger import GridFormatter
 
 class HttpInterceptor:
     """
@@ -22,8 +24,10 @@ class HttpInterceptor:
         """Set up logging configuration with colored output"""
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setFormatter(
-            ColoredFormatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s", use_color=True
+            GridFormatter(
+                show_tree=False,
+                colorize=True,
+                burst_suppression=False
             )
         )
         console_handler.setLevel(logging.INFO)

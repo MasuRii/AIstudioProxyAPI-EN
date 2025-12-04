@@ -68,7 +68,7 @@ class ServerState:
         self.parsed_model_list: List[Dict[str, Any]] = []
         self.model_list_fetch_event: Event = asyncio.Event()
         self.current_ai_studio_model_id: Optional[str] = None
-        self.model_switching_lock: Optional[Lock] = None
+        self.model_switching_lock: Lock = Lock()
         self.excluded_model_ids: Set[str] = set()
 
         # --- Request Processing State ---
@@ -78,7 +78,7 @@ class ServerState:
 
         # --- Parameter Cache ---
         self.page_params_cache: Dict[str, Any] = {}
-        self.params_cache_lock: Optional[Lock] = None
+        self.params_cache_lock: Lock = Lock()
 
         # --- Debug Logging State ---
         self.console_logs: List[Dict[str, Any]] = []

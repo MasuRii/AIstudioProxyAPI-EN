@@ -100,6 +100,7 @@ __all__ = [
     # --- New: Feature Toggle Settings ---
     'ENABLE_THINKING_BUDGET',
     'DEFAULT_THINKING_BUDGET',
+    'DEFAULT_THINKING_LEVEL',
     'ENABLE_GOOGLE_SEARCH',
     'ENABLE_URL_CONTEXT',
 

@@ -118,7 +118,7 @@ class ProxyServer:
                 return
 
             # Parse the request line
-            method, target, _version = request_line_str.split(" ")
+            method, target, _version = request_line.split(" ")
 
             if method == "CONNECT":
                 # Handle HTTPS connection

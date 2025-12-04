@@ -1,7 +1,14 @@
 import os
+import asyncio
+import multiprocessing
+import logging
 from typing import (
     Any,
+    Dict,
+    List,
+    Optional,
 )
+from threading import Lock
 
 # Add: Import load_dotenv
 from dotenv import load_dotenv
@@ -83,11 +90,14 @@ from config import (
     RESPONSE_COMPLETION_TIMEOUT,
 )
 
+# --- Playwright Import ---
+from playwright.async_api import Page as AsyncPage
+
 # --- Models Module Import ---
 from models import (
     FunctionCall,
     ToolCall,
-    MessageContentItem, 
+    MessageContentItem,
     Message,
     ChatCompletionRequest,
     ClientDisconnectedError,
@@ -128,8 +138,8 @@ STREAM_QUEUE:Optional[multiprocessing.Queue] = None
 STREAM_PROCESS = None
 
 # --- Global State ---
-playwright_manager: Optional[AsyncPlaywright] = None
-browser_instance: Optional[AsyncBrowser] = None
+playwright_manager: Optional[AsyncPage] = None
+browser_instance: Optional[AsyncPage] = None
 page_instance: Optional[AsyncPage] = None
 is_playwright_ready = False
 is_browser_connected = False
@@ -147,11 +157,11 @@ current_ai_studio_model_id: Optional[str] = None
 current_auth_profile_path: Optional[str] = None
 model_switching_lock: Optional[Lock] = None
 
-excluded_model_ids: Set[str] = set()
+excluded_model_ids: set() = set()
 
-request_queue: Optional[Queue] = None
+request_queue: Optional[Any] = None
 processing_lock: Optional[Lock] = None
-worker_task: Optional[Task] = None
+worker_task: Optional[Any] = None
 
 page_params_cache: Dict[str, Any] = {}
 params_cache_lock: Optional[Lock] = None

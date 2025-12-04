@@ -4,6 +4,8 @@ import re
 import time
 from typing import Any, AsyncGenerator, Optional, Callable
 
+from logging_utils import set_request_id
+
 # [REFAC-01] Structural Boundary Pattern
 # Detects the inception of an XML tool block based on structure:
 # 1. Anchor: Start of string (^) or Newline (\n)

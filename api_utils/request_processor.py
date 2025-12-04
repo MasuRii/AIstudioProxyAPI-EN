@@ -13,6 +13,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from playwright.async_api import Page as AsyncPage, Locator, Error as PlaywrightAsyncError
+
 # --- Configuration Module Imports ---
 from config import (
     MODEL_NAME,
@@ -34,10 +36,7 @@ from browser_utils import (
 
 # --- api_utils Module Imports ---
 from .utils import (
-    validate_chat_request,
     prepare_combined_prompt,
-    use_stream_response,
-    calculate_usage_stats,
     maybe_execute_tools,
 )
 from api_utils.utils_ext.usage_tracker import increment_profile_usage
@@ -56,6 +55,12 @@ from .client_connection import (
     setup_disconnect_monitoring as _setup_disconnect_monitoring,
 )
 from .common_utils import random_id as _random_id
+
+
+# Wrapper function for backward compatibility
+async def _test_client_connection(req_id: str, http_request) -> bool:
+    """Test if client is still connected - wrapper for _check_client_connection"""
+    return await _check_client_connection(req_id, http_request)
 from .context_init import initialize_request_context as _init_request_context
 from .context_types import RequestContext
 from .model_switching import (

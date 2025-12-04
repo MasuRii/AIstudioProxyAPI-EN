@@ -78,9 +78,12 @@ def debounce_button(func_name: str, delay_seconds: float = 2.0):
 logger = logging.getLogger("GUILauncher")
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
+from logging_utils.grid_logger import GridFormatter
 console_handler.setFormatter(
-    ColoredFormatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", use_color=True
+    GridFormatter(
+        show_tree=False,
+        colorize=True,
+        burst_suppression=False
     )
 )
 logger.addHandler(console_handler)

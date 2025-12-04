@@ -2,7 +2,7 @@ import logging
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
-from logging_utils.setup import ColoredFormatter
+from logging_utils.grid_logger import GridFormatter
 
 
 def is_generate_content_endpoint(url: str) -> bool:

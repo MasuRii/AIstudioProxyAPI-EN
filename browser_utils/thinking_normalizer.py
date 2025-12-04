@@ -5,6 +5,7 @@ Normalizes the reasoning_effort parameter into a standardized thinking directive
 This module is responsible for converting various formats of the reasoning_effort parameter into a unified internal directive structure.
 """
 
+from typing import Optional, Any
 from dataclasses import dataclass
 from config import ENABLE_THINKING_BUDGET, DEFAULT_THINKING_BUDGET
 from config.settings import (
