@@ -55,6 +55,27 @@
 
 ---
 
+## 启动配置
+
+### DIRECT_LAUNCH
+
+- **用途**: 快速启动
+- **类型**: 布尔值
+- **默认值**: `false`
+- **示例**: `DIRECT_LAUNCH=false`
+- **说明**: 跳过等待选项超时，直接使用默认选项快速启动
+
+### SKIP_FRONTEND_BUILD
+
+- **用途**: 跳过前端构建检查
+- **类型**: 布尔值
+- **默认值**: `false`
+- **可选值**: `true`, `false`, `1`, `0`, `yes`, `no`
+- **示例**: `SKIP_FRONTEND_BUILD=true`
+- **说明**: 跳过启动时的前端资源构建检查。适用于没有 Node.js/npm 的环境，或使用预构建资源的部署场景。也可通过命令行参数 `--skip-frontend-build` 设置。
+
+---
+
 ## 代理配置
 
 ### HTTP_PROXY
@@ -126,6 +147,30 @@
 - **示例**: `TRACE_LOGS_ENABLED=true`
 - **说明**: 启用最详细的跟踪级别日志，用于深度调试
 
+### JSON_LOGS
+
+- **用途**: 启用 JSON 结构化日志
+- **类型**: 布尔值
+- **默认值**: `false`
+- **示例**: `JSON_LOGS=true`
+- **说明**: 启用后以 JSON 格式输出日志，适用于 ELK/Datadog 等日志聚合工具
+
+### LOG_FILE_MAX_BYTES
+
+- **用途**: 单个日志文件最大字节数
+- **类型**: 整数
+- **默认值**: `10485760` (10MB)
+- **示例**: `LOG_FILE_MAX_BYTES=20971520`
+- **说明**: 日志文件达到此大小后会自动轮换
+
+### LOG_FILE_BACKUP_COUNT
+
+- **用途**: 保留的日志备份文件数量
+- **类型**: 整数
+- **默认值**: `5`
+- **示例**: `LOG_FILE_BACKUP_COUNT=10`
+- **说明**: 轮换时保留的备份日志文件数量
+
 ---
 
 ## 认证配置
@@ -136,7 +181,10 @@
 - **类型**: 布尔值
 - **默认值**: `false`
 - **示例**: `AUTO_SAVE_AUTH=true`
-- **说明**: 启用后会自动保存 Google 认证 Cookie 到 `auth_profiles/` 目录
+- **说明**: 启用后会自动保存 Google 认证 Cookie 到 `auth_profiles/saved/` 目录
+
+> [!WARNING]
+> 必须在 **debug 模式** 下设置为 `true` 才能保存新的认证配置文件！Headless 模式使用已保存的配置文件，此设置对其无效。
 
 ### AUTH_SAVE_TIMEOUT
 
@@ -145,14 +193,6 @@
 - **默认值**: `30`
 - **示例**: `AUTH_SAVE_TIMEOUT=60`
 - **说明**: 等待认证文件保存完成的最大时间
-
-### AUTO_CONFIRM_LOGIN
-
-- **用途**: 自动确认登录
-- **类型**: 布尔值
-- **默认值**: `true`
-- **示例**: `AUTO_CONFIRM_LOGIN=false`
-- **说明**: 启用后会自动点击登录确认按钮
 
 ### ONLY_COLLECT_CURRENT_USER_ATTACHMENTS
 
@@ -256,6 +296,24 @@
 - **默认值**: `8192`
 - **示例**: `DEFAULT_THINKING_BUDGET=16384`
 - **说明**: 当 API 请求未提供 `reasoning_effort` 参数时使用此值
+
+### DEFAULT_THINKING_LEVEL_PRO
+
+- **用途**: Gemini Pro 模型的默认思考等级
+- **类型**: 字符串
+- **默认值**: `high`
+- **可选值**: `high`, `low`
+- **示例**: `DEFAULT_THINKING_LEVEL_PRO=low`
+- **说明**: 适用于 gemini-3-pro-preview 等 Pro 模型。当 API 请求中未提供 `reasoning_effort` 参数时使用此值
+
+### DEFAULT_THINKING_LEVEL_FLASH
+
+- **用途**: Gemini Flash 模型的默认思考等级
+- **类型**: 字符串
+- **默认值**: `high`
+- **可选值**: `high`, `medium`, `low`, `minimal`
+- **示例**: `DEFAULT_THINKING_LEVEL_FLASH=medium`
+- **说明**: 适用于 gemini-3-flash-preview 等 Flash 模型。当 API 请求中未提供 `reasoning_effort` 参数时使用此值
 
 ### ENABLE_GOOGLE_SEARCH
 
@@ -397,6 +455,9 @@
 
 ## GUI 启动器配置
 
+> [!WARNING]
+> GUI 启动器 (`gui_launcher.py`) 已移至 `deprecated/` 目录。以下配置仅供参考。
+
 ### GUI_DEFAULT_PROXY_ADDRESS
 
 - **用途**: GUI 启动器的默认代理地址
@@ -429,8 +490,8 @@
 
 - **用途**: 是否启用油猴脚本注入功能 (v3.0)
 - **类型**: 布尔值
-- **默认值**: `true`
-- **示例**: `ENABLE_SCRIPT_INJECTION=false`
+- **默认值**: `false`
+- **示例**: `ENABLE_SCRIPT_INJECTION=true`
 - **说明**: 启用后，系统将自动从油猴脚本解析模型列表并注入到 API 响应中。v3.0 版本使用 Playwright 原生网络拦截，提供更高的可靠性。
 
 ### USERSCRIPT_PATH

@@ -189,7 +189,7 @@ async def test_main_generic_exception_handling():
 
         # Verify error was logged (line 84)
         mock_logger.error.assert_called_once_with(
-            f"Error starting proxy server: {test_error}"
+            f"Error starting proxy server: {test_error}", exc_info=True
         )
 
         # Verify sys.exit(1) was called (line 85)
@@ -298,7 +298,7 @@ async def test_builtin_generic_exception_handling():
 
         # Verify error was logged (line 128)
         mock_logger.error.assert_called_once_with(
-            f"Error starting proxy server: {test_error}"
+            f"Error starting proxy server: {test_error}", exc_info=True
         )
 
         # Verify sys.exit(1) was called (line 129)

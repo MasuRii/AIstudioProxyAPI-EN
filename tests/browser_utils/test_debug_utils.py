@@ -11,7 +11,6 @@ smart fixture design instead of patching every server attribute individually.
 import os
 import platform
 import sys
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
@@ -24,7 +23,6 @@ from browser_utils.debug_utils import (
     get_texas_timestamp,
     save_comprehensive_snapshot,
     save_error_snapshot_enhanced,
-    save_error_snapshot_legacy,
 )
 
 # === Smart Fixtures to Reduce Mocking ===
@@ -110,10 +108,13 @@ class TestGetTexasTimestamp:
         """测试人类可读时间戳格式"""
         iso, human = get_texas_timestamp()
 
-        # Human format: "2025-11-21 18:37:32.440 CST"
-        assert " CST" in human
-        assert human.endswith("CST")
+        # Human format: "2025-11-21 18:37:32.440 <TZ>" where TZ is local timezone
+        # The function now uses local timezone (not hardcoded CST)
         assert human.count(":") == 2
+        # Should have a timezone abbreviation at the end (e.g., CST, JST, EST)
+        parts = human.split()
+        assert len(parts) == 3  # date, time, timezone
+        assert len(parts[2]) >= 2  # Timezone abbreviation (at least 2 chars)
 
     def test_timestamp_consistency(self):
         """测试时间戳一致性"""
@@ -135,16 +136,27 @@ class TestGetTexasTimestamp:
         assert len(ms_part) == 3
 
     @patch("browser_utils.debug_utils.datetime")
-    def test_timezone_offset_cst(self, mock_datetime):
-        """测试 CST 时区偏移 (UTC-6)"""
-        # Mock UTC time: 2025-01-15 12:00:00 UTC
-        mock_utc = datetime(2025, 1, 15, 12, 0, 0, 0, tzinfo=timezone.utc)
-        mock_datetime.now.return_value = mock_utc
+    def test_timezone_offset_local(self, mock_datetime):
+        """测试本地时区偏移（使用系统时区）"""
+        from datetime import datetime as real_datetime, timezone as real_timezone
+
+        # Create a mock datetime that returns a proper aware datetime
+        # Simulate a UTC time that can be converted to local time
+        mock_utc = real_datetime(2025, 1, 15, 12, 0, 0, 0, tzinfo=real_timezone.utc)
+
+        # Mock now() to return a local-aware datetime (via astimezone)
+        mock_local = mock_utc.astimezone()  # Convert to local timezone
+        mock_datetime.now.return_value.astimezone.return_value = mock_local
 
         iso, human = get_texas_timestamp()
 
-        # CST is UTC-6, so 12:00 UTC -> 06:00 CST
-        assert "06:00:00" in iso
+        # The ISO format should contain the local time (not UTC)
+        # Just verify it produces a valid timestamp with local timezone offset applied
+        assert "T" in iso
+        assert ":" in iso
+        # Human format should have timezone abbreviation
+        parts = human.split()
+        assert len(parts) == 3  # date, time, timezone
 
 
 # === Section 2: DOM Structure Capture Tests ===
@@ -652,9 +664,16 @@ class TestSaveErrorSnapshotEnhanced:
         mock_server_state.browser_instance = None
         mock_server_state.page_instance = None
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
-            # Should not crash
+        with (
+            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch(
+                "browser_utils.operations_modules.errors.save_minimal_snapshot",
+                new_callable=AsyncMock,
+            ) as mock_minimal,
+        ):
+            # Should not crash and should call minimal snapshot
             await save_error_snapshot_enhanced(error_name="test_error")
+            mock_minimal.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_enhanced_snapshot_page_closed(self, mock_server_state):
@@ -666,8 +685,15 @@ class TestSaveErrorSnapshotEnhanced:
         mock_page.is_closed = Mock(return_value=True)
         mock_server_state.page_instance = mock_page
 
-        with patch.dict("sys.modules", {"server": mock_server_state}):
+        with (
+            patch.dict("sys.modules", {"server": mock_server_state}),
+            patch(
+                "browser_utils.operations_modules.errors.save_minimal_snapshot",
+                new_callable=AsyncMock,
+            ) as mock_minimal,
+        ):
             await save_error_snapshot_enhanced(error_name="page_closed_error")
+            mock_minimal.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_enhanced_snapshot_req_id_parsing(
@@ -715,36 +741,3 @@ class TestSaveErrorSnapshotEnhanced:
             # Verify exception was passed
             call_kwargs = mock_save.call_args[1]
             assert call_kwargs["error_exception"] == error_exc
-
-
-# === Section 7: Legacy Snapshot Tests ===
-
-
-class TestSaveErrorSnapshotLegacy:
-    """测试遗留错误快照函数"""
-
-    @pytest.mark.asyncio
-    async def test_legacy_snapshot_delegates_to_enhanced(self):
-        """测试遗留函数委托给增强函数"""
-        with patch(
-            "browser_utils.debug_utils.save_error_snapshot_enhanced"
-        ) as mock_enhanced:
-            await save_error_snapshot_legacy(error_name="legacy_error_req9999")
-
-            # Verify enhanced was called
-            mock_enhanced.assert_called_once()
-            call_kwargs = mock_enhanced.call_args[1]
-            assert call_kwargs["error_name"] == "legacy_error_req9999"
-            assert call_kwargs["error_stage"] == "Legacy snapshot call"
-            assert call_kwargs["additional_context"]["legacy_call"] is True
-
-    @pytest.mark.asyncio
-    async def test_legacy_snapshot_default_error_name(self):
-        """测试默认错误名称"""
-        with patch(
-            "browser_utils.debug_utils.save_error_snapshot_enhanced"
-        ) as mock_enhanced:
-            await save_error_snapshot_legacy()
-
-            call_kwargs = mock_enhanced.call_args[1]
-            assert call_kwargs["error_name"] == "error"

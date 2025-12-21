@@ -79,8 +79,8 @@ def register_runtime_tools(
 
 
 async def execute_tool_call(name: str, arguments_json: str) -> str:
-    """执行注册的工具并返回字符串化结果。未知工具返回描述性错误。
-    完全异步：内置函数直接执行；MCP 路径使用异步 httpx 客户端。
+    """Execute registered tools and return stringified result. Unknown tools return descriptive errors.
+    Fully asynchronous: built-in functions execute directly; MCP path uses async httpx client.
     """
     try:
         params = json.loads(arguments_json or "{}")

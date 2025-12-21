@@ -162,13 +162,6 @@ def test_mark_profile_failed(manager):
     # (Assert log if needed, but no crash is enough for basic coverage)
 
 
-def test_reset_failures(manager):
-    """Test resetting failures."""
-    manager.failed_profiles.add("test")
-    manager.reset_failures()
-    assert len(manager.failed_profiles) == 0
-
-
 def test_global_instance():
     """Ensure global instance exists."""
     assert isinstance(auth_manager, AuthManager)

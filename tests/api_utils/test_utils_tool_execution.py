@@ -27,12 +27,12 @@ async def test_maybe_execute_tools_cancelled_error_reraised():
     tools = [{"function": {"name": "test_tool"}}]
     tool_choice = {"type": "function", "function": {"name": "test_tool"}}
 
-    # Mock execute_tool_call to raise CancelledError
+    # Mock execute_tool_call to raise CancelledError - patch where it's imported/used
     with patch(
-        "api_utils.utils.execute_tool_call", new_callable=AsyncMock
+        "api_utils.utils_ext.tools_execution.execute_tool_call", new_callable=AsyncMock
     ) as mock_exec:
         mock_exec.side_effect = asyncio.CancelledError()
-        with patch("api_utils.utils.register_runtime_tools"):
+        with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
             # 预期: CancelledError 被重新抛出
             with pytest.raises(asyncio.CancelledError):
                 await maybe_execute_tools(messages, tools, tool_choice)
@@ -51,8 +51,11 @@ async def test_maybe_execute_tools_tool_choice_dict_format():
     tool_choice = {"type": "function", "function": {"name": "my_function"}}
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = '{"result": "success"}'
 
@@ -78,7 +81,7 @@ async def test_maybe_execute_tools_tool_choice_string_none():
     messages = [Message(role="user", content="test")]
     tools = [{"function": {"name": "test_tool"}}]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         for choice in ["none", "None", "NONE", "no", "NO", "off", "OFF"]:
             result = await maybe_execute_tools(messages, tools, choice)
             assert result is None
@@ -96,8 +99,11 @@ async def test_maybe_execute_tools_tool_choice_auto_single_tool():
     tools = [{"function": {"name": "only_tool"}}]
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = '{"done": true}'
 
@@ -124,7 +130,7 @@ async def test_maybe_execute_tools_tool_choice_auto_multiple_tools():
         {"function": {"name": "tool2"}},
     ]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         result = await maybe_execute_tools(messages, tools, "auto")
         assert result is None
 
@@ -141,8 +147,11 @@ async def test_maybe_execute_tools_tool_choice_direct_name():
     tools = [{"function": {"name": "direct_call"}}]
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = '{"status": "ok"}'
 
@@ -164,7 +173,7 @@ async def test_maybe_execute_tools_tool_choice_none():
     messages = [Message(role="user", content="test")]
     tools = [{"function": {"name": "test_tool"}}]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         result = await maybe_execute_tools(messages, tools, None)
         assert result is None
 
@@ -190,8 +199,11 @@ async def test_maybe_execute_tools_arguments_from_user_text():
     tool_choice = "test_func"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "ok"
 
@@ -216,8 +228,11 @@ async def test_maybe_execute_tools_arguments_fallback_empty():
     tool_choice = "my_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "done"
 
@@ -246,7 +261,7 @@ async def test_maybe_execute_tools_existing_tool_result_skip():
     tools = [{"function": {"name": "my_tool"}}]
     tool_choice = "my_tool"
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         result = await maybe_execute_tools(messages, tools, tool_choice)
 
         # 验证: 不执行，因为已有工具结果
@@ -266,8 +281,11 @@ async def test_maybe_execute_tools_base_exception_returns_none():
     tool_choice = "failing_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         # Mock 抛出普通异常
         mock_exec.side_effect = ValueError("Something went wrong")
@@ -291,8 +309,13 @@ async def test_maybe_execute_tools_register_runtime_tools_called():
     tool_choice = "tool1"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools") as mock_register,
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch(
+            "api_utils.utils_ext.tools_execution.register_runtime_tools"
+        ) as mock_register,
     ):
         mock_exec.return_value = "ok"
 
@@ -315,8 +338,11 @@ async def test_maybe_execute_tools_empty_messages():
     tool_choice = "test_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "done"
 
@@ -337,7 +363,7 @@ async def test_maybe_execute_tools_no_chosen_name():
     messages = [Message(role="user", content="test")]
     tools = [{"function": {"name": "test_tool"}}]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         # tool_choice 为空字典，无 function.name
         result1 = await maybe_execute_tools(messages, tools, {})
         assert result1 is None
@@ -375,8 +401,11 @@ Thank you!""",
     tool_choice = "multi_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "ok"
 
@@ -419,8 +448,11 @@ async def test_maybe_execute_tools_list_content_extraction():
     tool_choice = "image_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "processed"
 

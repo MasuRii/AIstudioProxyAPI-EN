@@ -43,3 +43,46 @@ pytest-xdist = "^3.8.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v --cov=api_utils --cov=browser_utils --cov=stream --cov=config --cov=models --cov=launcher --cov=logging_utils --cov=server.py --cov-report=term-missing --ignore=tests/browser_utils/test_operations_old.py --tb=short"
+timeout = 120
+timeout_method = "thread"
+markers = [
+    "integration: Integration tests that use real components (locks, queues, state) instead of mocks"
+]
+env = [
+    "LAUNCH_MODE=test",
+    "STREAM_PORT=0",
+]
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "**/__init__.py",
+    "launch_camoufox.py",
+    "monkeytype_config.py",
+    "deprecated/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == .__main__.:",
+    "pragma: no cover",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = [
+    "E501",  # line-too-long (686 instances, too risky to fix)
+    "E402",  # module-import-not-at-top (intentional - load_dotenv first)
+    "F405",  # undefined-local-with-import-star-usage (config imports)
+    "F403",  # undefined-local-with-import-star (config imports)
+]

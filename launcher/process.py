@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from typing import Optional
 
 from launcher.config import ENDPOINT_CAPTURE_TIMEOUT, PYTHON_EXECUTABLE, ws_regex
 
@@ -42,6 +43,48 @@ def _enqueue_output(stream, stream_name, output_queue, process_pid_for_log="<未
         logger.debug(f"{log_prefix} 线程退出。")
 
 
+def build_launch_command(
+    final_launch_mode: str,
+    effective_active_auth_json_path: Optional[str],
+    simulated_os_for_camoufox: str,
+    camoufox_debug_port: int,
+    internal_camoufox_proxy: Optional[str],
+) -> list[str]:
+    """
+    Build the command-line arguments for launching the internal Camoufox process.
+
+    This is a pure function (no I/O) that can be easily unit tested.
+
+    Args:
+        final_launch_mode: The launch mode (headless, virtual_headless, debug)
+        effective_active_auth_json_path: Path to auth file, or None
+        simulated_os_for_camoufox: OS to simulate (linux, windows, macos)
+        camoufox_debug_port: Debug port for Camoufox
+        internal_camoufox_proxy: Proxy configuration, or None
+
+    Returns:
+        List of command-line arguments for subprocess.Popen
+    """
+    cmd = [
+        PYTHON_EXECUTABLE,
+        "-u",
+        sys.argv[0],
+        "--internal-launch-mode",
+        final_launch_mode,
+    ]
+
+    if effective_active_auth_json_path:
+        cmd.extend(["--internal-auth-file", effective_active_auth_json_path])
+
+    cmd.extend(["--internal-camoufox-os", simulated_os_for_camoufox])
+    cmd.extend(["--internal-camoufox-port", str(camoufox_debug_port)])
+
+    if internal_camoufox_proxy is not None:
+        cmd.extend(["--internal-camoufox-proxy", internal_camoufox_proxy])
+
+    return cmd
+
+
 class CamoufoxProcessManager:
     def __init__(self):
         self.camoufox_proc = None
@@ -55,30 +98,13 @@ class CamoufoxProcessManager:
         args,
     ):
         # 构建 Camoufox 内部启动命令 (from dev)
-        camoufox_internal_cmd_args = [
-            PYTHON_EXECUTABLE,
-            "-u",
-            sys.argv[0],  # Use sys.argv[0] to refer to the main script
-            "--internal-launch-mode",
+        camoufox_internal_cmd_args = build_launch_command(
             final_launch_mode,
-        ]
-        if effective_active_auth_json_path:
-            camoufox_internal_cmd_args.extend(
-                ["--internal-auth-file", effective_active_auth_json_path]
-            )
-
-        camoufox_internal_cmd_args.extend(
-            ["--internal-camoufox-os", simulated_os_for_camoufox]
+            effective_active_auth_json_path,
+            simulated_os_for_camoufox,
+            args.camoufox_debug_port,
+            args.internal_camoufox_proxy,
         )
-        camoufox_internal_cmd_args.extend(
-            ["--internal-camoufox-port", str(args.camoufox_debug_port)]
-        )
-
-        # 修复：传递代理参数到内部Camoufox进程
-        if args.internal_camoufox_proxy is not None:
-            camoufox_internal_cmd_args.extend(
-                ["--internal-camoufox-proxy", args.internal_camoufox_proxy]
-            )
 
         camoufox_popen_kwargs = {
             "stdout": subprocess.PIPE,
@@ -94,14 +120,14 @@ class CamoufoxProcessManager:
             camoufox_popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
         try:
-            logger.info(
-                f"  将执行 Camoufox 内部启动命令: {' '.join(camoufox_internal_cmd_args)}"
+            logger.debug(
+                f"将执行 Camoufox 内部启动命令: {' '.join(camoufox_internal_cmd_args)}"
             )
             self.camoufox_proc = subprocess.Popen(
                 camoufox_internal_cmd_args, **camoufox_popen_kwargs
             )
             logger.info(
-                f"  Camoufox 内部进程已启动 (PID: {self.camoufox_proc.pid})。正在等待 WebSocket 端点输出 (最长 {ENDPOINT_CAPTURE_TIMEOUT} 秒)..."
+                f"Camoufox 内部进程已启动 (PID: {self.camoufox_proc.pid})。正在等待 WebSocket 端点输出 (最长 {ENDPOINT_CAPTURE_TIMEOUT} 秒)..."
             )
 
             camoufox_output_q = queue.Queue()
@@ -150,22 +176,28 @@ class CamoufoxProcessManager:
                             break
                         continue
 
-                    log_line_content = f"[InternalCamoufox-{stream_name}-PID:{self.camoufox_proc.pid}]: {line_from_camoufox.rstrip()}"
+                    # Skip the ugly prefix, just log the content
+                    log_content = line_from_camoufox.rstrip()
+                    # Skip verbose startup messages (move to debug)
                     if (
-                        stream_name == "stderr"
-                        or "ERROR" in line_from_camoufox.upper()
-                        or "" in line_from_camoufox
+                        "[内部Camoufox启动]" in log_content
+                        or "传递给 launch_server" in log_content
                     ):
-                        logger.warning(log_line_content)
+                        logger.debug(f"(Camoufox) {log_content}")
+                    elif (
+                        stream_name == "stderr" or "ERROR" in line_from_camoufox.upper()
+                    ):
+                        logger.info(f"(Camoufox) {log_content}")
                     else:
-                        logger.info(log_line_content)
+                        logger.debug(f"(Camoufox) {log_content}")
 
                     ws_match = ws_regex.search(line_from_camoufox)
                     if ws_match:
                         self.captured_ws_endpoint = ws_match.group(1)
-                        logger.info(
-                            f"  成功从 Camoufox 内部进程捕获到 WebSocket 端点: {self.captured_ws_endpoint[:40]}..."
+                        logger.debug(
+                            f"成功从 Camoufox 内部进程捕获到 WebSocket 端点: {self.captured_ws_endpoint[:40]}..."
                         )
+                        logger.info("[内核] WebSocket 端点获取成功")
                         break
                 except queue.Empty:
                     continue
@@ -189,10 +221,10 @@ class CamoufoxProcessManager:
             elif not self.captured_ws_endpoint and (
                 self.camoufox_proc and self.camoufox_proc.poll() is not None
             ):
-                logger.error("  Camoufox 内部进程已退出，且未能捕获到 WebSocket 端点。")
+                logger.error("Camoufox 内部进程已退出，且未能捕获到 WebSocket 端点。")
                 sys.exit(1)
             elif not self.captured_ws_endpoint:
-                logger.error("  未能捕获到 WebSocket 端点。")
+                logger.error("未能捕获到 WebSocket 端点。")
                 sys.exit(1)
 
         except Exception as e_launch_camoufox_internal:

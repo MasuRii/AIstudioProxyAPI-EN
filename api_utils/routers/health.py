@@ -33,16 +33,16 @@ async def health_check(
 
     status_message_parts = []
     if server_state["is_initializing"]:
-        status_message_parts.append("初始化进行中")
+        status_message_parts.append("Initialization in progress")
     if not server_state["is_playwright_ready"]:
-        status_message_parts.append("Playwright 未就绪")
+        status_message_parts.append("Playwright not ready")
     if browser_page_critical:
         if not server_state["is_browser_connected"]:
-            status_message_parts.append("浏览器未连接")
+            status_message_parts.append("Browser not connected")
         if not server_state["is_page_ready"]:
-            status_message_parts.append("页面未就绪")
+            status_message_parts.append("Page not ready")
     if not is_worker_running:
-        status_message_parts.append("Worker 未运行")
+        status_message_parts.append("Worker not running")
 
     status = {
         "status": status_val,
@@ -57,10 +57,10 @@ async def health_check(
     }
 
     if status_val == "OK":
-        status["message"] = f"服务运行中;队列长度: {q_size}。"
+        status["message"] = f"Service running; Queue length: {q_size}."
         return JSONResponse(content=status, status_code=200)
     else:
         status["message"] = (
-            f"服务不可用;问题: {(', '.join(status_message_parts) or '未知原因')}. 队列长度: {q_size}."
+            f"Service unavailable; Issue: {(', '.join(status_message_parts) or 'Unknown reason')}. Queue length: {q_size}."
         )
         return JSONResponse(content=status, status_code=503)

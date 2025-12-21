@@ -78,11 +78,6 @@ class AuthManager:
                 "Attempted to mark profile failed but no profile provided or active."
             )
 
-    def reset_failures(self) -> None:
-        """Reset the failure tracking."""
-        self.failed_profiles.clear()
-        logger.info("Auth profile failure tracking reset.")
-
 
 # Global instance
 auth_manager = AuthManager()

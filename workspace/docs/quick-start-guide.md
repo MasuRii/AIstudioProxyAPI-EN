@@ -135,7 +135,7 @@ poetry shell
 
 ```bash
 # 每次运行命令时加上 poetry run 前缀
-poetry run python gui_launcher.py
+poetry run python launch_camoufox.py --headless
 ```
 
 ---
@@ -184,6 +184,15 @@ SERVER_LOG_LEVEL=INFO
 
 首次运行需要进行 Google 账号认证，获取访问 AI Studio 所需的 Cookie。
 
+### 配置认证保存
+
+在 `.env` 文件中确保设置了自动保存认证：
+
+```env
+# [IMPORTANT] 必须设置为 true 才能保存认证配置文件！
+AUTO_SAVE_AUTH=true
+```
+
 ### 使用调试模式认证
 
 ```bash
@@ -196,13 +205,22 @@ poetry run python launch_camoufox.py --debug
 1. **浏览器窗口打开** - Camoufox 浏览器会自动打开
 2. **登录 Google 账号** - 在浏览器中登录您的 Google 账号
 3. **访问 AI Studio** - 浏览器会自动导航到 AI Studio 页面
-4. **等待保存** - 认证信息会自动保存到 `auth_profiles/active/` 目录
+4. **等待保存** - 认证信息会自动保存到 `auth_profiles/saved/` 目录
 5. **查看日志** - 终端会显示认证文件保存成功的消息
 
 **成功标志**:
 
 ```
-✅ 认证文件已保存到: auth_profiles/active/XXXXXXXX.json
+✅ 认证文件已保存到: auth_profiles/saved/XXXXXXXX.json
+```
+
+### 激活认证文件
+
+将保存的认证文件移动到 `active` 目录：
+
+```bash
+# 将认证文件从 saved 移到 active
+mv auth_profiles/saved/*.json auth_profiles/active/
 ```
 
 ### 关闭调试模式
@@ -215,20 +233,7 @@ poetry run python launch_camoufox.py --debug
 
 认证完成后，您有多种方式启动服务：
 
-### 方式 1: GUI 启动器（推荐新手）
-
-```bash
-poetry run python gui_launcher.py
-```
-
-**特点**:
-
-- ✅ 图形界面，直观易用
-- ✅ 可视化配置选项
-- ✅ 实时查看日志
-- ✅ 一键启动/停止服务
-
-### 方式 2: 命令行启动（推荐日常使用）
+### 方式 1: 命令行启动（推荐）
 
 **无头模式**（推荐，后台运行浏览器）:
 
@@ -248,7 +253,7 @@ poetry run python launch_camoufox.py
 poetry run python launch_camoufox.py --virtual-display
 ```
 
-### 方式 3: 直接启动 FastAPI (开发调试)
+### 方式 2: 直接启动 FastAPI (开发调试)
 
 ```bash
 # 仅启动 API 服务器（不启动浏览器）

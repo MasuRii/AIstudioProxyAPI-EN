@@ -37,7 +37,6 @@ class ParameterController(BaseController):
         check_client_disconnected: Callable,
     ):
         """调整所有请求参数。"""
-        self.logger.info(" 开始调整所有请求参数...")
         await self._check_disconnect(
             check_client_disconnected, "Start Parameter Adjustment"
         )
@@ -90,7 +89,7 @@ class ParameterController(BaseController):
         if ENABLE_URL_CONTEXT:
             await self._open_url_content(check_client_disconnected)
         else:
-            self.logger.info(" URL Context 功能已禁用，跳过调整。")
+            self.logger.debug("[Param] URL Context 功能已禁用，跳过调整")
 
         # 调整"思考预算" - handled by ThinkingController but called here to maintain flow?
         # Ideally adjust_parameters should coordinate, but if we split, we need to ensure method availability.
@@ -102,7 +101,9 @@ class ParameterController(BaseController):
             )
 
         # 调整 Google Search 开关
-        await self._adjust_google_search(request_params, check_client_disconnected)
+        await self._adjust_google_search(
+            request_params, model_id_to_use, check_client_disconnected
+        )
 
     async def _adjust_temperature(
         self,
@@ -119,10 +120,9 @@ class ParameterController(BaseController):
                     f"Temperature {temperature} out of range [0, 2], clamped to {clamped_temp}"
                 )
 
-            # Silent Success: Cache hit - single concise log
             cached_temp = page_params_cache.get("temperature")
             if cached_temp is not None and abs(cached_temp - clamped_temp) < 0.001:
-                self.logger.info(f"Temperature: {clamped_temp} (Cached).")
+                self.logger.debug(f"[Param] Temperature: {clamped_temp} (缓存)")
                 return
 
             # Need to check page value
@@ -143,12 +143,14 @@ class ParameterController(BaseController):
 
                 # Silent Success: Page value matches - single concise log
                 if abs(current_temp_float - clamped_temp) < 0.001:
-                    self.logger.info(f"Temperature: {clamped_temp} (Matches page).")
+                    self.logger.debug(
+                        f"[Param] Temperature: {clamped_temp} (与页面一致)"
+                    )
                     page_params_cache["temperature"] = current_temp_float
                 else:
                     # Value differs - show update process
-                    self.logger.info(
-                        f"Temperature: {current_temp_float} -> {clamped_temp} (Updating...)"
+                    self.logger.debug(
+                        f"[Param] Temperature: {current_temp_float} -> {clamped_temp}"
                     )
                     await temp_input_locator.fill(str(clamped_temp), timeout=5000)
                     await self._check_disconnect(
@@ -160,7 +162,9 @@ class ParameterController(BaseController):
                     new_temp_float = float(new_temp_str)
 
                     if abs(new_temp_float - clamped_temp) < 0.001:
-                        self.logger.info(f"Temperature: Updated to {new_temp_float}.")
+                        self.logger.debug(
+                            f"[Param] Temperature: 已更新 -> {new_temp_float}"
+                        )
                         page_params_cache["temperature"] = new_temp_float
                     else:
                         self.logger.warning(
@@ -237,17 +241,16 @@ class ParameterController(BaseController):
                 min_val_for_tokens, min(max_val_for_tokens_from_model, max_tokens)
             )
             if clamped_max_tokens != max_tokens:
-                self.logger.warning(
-                    f"Max Tokens {max_tokens} out of model range, clamped to {clamped_max_tokens}"
+                self.logger.debug(
+                    f"[Param] Max Tokens: {max_tokens} -> {clamped_max_tokens} (超出限制)"
                 )
 
-            # Silent Success: Cache hit - single concise log
             cached_max_tokens = page_params_cache.get("max_output_tokens")
             if (
                 cached_max_tokens is not None
                 and cached_max_tokens == clamped_max_tokens
             ):
-                self.logger.info(f"Max Tokens: {clamped_max_tokens} (Cached).")
+                self.logger.debug(f"[Param] Max Tokens: {clamped_max_tokens} (缓存)")
                 return
 
             # Need to check page value
@@ -266,14 +269,14 @@ class ParameterController(BaseController):
 
                 # Silent Success: Page value matches - single concise log
                 if current_max_tokens_int == clamped_max_tokens:
-                    self.logger.info(
-                        f"Max Tokens: {clamped_max_tokens} (Matches page)."
+                    self.logger.debug(
+                        f"[Param] Max Tokens: {clamped_max_tokens} (与页面一致)"
                     )
                     page_params_cache["max_output_tokens"] = current_max_tokens_int
                 else:
                     # Value differs - show update process
-                    self.logger.info(
-                        f"Max Tokens: {current_max_tokens_int} -> {clamped_max_tokens} (Updating...)"
+                    self.logger.debug(
+                        f"[Param] Max Tokens: {current_max_tokens_int} -> {clamped_max_tokens}"
                     )
                     await max_tokens_input_locator.fill(
                         str(clamped_max_tokens), timeout=5000
@@ -289,8 +292,8 @@ class ParameterController(BaseController):
                     new_max_tokens_int = int(new_max_tokens_str)
 
                     if new_max_tokens_int == clamped_max_tokens:
-                        self.logger.info(
-                            f"Max Tokens: Updated to {new_max_tokens_int}."
+                        self.logger.debug(
+                            f"[Param] Max Tokens: 已更新 -> {new_max_tokens_int}"
                         )
                         page_params_cache["max_output_tokens"] = new_max_tokens_int
                     else:
@@ -305,7 +308,7 @@ class ParameterController(BaseController):
                         )
 
             except (ValueError, TypeError) as ve:
-                self.logger.error(f" 转换最大输出 Tokens 值时出错: {ve}。清除缓存。")
+                self.logger.error(f"转换最大输出 Tokens 值时出错: {ve}。清除缓存。")
                 page_params_cache.pop("max_output_tokens", None)
                 from browser_utils.operations import save_error_snapshot
 
@@ -313,7 +316,7 @@ class ParameterController(BaseController):
             except Exception as e:
                 if isinstance(e, asyncio.CancelledError):
                     raise
-                self.logger.error(f" 调整最大输出 Tokens 时出错: {e}。清除缓存。")
+                self.logger.error(f"调整最大输出 Tokens 时出错: {e}。清除缓存。")
                 page_params_cache.pop("max_output_tokens", None)
                 from browser_utils.operations import save_error_snapshot
 
@@ -347,12 +350,12 @@ class ParameterController(BaseController):
                         f" 找到移除按钮但 aria-label 格式不匹配: {label}"
                     )
 
-            self.logger.info(f" 当前页面读取到的停止序列: {current_stops}")
+            self.logger.debug(f"[Param] 当前页面 Stop Sequences: {current_stops}")
             return current_stops
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            self.logger.warning(f" 读取当前停止序列失败: {e}")
+            self.logger.warning(f"读取当前停止序列失败: {e}")
             return set()
 
     async def _adjust_stop_sequences(
@@ -365,7 +368,7 @@ class ParameterController(BaseController):
         """Adjust stop sequences parameter with Silent Success pattern."""
         async with params_cache_lock:
             self.logger.debug(
-                f"Stop sequences input: {stop_sequences} (Type: {type(stop_sequences)})"
+                f"[Param] Stop Sequences 输入: {stop_sequences} (类型: {type(stop_sequences).__name__})"
             )
 
             # Normalize input to set
@@ -379,9 +382,7 @@ class ParameterController(BaseController):
                         if isinstance(s, str) and s.strip():
                             normalized_requested_stops.add(s.strip())
 
-            self.logger.debug(
-                f"Normalized stop sequences: {normalized_requested_stops}"
-            )
+            self.logger.debug(f"[Param] 规范化后: {normalized_requested_stops}")
 
             # Format for display
             display_val = (
@@ -395,7 +396,7 @@ class ParameterController(BaseController):
 
             # Silent Success: If page matches, single concise log
             if current_page_stops == normalized_requested_stops:
-                self.logger.info(f"Stop Sequences: {display_val} (Matches page).")
+                self.logger.debug(f"[Param] Stop Sequences: {display_val} (与页面一致)")
                 page_params_cache["stop_sequences"] = normalized_requested_stops
                 return
 
@@ -409,10 +410,10 @@ class ParameterController(BaseController):
             current_display = (
                 "Empty" if not current_page_stops else str(sorted(current_page_stops))
             )
-            self.logger.info(
-                f"Stop Sequences: {current_display} -> {display_val} (Updating...)"
+            self.logger.debug(
+                f"[Param] Stop Sequences: {current_display} -> {display_val}"
             )
-            self.logger.debug(f"Delta - Add: {to_add}, Remove: {to_remove}")
+            self.logger.debug(f"[Param] Delta - 添加: {to_add}, 移除: {to_remove}")
 
             try:
                 # 1. Remove excess sequences
@@ -431,12 +432,12 @@ class ParameterController(BaseController):
                                 await expect_async(remove_btn).to_have_count(
                                     0, timeout=3000
                                 )
-                                self.logger.debug(f"Removed: {text_to_remove}")
+                                self.logger.debug(f"[Param] 已移除: {text_to_remove}")
                             except asyncio.CancelledError:
                                 raise
                             except Exception:
                                 self.logger.debug(
-                                    f"Chip may not be fully removed: {text_to_remove}"
+                                    f"[Param] Chip 可能未完全移除: {text_to_remove}"
                                 )
                         else:
                             # Fallback: fuzzy match aria-label
@@ -444,7 +445,9 @@ class ParameterController(BaseController):
                             fallback_btn = self.page.locator(fallback_selector)
                             if await fallback_btn.count() > 0:
                                 await fallback_btn.first.click(timeout=2000)
-                                self.logger.debug(f"Removed (fuzzy): {text_to_remove}")
+                                self.logger.debug(
+                                    f"[Param] 已移除 (模糊匹配): {text_to_remove}"
+                                )
                             else:
                                 self.logger.warning(
                                     f"Cannot find remove button for: {text_to_remove}"
@@ -460,13 +463,13 @@ class ParameterController(BaseController):
                         await stop_input_locator.fill(seq, timeout=3000)
                         await stop_input_locator.press("Enter", timeout=3000)
                         await asyncio.sleep(0.2)
-                        self.logger.debug(f"Added: {seq}")
+                        self.logger.debug(f"[Param] 已添加: {seq}")
 
                 # 3. Verify final state
                 final_page_stops = await self._get_current_stop_sequences()
                 if final_page_stops == normalized_requested_stops:
                     page_params_cache["stop_sequences"] = normalized_requested_stops
-                    self.logger.info(f"Stop Sequences: {display_val} (Updated).")
+                    self.logger.debug(f"[Param] Stop Sequences: {display_val} (已更新)")
                 else:
                     self.logger.warning(
                         f"Stop Sequences verification failed. "
@@ -511,8 +514,8 @@ class ParameterController(BaseController):
 
             # Value differs - show update process
             if abs(current_top_p_float - clamped_top_p) > 1e-9:
-                self.logger.info(
-                    f"Top P: {current_top_p_float} -> {clamped_top_p} (Updating...)"
+                self.logger.debug(
+                    f"[Param] Top P: {current_top_p_float} -> {clamped_top_p}"
                 )
                 await top_p_input_locator.fill(str(clamped_top_p), timeout=5000)
                 await self._check_disconnect(
@@ -525,7 +528,7 @@ class ParameterController(BaseController):
                 new_top_p_float = float(new_top_p_str)
 
                 if abs(new_top_p_float - clamped_top_p) <= 1e-9:
-                    self.logger.info(f"Top P: Updated to {new_top_p_float}.")
+                    self.logger.debug(f"[Param] Top P: 已更新 -> {new_top_p_float}")
                 else:
                     self.logger.warning(
                         f"Top P update failed. Page shows: {new_top_p_float}, expected: {clamped_top_p}."
@@ -535,17 +538,17 @@ class ParameterController(BaseController):
                     await save_error_snapshot(f"top_p_verify_fail_{self.req_id}")
             else:
                 # Silent Success: Page value matches - single concise log
-                self.logger.info(f"Top P: {clamped_top_p} (Matches page).")
+                self.logger.debug(f"[Param] Top P: {clamped_top_p} (与页面一致)")
 
         except (ValueError, TypeError) as ve:
-            self.logger.error(f" 转换 Top P 值时出错: {ve}")
+            self.logger.error(f"转换 Top P 值时出错: {ve}")
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"top_p_value_error_{self.req_id}")
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            self.logger.error(f" 调整 Top P 时出错: {e}")
+            self.logger.error(f"调整 Top P 时出错: {e}")
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"top_p_error_{self.req_id}")
@@ -554,7 +557,7 @@ class ParameterController(BaseController):
 
     async def _ensure_tools_panel_expanded(self, check_client_disconnected: Callable):
         """确保包含高级工具（URL上下文、思考预算等）的面板是展开的。"""
-        self.logger.info(" 检查并确保工具面板已展开...")
+        self.logger.debug("[Param] 检查工具面板状态...")
         try:
             collapse_tools_locator = self.page.locator(
                 'button[aria-label="Expand or collapse tools"]'
@@ -567,7 +570,7 @@ class ParameterController(BaseController):
             )
 
             if class_string and "expanded" not in class_string.split():
-                self.logger.info(" 工具面板未展开，正在点击以展开...")
+                self.logger.debug("[Param] 工具面板未展开，正在展开...")
                 await collapse_tools_locator.click(timeout=CLICK_TIMEOUT_MS)
                 await self._check_disconnect(
                     check_client_disconnected, "展开工具面板后"
@@ -576,13 +579,13 @@ class ParameterController(BaseController):
                 await expect_async(grandparent_locator).to_have_class(
                     re.compile(r".*expanded.*"), timeout=5000
                 )
-                self.logger.info(" 工具面板已成功展开。")
+                self.logger.debug("[Param] 工具面板已成功展开")
             else:
-                self.logger.info(" 工具面板已处于展开状态。")
+                self.logger.debug("[Param] 工具面板已展开")
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            self.logger.error(f" 展开工具面板时发生错误: {e}")
+            self.logger.error(f"展开工具面板时发生错误: {e}")
             # 即使出错，也继续尝试执行后续操作，但记录错误
             if isinstance(e, ClientDisconnectedError):
                 raise
@@ -590,24 +593,24 @@ class ParameterController(BaseController):
     async def _open_url_content(self, check_client_disconnected: Callable):
         """仅负责打开 URL Context 开关，前提是面板已展开。"""
         try:
-            self.logger.info(" 检查并启用 URL Context 开关...")
+            self.logger.info("检查并启用 URL Context 开关...")
             use_url_content_selector = self.page.locator(USE_URL_CONTEXT_SELECTOR)
             await expect_async(use_url_content_selector).to_be_visible(timeout=5000)
 
             is_checked = await use_url_content_selector.get_attribute("aria-checked")
             if "false" == is_checked:
-                self.logger.info(" URL Context 开关未开启，正在点击以开启...")
+                self.logger.info("URL Context 开关未开启，正在点击以开启...")
                 await use_url_content_selector.click(timeout=CLICK_TIMEOUT_MS)
                 await self._check_disconnect(
                     check_client_disconnected, "点击URLCONTEXT后"
                 )
-                self.logger.info(" URL Context 开关已点击。")
+                self.logger.info("URL Context 开关已点击。")
             else:
-                self.logger.info(" URL Context 开关已处于开启状态。")
+                self.logger.info("URL Context 开关已处于开启状态。")
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            self.logger.error(f" 操作 USE_URL_CONTEXT_SELECTOR 时发生错误:{e}。")
+            self.logger.error(f"操作 USE_URL_CONTEXT_SELECTOR 时发生错误:{e}。")
             if isinstance(e, ClientDisconnectedError):
                 raise
 
@@ -626,17 +629,39 @@ class ParameterController(BaseController):
                             has_google_search_tool = True
                             break
             self.logger.debug(
-                f"Tools param present, Google Search tool: {has_google_search_tool}"
+                f"[Param] Tools 参数: Google Search = {has_google_search_tool}"
             )
             return has_google_search_tool
         else:
-            self.logger.debug(f"No tools param, using default: {ENABLE_GOOGLE_SEARCH}")
+            self.logger.debug(f"[Param] Tools: 未指定 (默认 {ENABLE_GOOGLE_SEARCH})")
             return ENABLE_GOOGLE_SEARCH
 
+    def _supports_google_search(self, model_id: Optional[str]) -> bool:
+        """Check if a model supports Google Search based on model ID pattern."""
+        if not model_id:
+            return True  # Default to true for unknown models
+
+        model_lower = model_id.lower()
+
+        # Gemini 2.0 models don't support Google Search
+        if "gemini-2.0" in model_lower or "gemini2.0" in model_lower:
+            return False
+
+        # All other models support Google Search
+        return True
+
     async def _adjust_google_search(
-        self, request_params: Dict[str, Any], check_client_disconnected: Callable
+        self,
+        request_params: Dict[str, Any],
+        model_id: Optional[str],
+        check_client_disconnected: Callable,
     ):
         """Adjust Google Search toggle with Silent Success pattern."""
+        # Check if model supports Google Search before attempting toggle
+        if not self._supports_google_search(model_id):
+            self.logger.debug("[Param] Google Search: 该模型不支持此功能，跳过")
+            return
+
         should_enable_search = self._should_enable_google_search(request_params)
         desired_state = "On" if should_enable_search else "Off"
 
@@ -653,14 +678,14 @@ class ParameterController(BaseController):
             is_currently_checked = is_checked_str == "true"
             current_state = "On" if is_currently_checked else "Off"
 
-            # Silent Success: If matches, single concise log
             if should_enable_search == is_currently_checked:
-                self.logger.info(f"Google Search: {desired_state} (Matches page).")
+                self.logger.debug(
+                    f"[Param] Google Search: {desired_state} (与页面一致)"
+                )
                 return
 
-            # State differs - log update intent and toggle
-            self.logger.info(
-                f"Google Search: {current_state} -> {desired_state} (Toggling...)"
+            self.logger.debug(
+                f"[Param] Google Search: {current_state} -> {desired_state}"
             )
             try:
                 await toggle_locator.scroll_into_view_if_needed()
@@ -675,7 +700,7 @@ class ParameterController(BaseController):
             await asyncio.sleep(0.5)  # Wait for UI update
             new_state = await toggle_locator.get_attribute("aria-checked")
             if (new_state == "true") == should_enable_search:
-                self.logger.info(f"Google Search: {desired_state} (Updated).")
+                self.logger.debug(f"[Param] Google Search: {desired_state} (已更新)")
             else:
                 actual = "On" if new_state == "true" else "Off"
                 self.logger.warning(
@@ -685,6 +710,11 @@ class ParameterController(BaseController):
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            self.logger.error(f"Google Search toggle error: {e}")
+            # AssertionError from expect_async visibility check is expected for models
+            # that don't have Google Search tool (e.g., gemini-2.0-flash-lite)
+            if isinstance(e, AssertionError) and "visible" in str(e).lower():
+                self.logger.debug("[Param] Google Search: 该模型不支持此功能，跳过")
+            else:
+                self.logger.error(f"Google Search toggle error: {e}")
             if isinstance(e, ClientDisconnectedError):
                 raise

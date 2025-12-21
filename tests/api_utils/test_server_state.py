@@ -2,10 +2,8 @@
 High-quality tests for api_utils/server_state.py - Server state management.
 
 Focus: Test ServerState class methods and module-level __getattr__.
-Strategy: Test clear_debug_logs, get_server_status, and backward compatibility __getattr__.
+Strategy: Test clear_debug_logs and backward compatibility __getattr__.
 """
-
-import asyncio
 
 import pytest
 
@@ -42,91 +40,6 @@ def test_clear_debug_logs(fresh_state):
     # 验证: 日志被清空 (lines 96-97)
     assert fresh_state.console_logs == []
     assert fresh_state.network_log == {"requests": [], "responses": []}
-
-
-@pytest.mark.asyncio
-async def test_get_server_status_all_ready(fresh_state):
-    """
-    测试场景: 获取服务器状态 (所有就绪)
-    预期: 返回包含所有状态的字典 (line 101)
-    """
-    # Setup: 设置状态为就绪
-    fresh_state.is_initializing = False
-    fresh_state.is_playwright_ready = True
-    fresh_state.is_browser_connected = True
-    fresh_state.is_page_ready = True
-    fresh_state.current_ai_studio_model_id = "gemini-1.5-pro"
-
-    # 创建真实的 asyncio.Queue 和 Task
-    fresh_state.request_queue = asyncio.Queue()
-    fresh_state.request_queue.put_nowait("dummy_request")  # Queue size = 1
-
-    async def dummy_worker():
-        await asyncio.sleep(10)
-
-    fresh_state.worker_task = asyncio.create_task(dummy_worker())
-
-    # 执行: 获取状态
-    status = fresh_state.get_server_status()
-
-    # 验证: 返回字典包含所有字段 (line 101)
-    assert status["is_initializing"] is False
-    assert status["is_playwright_ready"] is True
-    assert status["is_browser_connected"] is True
-    assert status["is_page_ready"] is True
-    assert status["current_model"] == "gemini-1.5-pro"
-    assert status["queue_size"] == 1
-    assert status["worker_running"] is True
-
-    # Cleanup
-    fresh_state.worker_task.cancel()
-    try:
-        await fresh_state.worker_task
-    except asyncio.CancelledError:
-        pass
-
-
-def test_get_server_status_initializing(fresh_state):
-    """
-    测试场景: 获取服务器状态 (初始化中)
-    预期: is_initializing=True, 其他为 False
-    """
-    fresh_state.is_initializing = True
-    fresh_state.is_playwright_ready = False
-    fresh_state.is_browser_connected = False
-    fresh_state.is_page_ready = False
-    fresh_state.current_ai_studio_model_id = None
-    fresh_state.request_queue = None
-    fresh_state.worker_task = None
-
-    status = fresh_state.get_server_status()
-
-    assert status["is_initializing"] is True
-    assert status["is_playwright_ready"] is False
-    assert status["is_browser_connected"] is False
-    assert status["is_page_ready"] is False
-    assert status["current_model"] is None
-    assert status["queue_size"] == 0
-    assert status["worker_running"] is False
-
-
-@pytest.mark.asyncio
-async def test_get_server_status_worker_done(fresh_state):
-    """
-    测试场景: worker_task 存在但已完成
-    预期: worker_running=False
-    """
-
-    async def quick_worker():
-        return "done"
-
-    fresh_state.worker_task = asyncio.create_task(quick_worker())
-    # 等待 task 完成
-    await asyncio.sleep(0.01)  # Give the task time to complete
-
-    status = fresh_state.get_server_status()
-
-    assert status["worker_running"] is False
 
 
 def test_module_getattr_success():

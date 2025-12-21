@@ -6,6 +6,7 @@ Exports all configuration items for easy import by other modules.
 # Import all configuration items from individual config files
 from .constants import *
 from .timeouts import *
+from .selector_utils import *
 from .selectors import *
 from .settings import *
 from .global_state import GlobalState
@@ -42,6 +43,10 @@ __all__ = [
     'CLIPBOARD_READ_TIMEOUT_MS',
     'WAIT_FOR_ELEMENT_TIMEOUT_MS',
     'PSEUDO_STREAM_DELAY',
+    'SUBMIT_BUTTON_ENABLE_TIMEOUT_MS',
+    'SELECTOR_EXISTENCE_CHECK_TIMEOUT_MS',
+    'SELECTOR_VISIBILITY_TIMEOUT_MS',
+    'STARTUP_SELECTOR_VISIBILITY_TIMEOUT_MS',
     
     # Selector Configuration
     'PROMPT_TEXTAREA_SELECTOR',
@@ -69,8 +74,14 @@ __all__ = [
     'TEMPERATURE_INPUT_SELECTOR',
     'USE_URL_CONTEXT_SELECTOR',
     'UPLOAD_BUTTON_SELECTOR',
+    'MODEL_NAME_SELECTOR',
+    'CDK_OVERLAY_CONTAINER_SELECTOR',
+    'CHAT_TURN_SELECTOR',
+    'SCROLL_CONTAINER_SELECTOR',
+    'CHAT_SESSION_CONTENT_SELECTOR',
+    'LAST_CHAT_TURN_SELECTOR',
     
-    # --- New: Thinking Mode Related Selectors ---
+    # Thinking Mode Related Selectors
     'ENABLE_THINKING_MODE_TOGGLE_SELECTOR',
     'SET_THINKING_BUDGET_TOGGLE_SELECTOR',
     'THINKING_BUDGET_INPUT_SELECTOR',
@@ -78,8 +89,12 @@ __all__ = [
     'THINKING_LEVEL_SELECT_SELECTOR',
     'THINKING_LEVEL_OPTION_LOW_SELECTOR',
     'THINKING_LEVEL_OPTION_HIGH_SELECTOR',
+    'THINKING_MODE_TOGGLE_PARENT_SELECTOR',
+    'THINKING_MODE_TOGGLE_OLD_ROOT_SELECTOR',
+    'THINKING_BUDGET_TOGGLE_PARENT_SELECTOR',
+    'THINKING_BUDGET_TOGGLE_OLD_ROOT_SELECTOR',
     
-    # --- New: Google Search Related Selectors ---
+    # Google Search Related Selectors
     'GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR',
     
     # Settings Configuration
@@ -97,10 +112,12 @@ __all__ = [
     'ENABLE_SCRIPT_INJECTION',
     'USERSCRIPT_PATH',
     
-    # --- New: Feature Toggle Settings ---
+    # Feature Toggle Settings
     'ENABLE_THINKING_BUDGET',
     'DEFAULT_THINKING_BUDGET',
     'DEFAULT_THINKING_LEVEL',
+    'DEFAULT_THINKING_LEVEL_PRO',
+    'DEFAULT_THINKING_LEVEL_FLASH',
     'ENABLE_GOOGLE_SEARCH',
     'ENABLE_URL_CONTEXT',
 

@@ -16,7 +16,7 @@ from browser_utils.initialization import (
 
 @pytest.mark.asyncio
 async def test_initialize_page_logic_success(
-    mock_browser, mock_browser_context, mock_page, mock_env
+    mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
 ):
     # Mock server module
     with (
@@ -41,22 +41,16 @@ async def test_initialize_page_logic_success(
             return_value="Gemini 1.5 Pro"
         )
 
-        mock_expect = MagicMock()
-        assertion_wrapper = MagicMock()
-        assertion_wrapper.to_be_visible = AsyncMock()
-        mock_expect.return_value = assertion_wrapper
+        page, ready = await _initialize_page_logic(mock_browser)
 
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            page, ready = await _initialize_page_logic(mock_browser)
-
-            assert page == mock_page
-            assert ready is True
-            mock_browser.new_context.assert_called()
+        assert page == mock_page
+        assert ready is True
+        mock_browser.new_context.assert_called()
 
 
 @pytest.mark.asyncio
 async def test_initialize_page_logic_new_page(
-    mock_browser, mock_browser_context, mock_page, mock_env
+    mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
 ):
     with (
         patch.dict("sys.modules", {"server": MagicMock()}),
@@ -78,17 +72,11 @@ async def test_initialize_page_logic_new_page(
             return_value="Gemini 1.5 Pro"
         )
 
-        mock_expect = MagicMock()
-        assertion_wrapper = MagicMock()
-        assertion_wrapper.to_be_visible = AsyncMock()
-        mock_expect.return_value = assertion_wrapper
+        page, ready = await _initialize_page_logic(mock_browser)
 
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            page, ready = await _initialize_page_logic(mock_browser)
-
-            assert page == mock_page
-            assert ready is True
-            mock_page.goto.assert_called()
+        assert page == mock_page
+        assert ready is True
+        mock_page.goto.assert_called()
 
 
 @pytest.mark.asyncio
@@ -149,7 +137,7 @@ async def test_initialize_page_logic_headless_auth_missing(mock_browser, mock_en
 
 @pytest.mark.asyncio
 async def test_initialize_page_logic_proxy_settings(
-    mock_browser, mock_browser_context, mock_page, mock_env
+    mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
 ):
     with (
         patch.dict("sys.modules", {"server": MagicMock()}),
@@ -171,17 +159,11 @@ async def test_initialize_page_logic_proxy_settings(
             return_value="Gemini 1.5 Pro"
         )
 
-        mock_expect = MagicMock()
-        assertion_wrapper = MagicMock()
-        assertion_wrapper.to_be_visible = AsyncMock()
-        mock_expect.return_value = assertion_wrapper
+        await _initialize_page_logic(mock_browser)
 
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-
-            call_args = mock_browser.new_context.call_args
-            assert call_args is not None
-            assert call_args[1]["proxy"] == {"server": "http://proxy:8080"}
+        call_args = mock_browser.new_context.call_args
+        assert call_args is not None
+        assert call_args[1]["proxy"] == {"server": "http://proxy:8080"}
 
 
 # --- New Tests ---
@@ -191,7 +173,7 @@ async def test_initialize_page_logic_proxy_settings(
 
 @pytest.mark.asyncio
 async def test_init_storage_state_explicit_exists(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_expect
 ):
     with (
         patch("os.path.exists", return_value=True),
@@ -209,15 +191,12 @@ async def test_init_storage_state_explicit_exists(
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(
-                mock_browser, storage_state_path="/path/to/auth.json"
-            )
+        await _initialize_page_logic(
+            mock_browser, storage_state_path="/path/to/auth.json"
+        )
 
-            call_args = mock_browser.new_context.call_args
-            assert call_args[1]["storage_state"] == "/path/to/auth.json"
+        call_args = mock_browser.new_context.call_args
+        assert call_args[1]["storage_state"] == "/path/to/auth.json"
 
 
 @pytest.mark.asyncio
@@ -230,7 +209,9 @@ async def test_init_storage_state_explicit_missing(mock_browser):
 
 
 @pytest.mark.asyncio
-async def test_init_headless_auth_exists(mock_browser, mock_browser_context, mock_page):
+async def test_init_headless_auth_exists(
+    mock_browser, mock_browser_context, mock_page, mock_expect
+):
     with (
         patch.dict(
             "os.environ",
@@ -251,12 +232,9 @@ async def test_init_headless_auth_exists(mock_browser, mock_browser_context, moc
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-            call_args = mock_browser.new_context.call_args
-            assert call_args[1]["storage_state"] == "/env/auth.json"
+        await _initialize_page_logic(mock_browser)
+        call_args = mock_browser.new_context.call_args
+        assert call_args[1]["storage_state"] == "/env/auth.json"
 
 
 @pytest.mark.asyncio
@@ -273,7 +251,9 @@ async def test_init_headless_auth_invalid(mock_browser):
 
 
 @pytest.mark.asyncio
-async def test_init_debug_auth_exists(mock_browser, mock_browser_context, mock_page):
+async def test_init_debug_auth_exists(
+    mock_browser, mock_browser_context, mock_page, mock_expect
+):
     with (
         patch.dict(
             "os.environ",
@@ -294,17 +274,14 @@ async def test_init_debug_auth_exists(mock_browser, mock_browser_context, mock_p
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-            call_args = mock_browser.new_context.call_args
-            assert call_args[1]["storage_state"] == "/env/debug.json"
+        await _initialize_page_logic(mock_browser)
+        call_args = mock_browser.new_context.call_args
+        assert call_args[1]["storage_state"] == "/env/debug.json"
 
 
 @pytest.mark.asyncio
 async def test_init_debug_auth_missing_file(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_expect
 ):
     with (
         patch.dict(
@@ -326,17 +303,14 @@ async def test_init_debug_auth_missing_file(
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-            call_args = mock_browser.new_context.call_args
-            assert "storage_state" not in call_args[1]
+        await _initialize_page_logic(mock_browser)
+        call_args = mock_browser.new_context.call_args
+        assert "storage_state" not in call_args[1]
 
 
 @pytest.mark.asyncio
 async def test_init_direct_debug_no_browser(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_expect
 ):
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "direct_debug_no_browser"}),
@@ -354,16 +328,15 @@ async def test_init_direct_debug_no_browser(
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-            call_args = mock_browser.new_context.call_args
-            assert "storage_state" not in call_args[1]
+        await _initialize_page_logic(mock_browser)
+        call_args = mock_browser.new_context.call_args
+        assert "storage_state" not in call_args[1]
 
 
 @pytest.mark.asyncio
-async def test_init_unknown_launch_mode(mock_browser, mock_browser_context, mock_page):
+async def test_init_unknown_launch_mode(
+    mock_browser, mock_browser_context, mock_page, mock_expect
+):
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "unknown_mode"}),
         patch.dict("sys.modules", {"server": MagicMock()}),
@@ -380,12 +353,9 @@ async def test_init_unknown_launch_mode(mock_browser, mock_browser_context, mock
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-            call_args = mock_browser.new_context.call_args
-            assert "storage_state" not in call_args[1]
+        await _initialize_page_logic(mock_browser)
+        call_args = mock_browser.new_context.call_args
+        assert "storage_state" not in call_args[1]
 
 
 # 2. Page Discovery & Navigation Errors
@@ -393,7 +363,7 @@ async def test_init_unknown_launch_mode(mock_browser, mock_browser_context, mock
 
 @pytest.mark.asyncio
 async def test_init_page_discovery_errors(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_expect
 ):
     """Test error handling during iteration of existing pages."""
     with (
@@ -429,14 +399,10 @@ async def test_init_page_discovery_errors(
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
+        await _initialize_page_logic(mock_browser)
 
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-
-            # Should have tried to create a new page since no existing one was found
-            mock_browser_context.new_page.assert_called()
+        # Should have tried to create a new page since no existing one was found
+        mock_browser_context.new_page.assert_called()
 
 
 @pytest.mark.asyncio
@@ -522,7 +488,7 @@ async def test_init_login_headless_fail(mock_browser, mock_browser_context, mock
 
 @pytest.mark.asyncio
 async def test_init_login_interactive_success(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_expect
 ):
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug", "SUPPRESS_LOGIN_WAIT": "0"}),
@@ -532,6 +498,10 @@ async def test_init_login_interactive_success(
             new_callable=AsyncMock,
         ),
         patch("browser_utils.initialization.core.setup_debug_listeners"),
+        patch(
+            "browser_utils.initialization.core.wait_for_model_list_and_handle_auth_save",
+            new_callable=AsyncMock,
+        ),
         patch("builtins.input", return_value=""),
         patch("builtins.print"),
     ):
@@ -555,18 +525,14 @@ async def test_init_login_interactive_success(
             return_value="Model"
         )
 
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
+        await _initialize_page_logic(mock_browser)
 
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
-
-            mock_page.wait_for_url.assert_called()
+        mock_page.wait_for_url.assert_called()
 
 
 @pytest.mark.asyncio
 async def test_init_login_interactive_suppress_wait(
-    mock_browser, mock_browser_context, mock_page
+    mock_browser, mock_browser_context, mock_page, mock_expect
 ):
     with (
         patch.dict(
@@ -578,6 +544,10 @@ async def test_init_login_interactive_suppress_wait(
             new_callable=AsyncMock,
         ),
         patch("browser_utils.initialization.core.setup_debug_listeners"),
+        patch(
+            "browser_utils.initialization.core.wait_for_model_list_and_handle_auth_save",
+            new_callable=AsyncMock,
+        ),
         patch("builtins.input") as mock_input,
     ):
         mock_browser_context.pages = []
@@ -595,13 +565,10 @@ async def test_init_login_interactive_suppress_wait(
         mock_page.locator.return_value.first.inner_text = AsyncMock(
             return_value="Model"
         )
-        mock_expect = MagicMock()
-        mock_expect.return_value.to_be_visible = AsyncMock()
 
-        with patch("browser_utils.initialization.core.expect_async", mock_expect):
-            await _initialize_page_logic(mock_browser)
+        await _initialize_page_logic(mock_browser)
 
-            mock_input.assert_not_called()
+        mock_input.assert_not_called()
 
 
 @pytest.mark.asyncio

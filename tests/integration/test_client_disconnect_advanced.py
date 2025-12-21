@@ -21,8 +21,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-from api_utils.queue_worker import QueueManager
 from api_utils.context_types import QueueItem
+from api_utils.queue_worker import QueueManager
 
 
 @pytest.mark.integration
@@ -61,14 +61,17 @@ class TestClientDisconnectDuringQueueWait:
             await asyncio.sleep(0.05)
 
             # Create second request that will wait for lock
-            req_item = cast(QueueItem, {
-                "req_id": "waiting-req",
-                "request_data": MagicMock(),
-                "http_request": MagicMock(),
-                "result_future": asyncio.Future(),
-                "cancelled": False,
-                "enqueue_time": 0.0,
-            })
+            req_item = cast(
+                QueueItem,
+                {
+                    "req_id": "waiting-req",
+                    "request_data": MagicMock(),
+                    "http_request": MagicMock(),
+                    "result_future": asyncio.Future(),
+                    "cancelled": False,
+                    "enqueue_time": 0.0,
+                },
+            )
 
             # Client disconnects immediately
             req_item["http_request"].is_disconnected = AsyncMock(return_value=True)
@@ -117,14 +120,17 @@ class TestClientDisconnectDuringQueueWait:
         items = []
 
         for i in range(5):
-            item = cast(QueueItem, {
-                "req_id": f"req-{i}",
-                "http_request": MagicMock(),
-                "cancelled": False,
-                "result_future": asyncio.Future(),
-                "request_data": None,
-                "enqueue_time": 0.0,
-            })
+            item = cast(
+                QueueItem,
+                {
+                    "req_id": f"req-{i}",
+                    "http_request": MagicMock(),
+                    "cancelled": False,
+                    "result_future": asyncio.Future(),
+                    "request_data": None,
+                    "enqueue_time": 0.0,
+                },
+            )
             item["http_request"].is_disconnected = AsyncMock(
                 return_value=disconnect_map[i]
             )
@@ -187,14 +193,17 @@ class TestClientDisconnectDuringProcessing:
         await asyncio.sleep(0.05)  # Ensure lock is held
 
         # Create request that will disconnect while waiting for lock
-        req_item = cast(QueueItem, {
-            "req_id": "disconnect-req",
-            "request_data": MagicMock(),
-            "http_request": MagicMock(),
-            "result_future": asyncio.Future(),
-            "cancelled": False,
-            "enqueue_time": 0.0,
-        })
+        req_item = cast(
+            QueueItem,
+            {
+                "req_id": "disconnect-req",
+                "request_data": MagicMock(),
+                "http_request": MagicMock(),
+                "result_future": asyncio.Future(),
+                "cancelled": False,
+                "enqueue_time": 0.0,
+            },
+        )
 
         # Simulate delayed disconnect (after initial check but before lock acquired)
         async def disconnect_checker(*args):
@@ -242,14 +251,17 @@ class TestClientDisconnectDuringProcessing:
         # Mock task_done since we call process_request directly without queue.get()
         queue.task_done = MagicMock()
 
-        req_item = cast(QueueItem, {
-            "req_id": "streaming-req",
-            "request_data": MagicMock(stream=True),
-            "http_request": MagicMock(),
-            "result_future": asyncio.Future(),
-            "cancelled": False,
-            "enqueue_time": 0.0,
-        })
+        req_item = cast(
+            QueueItem,
+            {
+                "req_id": "streaming-req",
+                "request_data": MagicMock(stream=True),
+                "http_request": MagicMock(),
+                "result_future": asyncio.Future(),
+                "cancelled": False,
+                "enqueue_time": 0.0,
+            },
+        )
 
         # Simulate disconnect after initial connection check
         disconnect_calls = [False, True]  # First call passes, second fails
@@ -302,14 +314,17 @@ class TestClientDisconnectRaceConditions:
         # Create 10 concurrent requests
         items = []
         for i in range(10):
-            item = cast(QueueItem, {
-                "req_id": f"concurrent-{i}",
-                "http_request": MagicMock(),
-                "cancelled": False,
-                "result_future": asyncio.Future(),
-                "request_data": None,
-                "enqueue_time": 0.0,
-            })
+            item = cast(
+                QueueItem,
+                {
+                    "req_id": f"concurrent-{i}",
+                    "http_request": MagicMock(),
+                    "cancelled": False,
+                    "result_future": asyncio.Future(),
+                    "request_data": None,
+                    "enqueue_time": 0.0,
+                },
+            )
             # Half disconnected, half connected
             item["http_request"].is_disconnected = AsyncMock(return_value=i % 2 == 0)
             items.append(item)
@@ -338,17 +353,22 @@ class TestClientDisconnectRaceConditions:
         queue_manager.request_queue = queue
         queue_manager.logger = MagicMock()
 
-        item = cast(QueueItem, {
-            "req_id": "already-done",
-            "http_request": MagicMock(),
-            "cancelled": False,
-            "result_future": asyncio.Future(),
-            "request_data": None,
-            "enqueue_time": 0.0,
-        })
+        item = cast(
+            QueueItem,
+            {
+                "req_id": "already-done",
+                "http_request": MagicMock(),
+                "cancelled": False,
+                "result_future": asyncio.Future(),
+                "request_data": None,
+                "enqueue_time": 0.0,
+            },
+        )
 
         # Set future BEFORE disconnect check
-        item["result_future"].set_result(JSONResponse(content={"message": "Already completed"}))
+        item["result_future"].set_result(
+            JSONResponse(content={"message": "Already completed"})
+        )
 
         # Now try to mark as disconnected
         item["http_request"].is_disconnected = AsyncMock(return_value=True)
@@ -361,7 +381,10 @@ class TestClientDisconnectRaceConditions:
         result = item["result_future"].result()
         assert isinstance(result, JSONResponse)
         import json
-        assert json.loads(bytes(result.body).decode()) == {"message": "Already completed"}
+
+        assert json.loads(bytes(result.body).decode()) == {
+            "message": "Already completed"
+        }
 
 
 @pytest.mark.integration
@@ -384,14 +407,17 @@ class TestClientDisconnectCleanup:
         # Mock task_done since we call process_request directly without queue.get()
         queue.task_done = MagicMock()
 
-        req_item = cast(QueueItem, {
-            "req_id": "cleanup-test",
-            "request_data": MagicMock(),
-            "http_request": MagicMock(),
-            "result_future": asyncio.Future(),
-            "cancelled": False,
-            "enqueue_time": 0.0,
-        })
+        req_item = cast(
+            QueueItem,
+            {
+                "req_id": "cleanup-test",
+                "request_data": MagicMock(),
+                "http_request": MagicMock(),
+                "result_future": asyncio.Future(),
+                "cancelled": False,
+                "enqueue_time": 0.0,
+            },
+        )
 
         # Mock check connection to trigger disconnect path
         with patch(
@@ -432,14 +458,17 @@ class TestClientDisconnectCleanup:
         # Mock task_done since we call process_request directly without queue.get()
         queue.task_done = MagicMock()
 
-        req_item = cast(QueueItem, {
-            "req_id": "lock-release-test",
-            "request_data": MagicMock(),
-            "http_request": MagicMock(),
-            "result_future": asyncio.Future(),
-            "cancelled": False,
-            "enqueue_time": 0.0,
-        })
+        req_item = cast(
+            QueueItem,
+            {
+                "req_id": "lock-release-test",
+                "request_data": MagicMock(),
+                "http_request": MagicMock(),
+                "result_future": asyncio.Future(),
+                "cancelled": False,
+                "enqueue_time": 0.0,
+            },
+        )
 
         # Simulate disconnect inside lock
         with patch(
@@ -482,14 +511,17 @@ class TestClientDisconnectEdgeCases:
         queue_manager.logger = MagicMock()
 
         # Create item with failing disconnect check
-        item = cast(QueueItem, {
-            "req_id": "error-check",
-            "http_request": MagicMock(),
-            "cancelled": False,
-            "result_future": asyncio.Future(),
-            "request_data": None,
-            "enqueue_time": 0.0,
-        })
+        item = cast(
+            QueueItem,
+            {
+                "req_id": "error-check",
+                "http_request": MagicMock(),
+                "cancelled": False,
+                "result_future": asyncio.Future(),
+                "request_data": None,
+                "enqueue_time": 0.0,
+            },
+        )
         item["http_request"].is_disconnected = AsyncMock(
             side_effect=Exception("Connection check failed")
         )
@@ -524,14 +556,17 @@ class TestClientDisconnectEdgeCases:
             # Odd calls = disconnected, even = connected
             return disconnect_state["calls"] % 2 == 1
 
-        item = cast(QueueItem, {
-            "req_id": "rapid-disconnect",
-            "http_request": MagicMock(),
-            "cancelled": False,
-            "result_future": asyncio.Future(),
-            "request_data": None,
-            "enqueue_time": 0.0,
-        })
+        item = cast(
+            QueueItem,
+            {
+                "req_id": "rapid-disconnect",
+                "http_request": MagicMock(),
+                "cancelled": False,
+                "result_future": asyncio.Future(),
+                "request_data": None,
+                "enqueue_time": 0.0,
+            },
+        )
         item["http_request"].is_disconnected = AsyncMock(
             side_effect=alternating_disconnect
         )

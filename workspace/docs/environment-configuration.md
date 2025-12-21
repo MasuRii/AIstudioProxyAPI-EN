@@ -40,9 +40,6 @@ code .env
 配置完成后，启动变得非常简单：
 
 ```bash
-# 图形界面启动（推荐新手）
-python gui_launcher.py
-
 # 命令行启动（推荐日常使用）
 python launch_camoufox.py --headless
 
@@ -67,6 +64,16 @@ ENDPOINT_CAPTURE_TIMEOUT=45
 
 # 流式代理服务配置
 STREAM_PORT=3120
+```
+
+### 启动配置
+
+```env
+# 快速启动
+DIRECT_LAUNCH=false
+
+# 跳过前端构建检查 (适用于无 Node.js 环境或使用预构建资源)
+SKIP_FRONTEND_BUILD=false
 ```
 
 ### 代理配置
@@ -101,17 +108,17 @@ SERVER_REDIRECT_PRINT=false
 
 ```env
 # 自动保存认证信息
+# [IMPORTANT] 必须在 debug 模式下设置为 true 才能保存新的认证配置文件！
 AUTO_SAVE_AUTH=false
 
 # 认证保存超时时间 (秒)
 AUTH_SAVE_TIMEOUT=30
 
-# 自动确认登录
-AUTO_CONFIRM_LOGIN=true
-
 # 仅收集当前用户消息中的附件（true/false）
 ONLY_COLLECT_CURRENT_USER_ATTACHMENTS=false
 ```
+
+> [!WARNING] > `AUTO_SAVE_AUTH=true` 是在 debug 模式下保存认证配置文件的必要条件。首次设置时请务必启用此选项。Headless 模式使用已保存的配置文件，此设置对其无效。
 
 ### 浏览器配置
 
@@ -192,7 +199,10 @@ WAIT_FOR_ELEMENT_TIMEOUT_MS=10000
 PSEUDO_STREAM_DELAY=0.01
 ```
 
-### GUI 启动器配置
+### GUI 启动器配置 (已废弃)
+
+> [!WARNING]
+> GUI 启动器已移至 `deprecated/` 目录，以下配置仅供参考。
 
 ```env
 # GUI 默认代理地址

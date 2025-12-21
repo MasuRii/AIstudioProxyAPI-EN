@@ -1,20 +1,11 @@
 import asyncio
 from asyncio import Event, Task
-from logging import Logger
-from typing import Any, Callable, Coroutine, Dict, Protocol, Tuple
+from typing import Any, Callable, Coroutine, Dict, Tuple
 
 from fastapi import HTTPException, Request
 
 from logging_utils import set_request_id
 from models import ClientDisconnectedError
-
-
-class SupportsReceive(Protocol):
-    """Protocol for request objects that support _receive method."""
-
-    def _receive(self) -> Coroutine[Any, Any, Dict[str, Any]]:
-        """Internal method to receive messages from ASGI."""
-        ...
 
 
 async def check_client_connection(req_id: str, http_request: Request) -> bool:
@@ -63,8 +54,11 @@ async def check_client_connection(req_id: str, http_request: Request) -> bool:
         return False
 
 
-async def setup_disconnect_monitoring(req_id: str, http_request: Request, result_future) -> Tuple[Event, asyncio.Task, Callable]:
+async def setup_disconnect_monitoring(
+    req_id: str, http_request: Request, result_future
+) -> Tuple[Event, asyncio.Task, Callable]:
     from server import logger
+
     client_disconnected_event = Event()
     disconnect_count = 0
     disconnect_threshold = 5  # Require 5 consecutive disconnect signals (1.5 seconds)
@@ -77,29 +71,47 @@ async def setup_disconnect_monitoring(req_id: str, http_request: Request, result
                 if not is_connected:
                     disconnect_count += 1
                     if disconnect_count >= disconnect_threshold:
-                        logger.info(f"[{req_id}] 主动检测到客户端断开连接 (连续 {disconnect_count} 次)。")
+                        logger.info(
+                            f"[{req_id}] Active detection of client disconnect (consecutive {disconnect_count} times)."
+                        )
                         client_disconnected_event.set()
                         if not result_future.done():
-                            result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端关闭了请求"))
+                            result_future.set_exception(
+                                HTTPException(
+                                    status_code=499,
+                                    detail=f"[{req_id}] Client closed the request",
+                                )
+                            )
                         break
                     else:
-                        logger.debug(f"[{req_id}] 主动检测到潜在断开 (第 {disconnect_count}/{disconnect_threshold} 次)")
+                        logger.debug(
+                            f"[{req_id}] Active detection of potential disconnect (round {disconnect_count}/{disconnect_threshold})"
+                        )
                 else:
                     disconnect_count = 0  # Reset counter on successful connection
 
                 if await http_request.is_disconnected():
                     disconnect_count += 1
                     if disconnect_count >= disconnect_threshold:
-                        logger.info(f"[{req_id}] 备用检测到客户端断开连接 (连续 {disconnect_count} 次)。")
+                        logger.info(
+                            f"[{req_id}] Backup detection of client disconnect (consecutive {disconnect_count} times)."
+                        )
                         client_disconnected_event.set()
                         if not result_future.done():
-                            result_future.set_exception(HTTPException(status_code=499, detail=f"[{req_id}] 客户端关闭了请求"))
+                            result_future.set_exception(
+                                HTTPException(
+                                    status_code=499,
+                                    detail=f"[{req_id}] Client closed the request",
+                                )
+                            )
                         break
                     else:
-                        logger.debug(f"[{req_id}] 备用检测到潜在断开 (第 {disconnect_count}/{disconnect_threshold} 次)")
+                        logger.debug(
+                            f"[{req_id}] Backup detection of potential disconnect (round {disconnect_count}/{disconnect_threshold})"
+                        )
                 else:
                     disconnect_count = 0  # Reset counter on successful connection
-                    
+
                 await asyncio.sleep(0.3)
             except asyncio.CancelledError:
                 # Task cancelled, exit gracefully

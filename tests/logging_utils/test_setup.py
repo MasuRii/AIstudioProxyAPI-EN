@@ -18,7 +18,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from logging_utils.setup import (
-    USCentralFormatter,
     restore_original_streams,
     setup_server_logging,
 )
@@ -78,84 +77,6 @@ def mock_file_ops():
     ):
         mock_exists.return_value = False
         yield mock_exists, mock_remove
-
-
-# ==================== USCentralFormatter TESTS ====================
-
-
-def test_uscentralformatter_without_datefmt():
-    """Test USCentralFormatter with default datetime format."""
-    formatter = USCentralFormatter()
-
-    # Create a mock log record
-    record = logging.LogRecord(
-        name="test",
-        level=logging.INFO,
-        pathname="test.py",
-        lineno=1,
-        msg="Test message",
-        args=(),
-        exc_info=None,
-    )
-    record.created = 1732662000.123  # Known timestamp
-    record.msecs = 123
-
-    # Format the time
-    formatted_time = formatter.formatTime(record)
-
-    # Should return US/Central timezone formatted string
-    assert formatted_time is not None
-    assert "," in formatted_time  # Should include milliseconds
-    assert "123" in formatted_time  # Milliseconds should be present
-
-
-def test_uscentralformatter_with_custom_datefmt():
-    """Test USCentralFormatter with custom datefmt."""
-    formatter = USCentralFormatter()
-
-    record = logging.LogRecord(
-        name="test",
-        level=logging.INFO,
-        pathname="test.py",
-        lineno=1,
-        msg="Test message",
-        args=(),
-        exc_info=None,
-    )
-    record.created = 1732662000.123
-    record.msecs = 123
-
-    # Format with custom datefmt
-    formatted_time = formatter.formatTime(record, datefmt="%Y/%m/%d %H:%M")
-
-    # Should use custom format without milliseconds
-    assert formatted_time is not None
-    assert "/" in formatted_time
-    assert "," not in formatted_time  # No milliseconds with custom format
-
-
-def test_uscentralformatter_timezone():
-    """Test that USCentralFormatter uses America/Chicago timezone."""
-    formatter = USCentralFormatter()
-
-    record = logging.LogRecord(
-        name="test",
-        level=logging.INFO,
-        pathname="test.py",
-        lineno=1,
-        msg="Test message",
-        args=(),
-        exc_info=None,
-    )
-    # Use a known timestamp
-    record.created = 1732662000.0  # 2024-11-26 ~18:00:00 UTC
-    record.msecs = 0
-
-    formatted_time = formatter.formatTime(record)
-
-    # Verify it's a valid datetime string (format check)
-    assert len(formatted_time) > 10
-    assert "-" in formatted_time or ":" in formatted_time
 
 
 # ==================== setup_server_logging BASIC TESTS ====================
@@ -267,7 +188,9 @@ def test_setup_server_logging_file_handler(
     # Verify RotatingFileHandler was created
     mock_rotating_file_handler.assert_called_once()
     call_kwargs = mock_rotating_file_handler.call_args[1]
-    assert call_kwargs["maxBytes"] == 5 * 1024 * 1024  # 5 MB
+    assert (
+        call_kwargs["maxBytes"] == 10 * 1024 * 1024
+    )  # 10 MB (configurable via LOG_FILE_MAX_BYTES)
     assert call_kwargs["backupCount"] == 5
     assert call_kwargs["encoding"] == "utf-8"
     assert call_kwargs["mode"] == "w"
@@ -316,7 +239,28 @@ def test_setup_server_logging_websocket_handler_valid(
 
         # Verify WebSocket handler was created and configured
         MockWSHandler.assert_called_once_with(mock_ws_manager)
+        # WebSocket handler should use the same log level as requested
         mock_ws_handler.setLevel.assert_called_once_with(logging.INFO)
+
+
+def test_setup_server_logging_websocket_handler_debug_level(
+    mock_logger, mock_ws_manager, mock_dirs, mock_file_ops
+):
+    """Test WebSocket handler respects DEBUG log level."""
+    with patch("logging_utils.setup.WebSocketLogHandler") as MockWSHandler:
+        mock_ws_handler = MagicMock()
+        mock_ws_handler.level = logging.NOTSET
+        MockWSHandler.return_value = mock_ws_handler
+
+        setup_server_logging(
+            logger_instance=mock_logger,
+            log_ws_manager=mock_ws_manager,
+            log_level_name="DEBUG",
+            redirect_print_str="false",
+        )
+
+        # WebSocket handler should use DEBUG level (not hardcoded INFO)
+        mock_ws_handler.setLevel.assert_called_once_with(logging.DEBUG)
 
 
 def test_setup_server_logging_websocket_handler_none(

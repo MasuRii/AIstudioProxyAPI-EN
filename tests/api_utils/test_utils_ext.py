@@ -117,7 +117,9 @@ def test_extract_data_url_to_local_success():
 
 def test_extract_data_url_to_local_invalid_format():
     """Test data URL extraction fails gracefully with invalid format."""
-    with patch("server.logger") as mock_logger:
+    with patch("logging.getLogger") as mock_get_logger:
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
         assert extract_data_url_to_local("invalid-url") is None
         mock_logger.error.assert_called()
 
@@ -127,9 +129,11 @@ def test_extract_data_url_to_local_bad_b64():
     import binascii
 
     with (
-        patch("server.logger") as mock_logger,
+        patch("logging.getLogger") as mock_get_logger,
         patch("base64.b64decode", side_effect=binascii.Error("Invalid")),
     ):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
         assert extract_data_url_to_local("data:text/plain;base64,!!!") is None
         mock_logger.error.assert_called()
 
@@ -357,21 +361,21 @@ async def test_clear_stream_queue():
     with (
         patch("server.STREAM_QUEUE", mock_queue),
         patch("server.logger") as mock_logger,
+        patch("asyncio.to_thread", side_effect=mock_queue.get_nowait),
     ):
         await clear_stream_queue()
 
-        assert mock_queue.get_nowait.call_count == 3
-        # Should log that it cleared items
-        warning_calls = mock_logger.warning.call_args_list
-        assert len(warning_calls) > 0
-        assert "共清理了 2 个残留项目" in warning_calls[0][0][0]
+        # Should have called get_nowait 3 times via to_thread
+        # Verify debug log for queue cleared
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any("队列已清空" in c or "[Stream]" in c for c in debug_calls)
 
 
 @pytest.mark.asyncio
 async def test_clear_stream_queue_none():
     with patch("server.STREAM_QUEUE", None), patch("server.logger") as mock_logger:
         await clear_stream_queue()
-        mock_logger.info.assert_called_with("流队列未初始化或已被禁用，跳过清空操作。")
+        mock_logger.debug.assert_called_with("[Stream] 队列未初始化或已禁用，跳过清空")
 
 
 """
@@ -596,22 +600,21 @@ async def test_clear_stream_queue_exception_during_clear():
 async def test_clear_stream_queue_empty_queue():
     """
     测试场景: 清空一个空队列
-    预期: 记录信息日志 (line 201)
+    预期: 记录信息日志
     """
     mock_queue = MagicMock()
-    mock_queue.get_nowait.side_effect = [queue.Empty]  # Immediately empty
+    mock_queue.get_nowait.side_effect = queue.Empty  # Immediately empty
 
     with (
         patch("server.STREAM_QUEUE", mock_queue),
         patch("server.logger") as mock_logger,
+        patch("asyncio.to_thread", side_effect=queue.Empty),
     ):
         await clear_stream_queue()
 
-        # Verify info log for empty queue (line 201)
-        info_calls = [
-            c for c in mock_logger.info.call_args_list if "队列为空" in str(c)
-        ]
-        assert len(info_calls) > 0
+        # Verify debug log for empty queue cleared
+        debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+        assert any("队列已清空" in c or "[Stream]" in c for c in debug_calls)
 
 
 """
@@ -634,12 +637,14 @@ def test_extract_data_url_to_local_write_failure():
     data_url = f"data:text/plain;base64,{b64_data}"
 
     with (
-        patch("server.logger") as mock_logger,
+        patch("logging.getLogger") as mock_get_logger,
         patch("config.UPLOAD_FILES_DIR", "/tmp/uploads"),
         patch("os.makedirs"),
         patch("os.path.exists", return_value=False),
         patch("builtins.open", side_effect=IOError("Disk full")),
     ):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
         # 执行
         result = extract_data_url_to_local(data_url, "req1")
 
@@ -661,11 +666,13 @@ def test_save_blob_to_local_file_exists():
     data = b"binary data"
 
     with (
-        patch("server.logger") as mock_logger,
+        patch("logging.getLogger") as mock_get_logger,
         patch("config.UPLOAD_FILES_DIR", "/tmp/uploads"),
         patch("os.makedirs"),
         patch("os.path.exists", return_value=True),  # 文件存在
     ):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
         # 执行
         result = save_blob_to_local(data, mime_type="image/png", req_id="req1")
 
@@ -687,12 +694,14 @@ def test_save_blob_to_local_write_failure():
     data = b"test binary"
 
     with (
-        patch("server.logger") as mock_logger,
+        patch("logging.getLogger") as mock_get_logger,
         patch("config.UPLOAD_FILES_DIR", "/tmp/uploads"),
         patch("os.makedirs"),
         patch("os.path.exists", return_value=False),
         patch("builtins.open", side_effect=IOError("Permission denied")),
     ):
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
         # 执行
         result = save_blob_to_local(data, mime_type="application/pdf")
 

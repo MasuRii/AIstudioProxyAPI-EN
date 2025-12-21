@@ -81,7 +81,7 @@ async def main() -> None:
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"Error starting proxy server: {e}")
+        logger.error(f"Error starting proxy server: {e}", exc_info=True)
         sys.exit(1)
 
 
@@ -125,7 +125,7 @@ async def builtin(
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"Error starting proxy server: {e}")
+        logger.error(f"Error starting proxy server: {e}", exc_info=True)
         sys.exit(1)
 
 

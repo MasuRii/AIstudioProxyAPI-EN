@@ -38,6 +38,8 @@ class HttpInterceptor:
 
         logging.getLogger("asyncio").setLevel(logging.ERROR)
         logging.getLogger("websockets").setLevel(logging.ERROR)
+        # Silence http_interceptor by default (too verbose)
+        logging.getLogger("http_interceptor").setLevel(logging.WARNING)
 
     @staticmethod
     def should_intercept(host: str, path: str):
@@ -52,7 +54,6 @@ class HttpInterceptor:
         if 'jserror' in path:
             return True
         
-        # Add more conditions as needed
         return False
 
     async def process_request(
@@ -65,7 +66,7 @@ class HttpInterceptor:
             return request_data
 
         # Log the request
-        self.logger.info(f"Intercepted request to {host}{path}")
+        self.logger.debug(f"[Network] Intercepted request: {host}{path}")
         
         # Check for Quota Exceeded errors in jserror requests
         if 'jserror' in path:
@@ -74,23 +75,13 @@ class HttpInterceptor:
                 if any(keyword in decoded_path for keyword in ["exceeded quota", "RESOURCE_EXHAUSTED", "Failed to generate content"]):
                     self.logger.critical(f"🚨 CRITICAL: Detected Quota Exceeded error in network traffic! URL: {path}")
                     
-                    # [FIX] Try to extract model ID if available in context, or fallback to current global model
                     from server import current_ai_studio_model_id
-                    
-                    # If we have a currently active model ID tracked by the server, use it.
-                    # Since jserror often doesn't contain the payload, this is our best guess
-                    # for what was running when the error occurred.
                     model_id = current_ai_studio_model_id
-                    
-                    GlobalState.set_quota_exceeded(message=decoded_path, model_id=model_id)
+                    GlobalState.set_quota_exceeded(message=decoded_path, model_id=model_id or "")
             except Exception as e:
                 self.logger.error(f"Error parsing jserror path: {e}")
 
-        try:
-            return request_data
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            # Not JSON or not UTF-8, just pass through
-            return request_data
+        return request_data
 
     async def process_response(
         self,
@@ -126,7 +117,6 @@ class HttpInterceptor:
     def parse_response_from_buffer(self, is_done=False):
         """
         Parse complete JSON objects from the persistent response buffer.
-        Uses persistent buffering to handle partial data across multiple chunks.
         """
         resp = {
             "reason": "",
@@ -171,7 +161,6 @@ class HttpInterceptor:
                         continue
                 
                 # Remove processed data from buffer
-                # Keep any remaining data that wasn't part of a complete match
                 last_match_end = matches[-1].end()
                 if last_match_end < len(buffer_bytes):
                     remaining_bytes = buffer_bytes[last_match_end:]
@@ -179,7 +168,6 @@ class HttpInterceptor:
                 else:
                     self.response_buffer = ""
             else:
-                # No complete matches found, keep buffering
                 self.logger.debug("Buffering incomplete JSON data...")
                 
         except UnicodeDecodeError as e:
@@ -217,7 +205,7 @@ class HttpInterceptor:
 
     @staticmethod
     def _decompress_zlib_stream(compressed_stream: Union[bytearray, bytes]) -> bytes:
-        decompressor = zlib.decompressobj(wbits=zlib.MAX_WBITS | 32)  # zlib header
+        decompressor = zlib.decompressobj(wbits=zlib.MAX_WBITS | 32)
         decompressed = decompressor.decompress(compressed_stream)
         return decompressed
 
@@ -225,8 +213,6 @@ class HttpInterceptor:
     def _decode_chunked(response_body: bytes) -> Tuple[bytes, bool]:
         chunked_data = bytearray()
         while True:
-            # print(' '.join(format(x, '02x') for x in response_body))
-
             length_crlf_idx = response_body.find(b"\r\n")
             if length_crlf_idx == -1:
                 break
