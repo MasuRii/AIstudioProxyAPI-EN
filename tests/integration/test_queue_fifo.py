@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from api_utils.queue_worker import QueueManager
+from api_utils.queue_worker import queue_worker
 
 
 @pytest.mark.integration

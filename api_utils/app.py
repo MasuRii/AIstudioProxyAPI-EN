@@ -40,47 +40,15 @@ import stream
 from api_utils.server_state import state
 from . import auth_utils
 
-# Global state variables (these will be referenced in server.py)
-playwright_manager: Optional[AsyncPlaywright] = None
-browser_instance: Optional[AsyncBrowser] = None
-page_instance: Any = None
-is_playwright_ready: bool = False
-is_browser_connected: bool = False
-is_page_ready: bool = False
-is_initializing: bool = False
-
-global_model_list_raw_json: Any = None
-parsed_model_list: list = []
-model_list_fetch_event: Any = None
-
-current_ai_studio_model_id: Any = None
-model_switching_lock: Any = None
-
-excluded_model_ids: set = set()
-
-request_queue: Any = None
-processing_lock: Any = None
-worker_task: Any = None
-
-page_params_cache: dict = {}
-params_cache_lock: Any = None
-
-log_ws_manager: Any = None
-
-STREAM_QUEUE: Any = None
-STREAM_PROCESS: Any = None
-
 
 # --- Lifespan Context Manager ---
 def _setup_logging():
-    import server
-
     log_level_env = get_environment_variable("SERVER_LOG_LEVEL", "INFO")
     redirect_print_env = get_environment_variable("SERVER_REDIRECT_PRINT", "false")
-    server.log_ws_manager = WebSocketConnectionManager()
+    state.log_ws_manager = WebSocketConnectionManager()
     return setup_server_logging(
-        logger_instance=server.logger,
-        log_ws_manager=server.log_ws_manager,
+        logger_instance=state.logger,
+        log_ws_manager=state.log_ws_manager,
         log_level_name=log_level_env,
         redirect_print_str=redirect_print_env,
     )
@@ -90,14 +58,24 @@ def _initialize_globals():
     import server
     from api_utils.server_state import state
 
-    server.request_queue = Queue()
-    server.processing_lock = Lock()
-    server.model_switching_lock = Lock()
-    server.params_cache_lock = Lock()
+    # CRITICAL FIX: Write directly to state AND server.__dict__
+    # Module-level __setattr__ is NOT invoked for external assignments,
+    # so we must update both locations to maintain compatibility.
+    state.request_queue = Queue()
+    state.processing_lock = Lock()
+    state.model_switching_lock = Lock()
+    state.params_cache_lock = Lock()
+
+    # Also update server.__dict__ for backward compatibility with code
+    # that imports directly from server module
+    server.__dict__["request_queue"] = state.request_queue
+    server.__dict__["processing_lock"] = state.processing_lock
+    server.__dict__["model_switching_lock"] = state.model_switching_lock
+    server.__dict__["params_cache_lock"] = state.params_cache_lock
 
     # Initialize model_list_fetch_event
-    server.model_list_fetch_event = asyncio.Event()
-    state.model_list_fetch_event = server.model_list_fetch_event
+    state.model_list_fetch_event = asyncio.Event()
+    server.__dict__["model_list_fetch_event"] = state.model_list_fetch_event
 
     auth_utils.initialize_keys()
 
@@ -257,7 +235,7 @@ async def lifespan(app: FastAPI):
 
     original_streams = sys.stdout, sys.stderr
     initial_stdout, initial_stderr = _setup_logging()
-    logger = server.logger
+    logger = state.logger
 
     _initialize_globals()
     _initialize_proxy_settings()
@@ -279,7 +257,15 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("Failed to initialize browser/page, worker not started.")
 
         logger.info("[WATCHDOG] Starting Quota Watchdog Task...")
-        app.state.watchdog_task = asyncio.create_task(server.quota_watchdog())
+        watchdog_func = getattr(
+            state, "quota_watchdog", getattr(server, "quota_watchdog", None)
+        )
+        if watchdog_func:
+            app.state.watchdog_task = asyncio.create_task(watchdog_func())
+        else:
+            logger.warning(
+                "[WATCHDOG] Quota Watchdog function not found, task not started."
+            )
 
         startup_duration = time.time() - startup_start_time
         logger.info(f"Server startup complete. (Took: {startup_duration:.2f}s)")
@@ -293,11 +279,15 @@ async def lifespan(app: FastAPI):
         logger.info("Shutting down server...")
         if hasattr(app.state, "watchdog_task"):
             logger.info("[STOP] Stopping Quota Watchdog...")
-            app.state.watchdog_task.cancel()
-            try:
-                await app.state.watchdog_task
-            except asyncio.CancelledError:
-                pass
+            task = app.state.watchdog_task
+            if hasattr(task, "cancel"):
+                task.cancel()
+                # Only await if it's actually an asyncio task or future
+                if isinstance(task, (asyncio.Task, asyncio.Future)):
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
 
         await _shutdown_resources()
         restore_original_streams(initial_stdout, initial_stderr)

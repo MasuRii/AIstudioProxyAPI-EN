@@ -60,7 +60,9 @@ async def handle_model_switching(
 
     async with model_switching_lock:
         if state.current_ai_studio_model_id != model_id_to_use:
-            logger.info(f"[{req_id}] Preparing to switch model: {state.current_ai_studio_model_id} -> {model_id_to_use}")
+            logger.info(
+                f"[{req_id}] Preparing to switch model: {state.current_ai_studio_model_id} -> {model_id_to_use}"
+            )
             from browser_utils import switch_ai_studio_model
 
             switch_success = await switch_ai_studio_model(page, model_id_to_use, req_id)
@@ -68,7 +70,9 @@ async def handle_model_switching(
                 state.current_ai_studio_model_id = model_id_to_use
                 context["model_actually_switched"] = True
                 context["current_ai_studio_model_id"] = model_id_to_use
-                logger.info(f"[{req_id}] ✅ Model switched successfully: {state.current_ai_studio_model_id}")
+                logger.info(
+                    f"[{req_id}] ✅ Model switched successfully: {state.current_ai_studio_model_id}"
+                )
             else:
                 # Current model ID should exist when switching fails
                 current_model = state.current_ai_studio_model_id or "unknown"
@@ -83,15 +87,22 @@ async def handle_model_switching(
     return context
 
 
-async def _handle_model_switch_failure(req_id: str, page: AsyncPage, model_id_to_use: str, model_before_switch: str, logger) -> None:
+async def _handle_model_switch_failure(
+    req_id: str, page: AsyncPage, model_id_to_use: str, model_before_switch: str, logger
+) -> None:
     logger.warning(f"[{req_id}] ❌ Failed to switch to model {model_id_to_use}.")
     state.current_ai_studio_model_id = model_before_switch
     from .error_utils import http_error
-    raise http_error(422, f"[{req_id}] Failed to switch to model '{model_id_to_use}'. Ensure model is available.")
+
+    raise http_error(
+        422,
+        f"[{req_id}] Failed to switch to model '{model_id_to_use}'. Ensure model is available.",
+    )
 
 
 async def handle_parameter_cache(req_id: str, context: RequestContext) -> None:
     set_request_id(req_id)
+    logger = context["logger"]
     params_cache_lock = context["params_cache_lock"]
     page_params_cache = context["page_params_cache"]
     current_ai_studio_model_id = context["current_ai_studio_model_id"]

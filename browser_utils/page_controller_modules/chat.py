@@ -106,25 +106,13 @@ class ChatController(BaseController):
                 isinstance(e_clear, ClientDisconnectedError)
                 or (error_name and "Disconnect" in error_name)
             ):
-                # Capture locator states for debugging
-                clear_btn_loc = self.page.locator(CLEAR_CHAT_BUTTON_SELECTOR)
-                confirm_btn_loc = self.page.locator(CLEAR_CHAT_CONFIRM_BUTTON_SELECTOR)
-                submit_btn_loc = self.page.locator(SUBMIT_BUTTON_SELECTOR)
-                overlay_loc = self.page.locator(OVERLAY_SELECTOR)
-
                 await save_error_snapshot(
                     f"clear_chat_error_{self.req_id}",
-                    error_exception=e_clear,
-                    error_stage="Clear chat flow exception",
-                    additional_context={
+                    extra_context={
+                        "error_exception": str(e_clear),
+                        "error_stage": "Clear chat flow exception",
                         "page_url": self.page.url,
                         "is_new_chat_page": "/prompts/new_chat" in self.page.url,
-                    },
-                    locators={
-                        "clear_chat_button": clear_btn_loc,
-                        "confirm_button": confirm_btn_loc,
-                        "submit_button": submit_btn_loc,
-                        "overlay": overlay_loc,
                     },
                 )
             raise
@@ -145,8 +133,6 @@ class ChatController(BaseController):
                     "[Chat] Confirmation dialog already visible, clicking 'Continue' directly"
                 )
         except TimeoutError:
-            overlay_initially_visible = False
-        except Exception:
             overlay_initially_visible = False
         except Exception as e_vis_check:
             self.logger.warning(
@@ -329,8 +315,33 @@ class ChatController(BaseController):
                     raise
 
     async def _dismiss_backdrops(self):
-        """Attempt to close potentially remaining cdk transparent overlays to avoid intercepting clicks."""
+        """Attempt to close potentially remaining cdk transparent overlays to avoid intercepting clicks,
+        and remove interfering iframes like google-hats-survey.
+        """
         try:
+            # 1. Remove Google Survey Iframe
+            try:
+                survey_iframe = self.page.locator(
+                    'iframe[id*="google-hats-survey"], iframe[src*="google_hats"]'
+                )
+                if await survey_iframe.count() > 0:
+                    self.logger.info(
+                        f"[{self.req_id}] Detected Google Survey iframe, attempting removal..."
+                    )
+                    await self.page.evaluate(
+                        """
+                        () => {
+                            const iframes = document.querySelectorAll('iframe[id*="google-hats-survey"], iframe[src*="google_hats"]');
+                            iframes.forEach(el => el.remove());
+                        }
+                        """
+                    )
+            except Exception as e_survey:
+                self.logger.warning(
+                    f"[{self.req_id}] Error removing Survey iframe (non-fatal): {e_survey}"
+                )
+
+            # 2. Handle CDK Overlays
             backdrop = self.page.locator(
                 "div.cdk-overlay-backdrop.cdk-overlay-backdrop-showing, div.cdk-overlay-backdrop.cdk-overlay-transparent-backdrop.cdk-overlay-backdrop-showing"
             )

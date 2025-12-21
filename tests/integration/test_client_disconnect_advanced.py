@@ -22,7 +22,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from api_utils.context_types import QueueItem
-from api_utils.queue_worker import QueueManager
+from api_utils.queue_worker import queue_worker
 
 
 @pytest.mark.integration

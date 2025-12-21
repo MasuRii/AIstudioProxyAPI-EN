@@ -2,7 +2,7 @@ import asyncio
 import threading
 import time
 import logging
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 from collections import defaultdict
 from config.settings import QUOTA_SOFT_LIMIT, QUOTA_HARD_LIMIT, MODEL_QUOTA_LIMITS
 from models.exceptions import QuotaExceededError
@@ -58,7 +58,7 @@ class GlobalState:
 
     # [CONCURRENCY-FIX] Track the currently active stream request ID
     # Used to gate consumers and prevent zombie streams from processing data
-    CURRENT_STREAM_REQ_ID = None
+    CURRENT_STREAM_REQ_ID: Optional[str] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -96,7 +96,7 @@ class GlobalState:
         logger.info("🔐 Global Auth Rotation Lock initialized (OPEN).")
 
     @classmethod
-    def set_quota_exceeded(cls, message: str = "", model_id: str = None):
+    def set_quota_exceeded(cls, message: str = "", model_id: Optional[str] = None):
         """
         Sets the global quota exceeded flag and logs a critical warning.
         Also determines the error type based on the message for adaptive cooldowns.

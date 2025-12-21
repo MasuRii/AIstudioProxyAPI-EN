@@ -94,6 +94,7 @@ class ServerState:
 
         # --- Control Flags ---
         self.should_exit: bool = False
+        self.quota_watchdog: Optional[Callable] = None
 
     def clear_debug_logs(self) -> None:
         """Clear console and network logs (called after each request)."""

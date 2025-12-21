@@ -46,12 +46,16 @@ _STATE_ATTRS = {
     "logger",
     "log_ws_manager",
     "should_exit",
+    "quota_watchdog",
 }
 
 
 def __getattr__(name: str) -> Any:
     if name in _STATE_ATTRS:
         return getattr(state, name)
+    # Check globals as a fallback to handle partially loaded module during circular imports
+    if name in globals():
+        return globals()[name]
     raise AttributeError(f"module 'server' has no attribute '{name}'")
 
 
@@ -102,43 +106,12 @@ from browser_utils import (
     _set_model_from_page_display,
 )
 from browser_utils.auth_rotation import perform_auth_rotation
-from api_utils import (
-    create_app,
-)
-
-# Global variables (proxied to state)
-STREAM_QUEUE: Optional[multiprocessing.Queue] = None
-STREAM_PROCESS: Optional[multiprocessing.Process] = None
-playwright_manager: Optional[Any] = None
-browser_instance: Optional[Any] = None
-page_instance: Optional[Any] = None
-is_playwright_ready = False
-is_browser_connected = False
-is_page_ready = False
-is_initializing = False
-PLAYWRIGHT_PROXY_SETTINGS: Optional[Dict[str, str]] = None
-global_model_list_raw_json: Optional[List[Any]] = None
-parsed_model_list: List[Dict[str, Any]] = []
-model_list_fetch_event = asyncio.Event()
-current_ai_studio_model_id: Optional[str] = None
-current_auth_profile_path: Optional[str] = None
-model_switching_lock: Optional[Lock] = None
-excluded_model_ids: Set[str] = set()
-request_queue: Optional[Any] = None
-processing_lock: Optional[Lock] = None
-worker_task: Optional[Any] = None
-page_params_cache: Dict[str, Any] = {}
-params_cache_lock: Optional[Lock] = None
-logger = logging.getLogger("AIStudioProxyServer")
-log_ws_manager: Optional[WebSocketConnectionManager] = None
-should_exit = False
-
-# --- FastAPI App ---
-app = create_app()
 
 
 async def quota_watchdog():
     """Background watchdog to monitor quota exceeded events."""
+    # Use state's logger if available
+    logger = getattr(state, "logger", logging.getLogger("AIStudioProxyServer"))
     logger.info("👀 Quota Watchdog Started")
     while True:
         try:
@@ -175,6 +148,18 @@ async def quota_watchdog():
         except Exception as e:
             logger.error(f"Watchdog Error: {e}", exc_info=True)
             await asyncio.sleep(5)
+
+
+# Register quota_watchdog in state for easier access and to avoid circular import issues
+state.quota_watchdog = quota_watchdog
+
+
+from api_utils import (
+    create_app,
+)
+
+# --- FastAPI App ---
+app = create_app()
 
 
 if __name__ == "__main__":

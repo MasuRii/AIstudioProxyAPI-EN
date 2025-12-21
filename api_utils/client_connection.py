@@ -36,22 +36,94 @@ async def check_client_connection(req_id: str, http_request: Request) -> bool:
                         await receive_task
                     except asyncio.CancelledError:
                         pass
+                    # If it didn't complete immediately, proceed to fallback check
             except asyncio.CancelledError:
                 raise
             except Exception:
-                # If checking fails, assume disconnected to be safe, or log and continue?
-                # Usually if _receive fails it might mean connection issues.
-                return False
+                # If checking fails, proceed to fallback
+                pass
 
         # Fallback to is_disconnected() if available (Starlette/FastAPI)
-        if await http_request.is_disconnected():
-            return False
+        # Wrap in wait_for to prevent infinite hang in some ASGI implementations
+        if hasattr(http_request, "is_disconnected"):
+            try:
+                if await asyncio.wait_for(http_request.is_disconnected(), timeout=0.01):
+                    return False
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                # If it times out, it's likely still connected
+                return True
+            except Exception:
+                return False
 
         return True
     except asyncio.CancelledError:
         raise
     except Exception:
         return False
+
+
+async def enhanced_disconnect_monitor(
+    req_id: str,
+    http_request: Request,
+    completion_event: asyncio.Event,
+    logger: Any,
+) -> bool:
+    """
+    Monitors for client disconnect during streaming.
+    Returns True if disconnected, False otherwise.
+    """
+    disconnect_detection_count = 0
+    while not completion_event.is_set():
+        try:
+            is_connected = await check_client_connection(req_id, http_request)
+            if not is_connected:
+                disconnect_detection_count += 1
+                if disconnect_detection_count >= 3:
+                    logger.info(
+                        f"[{req_id}] Client disconnect confirmed during streaming."
+                    )
+                    completion_event.set()
+                    return True
+            else:
+                disconnect_detection_count = 0
+            await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"[{req_id}] Error in enhanced_disconnect_monitor: {e}")
+            break
+    return False
+
+
+async def non_streaming_disconnect_monitor(
+    req_id: str,
+    http_request: Request,
+    result_future: asyncio.Future,
+    logger: Any,
+) -> bool:
+    """
+    Monitors for client disconnect during non-streaming processing.
+    Returns True if disconnected, False otherwise.
+    """
+    while not result_future.done():
+        try:
+            is_connected = await check_client_connection(req_id, http_request)
+            if not is_connected:
+                logger.info(
+                    f"[{req_id}] Client disconnect detected during non-streaming."
+                )
+                if not result_future.done():
+                    result_future.set_exception(
+                        HTTPException(status_code=499, detail="Client disconnected")
+                    )
+                return True
+            await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"[{req_id}] Error in non_streaming_disconnect_monitor: {e}")
+            break
+    return False
 
 
 async def setup_disconnect_monitoring(
@@ -86,28 +158,6 @@ async def setup_disconnect_monitoring(
                     else:
                         logger.debug(
                             f"[{req_id}] Active detection of potential disconnect (round {disconnect_count}/{disconnect_threshold})"
-                        )
-                else:
-                    disconnect_count = 0  # Reset counter on successful connection
-
-                if await http_request.is_disconnected():
-                    disconnect_count += 1
-                    if disconnect_count >= disconnect_threshold:
-                        logger.info(
-                            f"[{req_id}] Backup detection of client disconnect (consecutive {disconnect_count} times)."
-                        )
-                        client_disconnected_event.set()
-                        if not result_future.done():
-                            result_future.set_exception(
-                                HTTPException(
-                                    status_code=499,
-                                    detail=f"[{req_id}] Client closed the request",
-                                )
-                            )
-                        break
-                    else:
-                        logger.debug(
-                            f"[{req_id}] Backup detection of potential disconnect (round {disconnect_count}/{disconnect_threshold})"
                         )
                 else:
                     disconnect_count = 0  # Reset counter on successful connection

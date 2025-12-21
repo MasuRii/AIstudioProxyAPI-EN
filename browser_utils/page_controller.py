@@ -61,6 +61,7 @@ from .page_controller_modules.parameters import ParameterController
 from .page_controller_modules.input import InputController
 from .page_controller_modules.chat import ChatController
 from .page_controller_modules.response import ResponseController
+from .page_controller_modules.thinking import ThinkingController
 from .page_controller_modules.base import BaseController
 
 
@@ -69,6 +70,7 @@ class PageController(
     InputController,
     ChatController,
     ResponseController,
+    ThinkingController,
     BaseController,
 ):
     """Encapsulates all operations for interacting with the AI Studio page."""
@@ -121,137 +123,16 @@ class PageController(
         if ENABLE_URL_CONTEXT:
             await self._open_url_content(check_client_disconnected)
         await self._handle_thinking_budget(
-            request_params, model_id_to_use, check_client_disconnected, is_streaming
+            request_params,
+            page_params_cache,
+            params_cache_lock,
+            model_id_to_use,
+            check_client_disconnected,
+            is_streaming,
         )
         await self._adjust_google_search(
             request_params, model_id_to_use, check_client_disconnected
         )
-
-    async def _handle_thinking_budget(
-        self,
-        request_params: Dict[str, Any],
-        model_id_to_use: Optional[str],
-        check_client_disconnected: Callable,
-        is_streaming: bool = True,
-    ):
-        reasoning_effort = request_params.get("reasoning_effort")
-        directive = normalize_reasoning_effort_with_stream_check(
-            reasoning_effort, is_streaming
-        )
-        uses_level = self._uses_thinking_level(model_id_to_use)
-        desired_enabled = directive.thinking_enabled
-        if self._model_has_main_thinking_toggle(model_id_to_use):
-            await self._control_thinking_mode_toggle(
-                desired_enabled, check_client_disconnected
-            )
-        if not desired_enabled:
-            if not uses_level:
-                await self._control_thinking_budget_toggle(
-                    False, check_client_disconnected
-                )
-            return
-        if uses_level:
-            level = (
-                "high"
-                if (isinstance(reasoning_effort, int) and reasoning_effort >= 8000)
-                or str(reasoning_effort).lower() == "high"
-                else "low"
-            )
-            await self._set_thinking_level(level, check_client_disconnected)
-        else:
-            await self._control_thinking_mode_toggle(True, check_client_disconnected)
-            await self._control_thinking_budget_toggle(
-                directive.budget_enabled, check_client_disconnected
-            )
-            if directive.budget_enabled:
-                await self._set_thinking_budget_value(
-                    directive.budget_value or 8192, check_client_disconnected
-                )
-
-    def _uses_thinking_level(self, model_id_to_use: Optional[str]) -> bool:
-        mid = (model_id_to_use or "").lower()
-        return ("gemini-3" in mid) and ("pro" in mid)
-
-    def _model_has_main_thinking_toggle(self, model_id_to_use: Optional[str]) -> bool:
-        mid = (model_id_to_use or "").lower()
-        return "flash" in mid
-
-    async def _set_thinking_level(
-        self, level: str, check_client_disconnected: Callable
-    ):
-        """Set thinking level for the model."""
-        await self.page.locator(THINKING_LEVEL_SELECT_SELECTOR).click(
-            timeout=CLICK_TIMEOUT_MS
-        )
-        target = (
-            THINKING_LEVEL_OPTION_HIGH_SELECTOR
-            if level.lower() == "high"
-            else THINKING_LEVEL_OPTION_LOW_SELECTOR
-        )
-        await self.page.locator(target).click(timeout=CLICK_TIMEOUT_MS)
-
-    async def _set_thinking_budget_value(
-        self, token_budget: int, check_client_disconnected: Callable
-    ):
-        """Set specific thinking budget value."""
-        await self.page.locator(THINKING_BUDGET_INPUT_SELECTOR).fill(
-            str(token_budget), timeout=5000
-        )
-
-    async def _adjust_google_search(
-        self,
-        request_params: Dict[str, Any],
-        model_id: Optional[str],
-        check_client_disconnected: Callable,
-    ):
-        """Adjust Google Search toggle."""
-        should = ENABLE_GOOGLE_SEARCH
-        if "tools" in request_params:
-            should = any("google_search" in str(t) for t in request_params["tools"])
-        toggle = self.page.locator(GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR)
-        if await toggle.is_visible(timeout=2000):
-            current = await toggle.get_attribute("aria-checked") == "true"
-            if current != should:
-                await toggle.click(timeout=CLICK_TIMEOUT_MS)
-
-    async def _ensure_tools_panel_expanded(self, check_client_disconnected: Callable):
-        """Ensure tools panel is expanded."""
-        btn = self.page.locator('button[aria-label="Expand or collapse tools"]')
-        if await btn.is_visible(timeout=2000):
-            cls = await btn.locator("xpath=../..").get_attribute("class")
-            if cls and "expanded" not in cls:
-                await btn.click(timeout=CLICK_TIMEOUT_MS)
-
-    async def _open_url_content(self, check_client_disconnected: Callable):
-        """Enable URL Context."""
-        toggle = self.page.locator(USE_URL_CONTEXT_SELECTOR)
-        if (
-            await toggle.is_visible(timeout=2000)
-            and await toggle.get_attribute("aria-checked") == "false"
-        ):
-            await toggle.click(timeout=CLICK_TIMEOUT_MS)
-
-    async def _control_thinking_mode_toggle(
-        self, should: bool, check_client_disconnected: Callable
-    ):
-        """Control thinking mode toggle."""
-        toggle = self.page.locator(ENABLE_THINKING_MODE_TOGGLE_SELECTOR)
-        if (
-            await toggle.is_visible(timeout=2000)
-            and (await toggle.get_attribute("aria-checked") == "true") != should
-        ):
-            await toggle.click(timeout=CLICK_TIMEOUT_MS)
-
-    async def _control_thinking_budget_toggle(
-        self, should: bool, check_client_disconnected: Callable
-    ):
-        """Control thinking budget toggle."""
-        toggle = self.page.locator(SET_THINKING_BUDGET_TOGGLE_SELECTOR)
-        if (
-            await toggle.is_visible(timeout=2000)
-            and (await toggle.get_attribute("aria-checked") == "true") != should
-        ):
-            await toggle.click(timeout=CLICK_TIMEOUT_MS)
 
     async def clear_chat_history(self, check_client_disconnected: Callable):
         """Clear chat history."""
@@ -267,26 +148,100 @@ class PageController(
     async def submit_prompt(
         self, prompt: str, image_list: List, check_client_disconnected: Callable
     ):
-        """Submit prompt to the page with retries."""
+        """Submit prompt to the page with retries and keyboard fallbacks."""
         max_retries = 2
         for attempt in range(max_retries):
             try:
+                self.logger.info(
+                    f"[{self.req_id}] Filling and submitting prompt (Attempt {attempt + 1}/{max_retries})..."
+                )
                 textarea = self.page.locator(PROMPT_TEXTAREA_SELECTOR)
                 await expect_async(textarea).to_be_visible(timeout=10000)
+                await self._check_disconnect(
+                    check_client_disconnected, "After Input Visible"
+                )
+
+                # Fill textarea using centralized logic (inherited from InputController if possible, or direct)
                 await textarea.evaluate(
-                    "(el, t) => { el.value = t; el.dispatchEvent(new Event('input', {bubbles:true})); }",
+                    "(el, t) => { el.value = t; el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); }",
                     prompt,
                 )
+                await self._check_disconnect(
+                    check_client_disconnected, "After Input Fill"
+                )
+
                 if image_list:
                     await self._open_upload_menu_and_choose_file(image_list)
+
+                # Wait for submit button to be enabled
                 submit = self.page.locator(SUBMIT_BUTTON_SELECTOR)
-                await expect_async(submit).to_be_enabled(timeout=10000)
-                await submit.click(timeout=5000)
-                await check_quota_limit(self.page, self.req_id)
+                button_clicked = False
+                is_btn_enabled = False
+                try:
+                    await expect_async(submit).to_be_enabled(timeout=10000)
+                    is_btn_enabled = True
+                except Exception:
+                    self.logger.warning(
+                        f"[{self.req_id}] Submit button not enabled within timeout, trying keyboard fallback."
+                    )
+
+                await self._check_disconnect(
+                    check_client_disconnected, "After Submit Button Check"
+                )
+
+                if is_btn_enabled:
+                    try:
+                        # Defensive workarounds before click: handle dialogs, backdrops and tooltips
+                        await self._handle_post_upload_dialog()
+                        await self._dismiss_backdrops()
+                        if hasattr(self, "_dismiss_tooltip_overlays"):
+                            await self._dismiss_tooltip_overlays()
+
+                        await submit.click(timeout=5000)
+                        button_clicked = True
+                        self.logger.info(f"[{self.req_id}] Submit button clicked.")
+                        await check_quota_limit(self.page, self.req_id)
+                    except QuotaExceededError:
+                        raise
+                    except Exception as click_err:
+                        self.logger.warning(
+                            f"[{self.req_id}] Button click failed: {click_err}. Trying keyboard fallback."
+                        )
+
+                if not button_clicked:
+                    # Keyboard fallbacks (using logic inherited from InputController)
+                    self.logger.info(
+                        f"[{self.req_id}] Attempting Enter key submission..."
+                    )
+                    if await self._try_enter_submit(
+                        textarea, check_client_disconnected
+                    ):
+                        button_clicked = True
+                    else:
+                        self.logger.info(
+                            f"[{self.req_id}] Attempting Combo key submission..."
+                        )
+                        if await self._try_combo_submit(
+                            textarea, check_client_disconnected
+                        ):
+                            button_clicked = True
+
+                if not button_clicked:
+                    raise Exception(
+                        "Failed to submit prompt via button or keyboard shortcuts."
+                    )
+
+                await self._check_disconnect(check_client_disconnected, "After Submit")
                 return
+            except QuotaExceededError:
+                raise
             except Exception as e:
+                self.logger.warning(
+                    f"[{self.req_id}] Error during submit (Attempt {attempt + 1}): {e}"
+                )
                 if attempt < max_retries - 1:
                     await self._safe_reload_page()
+                    await asyncio.sleep(2)
                 else:
                     raise e
 

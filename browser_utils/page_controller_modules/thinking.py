@@ -8,7 +8,7 @@ from playwright.async_api import expect as expect_async
 from browser_utils.operations import save_error_snapshot
 from browser_utils.thinking_normalizer import (
     format_directive_log,
-    normalize_reasoning_effort,
+    normalize_reasoning_effort_with_stream_check,
 )
 from config import (
     CLICK_TIMEOUT_MS,
@@ -48,218 +48,248 @@ class ThinkingController(BaseController):
     async def _handle_thinking_budget(
         self,
         request_params: Dict[str, Any],
+        page_params_cache: Dict[str, Any],
+        params_cache_lock: asyncio.Lock,
         model_id_to_use: Optional[str],
         check_client_disconnected: Callable,
+        is_streaming: bool = True,
     ):
         """Handle adjustments for thinking mode and budget."""
         reasoning_effort = request_params.get("reasoning_effort")
 
-        # Determine processing logic based on model category
-        category = self._get_thinking_category(model_id_to_use)
-        if category == ThinkingCategory.NON_THINKING:
-            self.logger.debug(
-                "[Thinking] This model does not support thinking mode, skipping config"
-            )
-            return
-
-        directive = normalize_reasoning_effort(reasoning_effort)
-        self.logger.debug(f"[Thinking] Directive: {format_directive_log(directive)}")
-
-        uses_level = (
-            category
-            in (ThinkingCategory.THINKING_LEVEL, ThinkingCategory.THINKING_LEVEL_FLASH)
-            and await self._has_thinking_dropdown()
-        )
-
-        def _should_enable_from_raw(rv: Any) -> bool:
-            try:
-                if isinstance(rv, str):
-                    rs = rv.strip().lower()
-                    if rs in ["high", "medium", "low", "minimal", "-1"]:
-                        return True
-                    if rs == "none":
-                        return False
-                    v = int(rs)
-                    return v > 0
-                if isinstance(rv, int):
-                    return rv > 0 or rv == -1
-            except Exception:
-                return False
-            return False
-
-        desired_enabled = directive.thinking_enabled or _should_enable_from_raw(
-            reasoning_effort
-        )
-
-        # Special logic: for models using levels (Gemini 3 Pro), if reasoning_effort is not specified,
-        # we default to enabled (or at least check and apply default level)
-        if reasoning_effort is None and uses_level:
-            desired_enabled = True
-
-        has_main_toggle = category == ThinkingCategory.THINKING_FLASH
-        if has_main_toggle:
-            self.logger.info(
-                f"Setting main thinking toggle to: {'ON' if desired_enabled else 'OFF'}"
-            )
-            await self._control_thinking_mode_toggle(
-                should_be_enabled=desired_enabled,
-                check_client_disconnected=check_client_disconnected,
-            )
-        else:
-            self.logger.info(
-                "This model has no main thinking toggle, skipping toggle setting."
-            )
-
-        if not desired_enabled:
-            # Skip models without budget toggle
-            if category in (
-                ThinkingCategory.THINKING_LEVEL,
-                ThinkingCategory.THINKING_LEVEL_FLASH,
+        async with params_cache_lock:
+            if (
+                "reasoning_effort" in page_params_cache
+                and page_params_cache["reasoning_effort"] == reasoning_effort
             ):
+                self.logger.debug(
+                    f"[Thinking] Reasoning effort {reasoning_effort} matches cache, skipping"
+                )
                 return
-            # Flash/Flash Lite models: after turning off main thinking toggle, budget toggle is hidden
+
+            # Determine processing logic based on model category
+            category = self._get_thinking_category(model_id_to_use)
+            if category == ThinkingCategory.NON_THINKING:
+                self.logger.debug(
+                    "[Thinking] This model does not support thinking mode, skipping config"
+                )
+                page_params_cache["reasoning_effort"] = reasoning_effort
+                return
+
+            directive = normalize_reasoning_effort_with_stream_check(
+                reasoning_effort, is_streaming
+            )
+            self.logger.debug(
+                f"[Thinking] Directive: {format_directive_log(directive)}"
+            )
+
+            uses_level = (
+                category
+                in (
+                    ThinkingCategory.THINKING_LEVEL,
+                    ThinkingCategory.THINKING_LEVEL_FLASH,
+                )
+                and await self._has_thinking_dropdown()
+            )
+
+            def _should_enable_from_raw(rv: Any) -> bool:
+                try:
+                    if isinstance(rv, str):
+                        rs = rv.strip().lower()
+                        if rs in ["high", "medium", "low", "minimal", "-1"]:
+                            return True
+                        if rs == "none":
+                            return False
+                        v = int(rs)
+                        return v > 0
+                    if isinstance(rv, int):
+                        return rv > 0 or rv == -1
+                except Exception:
+                    return False
+                return False
+
+            desired_enabled = directive.thinking_enabled or _should_enable_from_raw(
+                reasoning_effort
+            )
+
+            # Special logic: for models using levels (Gemini 3 Pro), if reasoning_effort is not specified,
+            # we default to enabled (or at least check and apply default level)
+            if reasoning_effort is None and uses_level:
+                desired_enabled = True
+
+            has_main_toggle = category == ThinkingCategory.THINKING_FLASH
             if has_main_toggle:
                 self.logger.info(
-                    "Flash model main thinking toggle turned off, skipping budget toggle operation (hidden)"
+                    f"Setting main thinking toggle to: {'ON' if desired_enabled else 'OFF'}"
                 )
-                return
-            # If thinking is disabled, ensure budget toggle is off (legacy UI compatibility)
-            await self._control_thinking_budget_toggle(
-                should_be_checked=False,
-                check_client_disconnected=check_client_disconnected,
-            )
-            return
-
-        # 2) Thinking enabled: Set level or budget based on model type
-        if uses_level:
-            rv = reasoning_effort
-            level_to_set = None
-            is_flash_4_level = category == ThinkingCategory.THINKING_LEVEL_FLASH
-
-            if isinstance(rv, str):
-                rs = rv.strip().lower()
-                if is_flash_4_level:
-                    # Gemini 3 Flash: 4 levels (minimal, low, medium, high)
-                    if rs in ["minimal", "low", "medium", "high"]:
-                        level_to_set = rs
-                    elif rs in ["none", "-1"]:
-                        level_to_set = "high"
-                    else:
-                        try:
-                            v = int(rs)
-                            if v >= 16000:
-                                level_to_set = "high"
-                            elif v >= 8000:
-                                level_to_set = "medium"
-                            elif v >= 1024:
-                                level_to_set = "low"
-                            else:
-                                level_to_set = "minimal"
-                        except Exception:
-                            level_to_set = None
-                else:
-                    # Gemini 3 Pro: 2 levels (low, high)
-                    if rs == "low" or rs == "minimal":
-                        level_to_set = "low"
-                    elif rs in ["high", "medium", "none", "-1"]:
-                        level_to_set = "high"
-                    else:
-                        try:
-                            v = int(rs)
-                            level_to_set = "high" if v >= 8000 else "low"
-                        except Exception:
-                            level_to_set = None
-            elif isinstance(rv, int):
-                if is_flash_4_level:
-                    # Gemini 3 Flash: 4 levels
-                    if rv >= 16000 or rv == -1:
-                        level_to_set = "high"
-                    elif rv >= 8000:
-                        level_to_set = "medium"
-                    elif rv >= 1024:
-                        level_to_set = "low"
-                    else:
-                        level_to_set = "minimal"
-                else:
-                    # Gemini 3 Pro: 2 levels
-                    level_to_set = "high" if rv >= 8000 or rv == -1 else "low"
-
-            if level_to_set is None and rv is None:
-                # Use model-specific default
-                level_to_set = (
-                    DEFAULT_THINKING_LEVEL_FLASH
-                    if is_flash_4_level
-                    else DEFAULT_THINKING_LEVEL_PRO
-                )
-                # Ensure Pro only gets valid levels (high/low)
-                if not is_flash_4_level and level_to_set not in ["high", "low"]:
-                    level_to_set = (
-                        "high" if level_to_set in ["high", "medium"] else "low"
-                    )
-
-            if level_to_set is None:
-                self.logger.info(
-                    "Unable to parse reasoning level, keeping current level."
+                await self._control_thinking_mode_toggle(
+                    should_be_enabled=desired_enabled,
+                    check_client_disconnected=check_client_disconnected,
                 )
             else:
-                await self._set_thinking_level(level_to_set, check_client_disconnected)
-            return
+                self.logger.info(
+                    "This model has no main thinking toggle, skipping toggle setting."
+                )
 
-        # Fallback path
-        if desired_enabled and not directive.thinking_enabled:
-            self.logger.info("Attempting to turn off main thinking toggle...")
-            success = await self._control_thinking_mode_toggle(
-                should_be_enabled=False,
-                check_client_disconnected=check_client_disconnected,
-            )
+            if not desired_enabled:
+                # Skip models without budget toggle
+                if category in (
+                    ThinkingCategory.THINKING_LEVEL,
+                    ThinkingCategory.THINKING_LEVEL_FLASH,
+                ):
+                    page_params_cache["reasoning_effort"] = reasoning_effort
+                    return
+                # Flash/Flash Lite models: after turning off main thinking toggle, budget toggle is hidden
+                if has_main_toggle:
+                    self.logger.info(
+                        "Flash model main thinking toggle turned off, skipping budget toggle operation (hidden)"
+                    )
+                    page_params_cache["reasoning_effort"] = reasoning_effort
+                    return
+                # If thinking is disabled, ensure budget toggle is off (legacy UI compatibility)
+                await self._control_thinking_budget_toggle(
+                    should_be_checked=False,
+                    check_client_disconnected=check_client_disconnected,
+                )
+                page_params_cache["reasoning_effort"] = reasoning_effort
+                return
 
-            if not success:
-                self.logger.warning(
-                    "Main thinking toggle unavailable, using fallback: Setting budget to 0"
+            # 2) Thinking enabled: Set level or budget based on model type
+            if uses_level:
+                rv = reasoning_effort
+                level_to_set = None
+                is_flash_4_level = category == ThinkingCategory.THINKING_LEVEL_FLASH
+
+                if isinstance(rv, str):
+                    rs = rv.strip().lower()
+                    if is_flash_4_level:
+                        # Gemini 3 Flash: 4 levels (minimal, low, medium, high)
+                        if rs in ["minimal", "low", "medium", "high"]:
+                            level_to_set = rs
+                        elif rs in ["none", "-1"]:
+                            level_to_set = "high"
+                        else:
+                            try:
+                                v = int(rs)
+                                if v >= 16000:
+                                    level_to_set = "high"
+                                elif v >= 8000:
+                                    level_to_set = "medium"
+                                elif v >= 1024:
+                                    level_to_set = "low"
+                                else:
+                                    level_to_set = "minimal"
+                            except Exception:
+                                level_to_set = None
+                    else:
+                        # Gemini 3 Pro: 2 levels (low, high)
+                        if rs == "low" or rs == "minimal":
+                            level_to_set = "low"
+                        elif rs in ["high", "medium", "none", "-1"]:
+                            level_to_set = "high"
+                        else:
+                            try:
+                                v = int(rs)
+                                level_to_set = "high" if v >= 8000 else "low"
+                            except Exception:
+                                level_to_set = None
+                elif isinstance(rv, int):
+                    if is_flash_4_level:
+                        # Gemini 3 Flash: 4 levels
+                        if rv >= 16000 or rv == -1:
+                            level_to_set = "high"
+                        elif rv >= 8000:
+                            level_to_set = "medium"
+                        elif rv >= 1024:
+                            level_to_set = "low"
+                        else:
+                            level_to_set = "minimal"
+                    else:
+                        # Gemini 3 Pro: 2 levels
+                        level_to_set = "high" if rv >= 8000 or rv == -1 else "low"
+
+                if level_to_set is None and rv is None:
+                    # Use model-specific default
+                    level_to_set = (
+                        DEFAULT_THINKING_LEVEL_FLASH
+                        if is_flash_4_level
+                        else DEFAULT_THINKING_LEVEL_PRO
+                    )
+                    # Ensure Pro only gets valid levels (high/low)
+                    if not is_flash_4_level and level_to_set not in ["high", "low"]:
+                        level_to_set = (
+                            "high" if level_to_set in ["high", "medium"] else "low"
+                        )
+
+                if level_to_set is None:
+                    self.logger.info(
+                        "Unable to parse reasoning level, keeping current level."
+                    )
+                else:
+                    await self._set_thinking_level(
+                        level_to_set, check_client_disconnected
+                    )
+                page_params_cache["reasoning_effort"] = reasoning_effort
+                return
+
+            # Fallback path
+            if desired_enabled and not directive.thinking_enabled:
+                self.logger.info("Attempting to turn off main thinking toggle...")
+                success = await self._control_thinking_mode_toggle(
+                    should_be_enabled=False,
+                    check_client_disconnected=check_client_disconnected,
+                )
+
+                if not success:
+                    self.logger.warning(
+                        "Main thinking toggle unavailable, using fallback: Setting budget to 0"
+                    )
+                    await self._control_thinking_budget_toggle(
+                        should_be_checked=True,
+                        check_client_disconnected=check_client_disconnected,
+                    )
+                    await self._set_thinking_budget_value(0, check_client_disconnected)
+                page_params_cache["reasoning_effort"] = reasoning_effort
+                return
+
+            # Scenario 2 & 3: Enable thinking mode
+            if not has_main_toggle:
+                self.logger.info("Enabling main thinking toggle...")
+                await self._control_thinking_mode_toggle(
+                    should_be_enabled=True,
+                    check_client_disconnected=check_client_disconnected,
+                )
+
+            # Scenario 2: Enable thinking, no budget limit
+            if not directive.budget_enabled:
+                self.logger.info("Disabling manual budget limit...")
+                await self._control_thinking_budget_toggle(
+                    should_be_checked=False,
+                    check_client_disconnected=check_client_disconnected,
+                )
+
+            # Scenario 3: Enable thinking, with budget limit
+            else:
+                value_to_set = directive.budget_value or 0
+                model_lower = (model_id_to_use or "").lower()
+                if "gemini-2.5-pro" in model_lower:
+                    value_to_set = min(value_to_set, 32768)
+                elif "flash-lite" in model_lower:
+                    value_to_set = min(value_to_set, 24576)
+                elif "flash" in model_lower:
+                    value_to_set = min(value_to_set, 24576)
+                self.logger.info(
+                    f"Enabling manual budget limit and setting budget value: {value_to_set} tokens"
                 )
                 await self._control_thinking_budget_toggle(
                     should_be_checked=True,
                     check_client_disconnected=check_client_disconnected,
                 )
-                await self._set_thinking_budget_value(0, check_client_disconnected)
-            return
+                await self._set_thinking_budget_value(
+                    value_to_set, check_client_disconnected
+                )
 
-        # Scenario 2 & 3: Enable thinking mode
-        if not has_main_toggle:
-            self.logger.info("Enabling main thinking toggle...")
-            await self._control_thinking_mode_toggle(
-                should_be_enabled=True,
-                check_client_disconnected=check_client_disconnected,
-            )
-
-        # Scenario 2: Enable thinking, no budget limit
-        if not directive.budget_enabled:
-            self.logger.info("Disabling manual budget limit...")
-            await self._control_thinking_budget_toggle(
-                should_be_checked=False,
-                check_client_disconnected=check_client_disconnected,
-            )
-
-        # Scenario 3: Enable thinking, with budget limit
-        else:
-            value_to_set = directive.budget_value or 0
-            model_lower = (model_id_to_use or "").lower()
-            if "gemini-2.5-pro" in model_lower:
-                value_to_set = min(value_to_set, 32768)
-            elif "flash-lite" in model_lower:
-                value_to_set = min(value_to_set, 24576)
-            elif "flash" in model_lower:
-                value_to_set = min(value_to_set, 24576)
-            self.logger.info(
-                f"Enabling manual budget limit and setting budget value: {value_to_set} tokens"
-            )
-            await self._control_thinking_budget_toggle(
-                should_be_checked=True,
-                check_client_disconnected=check_client_disconnected,
-            )
-            await self._set_thinking_budget_value(
-                value_to_set, check_client_disconnected
-            )
+            page_params_cache["reasoning_effort"] = reasoning_effort
 
     async def _has_thinking_dropdown(self) -> bool:
         try:

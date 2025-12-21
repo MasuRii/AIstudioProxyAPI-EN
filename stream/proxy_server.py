@@ -32,7 +32,7 @@ class ProxyServer:
             "feedback-pa.clients6.google.com",
             "play.google.com",
             "apis.google.com",
-            "accounts.google.com"
+            "accounts.google.com",
         ]
         self.upstream_proxy = upstream_proxy
         self.queue = queue
@@ -47,11 +47,11 @@ class ProxyServer:
         self.interceptor = HttpInterceptor(str(log_dir))
 
         # Set up logging
-        self.logger = logging.getLogger('proxy_server')
+        self.logger = logging.getLogger("proxy_server")
 
         # Keep track of background tasks
         self.background_tasks = set()
-    
+
     def _safe_close(self, writer):
         """
         Safely close a writer with robust error handling for SSL shutdown timeouts
@@ -60,7 +60,7 @@ class ProxyServer:
             return
 
         try:
-            sock = writer.get_extra_info('socket')
+            sock = writer.get_extra_info("socket")
             if sock:
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
@@ -105,8 +105,8 @@ class ProxyServer:
 
         try:
             request_line = await reader.readline()
-            request_line = request_line.decode('utf-8').strip()
-            
+            request_line = request_line.decode("utf-8").strip()
+
             if not request_line:
                 self._safe_close(writer)
                 return
@@ -126,8 +126,10 @@ class ProxyServer:
             self.logger.error(f"Error handling client: {e}", exc_info=True)
         finally:
             self._safe_close(writer)
-    
-    async def _handle_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, target: str):
+
+    async def _handle_connect(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, target: str
+    ):
         """
         Handle CONNECT method (for HTTPS connections)
         """
@@ -252,7 +254,7 @@ class ProxyServer:
                 self.logger.error(f"Error forwarding data: {e}", exc_info=True)
             finally:
                 self._safe_close(writer)
-        
+
         client_to_server = asyncio.create_task(_forward(client_reader, server_writer))
         server_to_client = asyncio.create_task(_forward(server_reader, client_writer))
 
@@ -314,8 +316,10 @@ class ProxyServer:
 
                         if "GenerateContent" in path or "generateContent" in path:
                             should_sniff = True
-                            request_context['request_ts'] = time.time()
-                            self.logger.debug(f"[Proxy] Detected GenerateContent request: {path[:60]}...")
+                            request_context["request_ts"] = time.time()
+                            self.logger.debug(
+                                f"[Proxy] Detected GenerateContent request: {path[:60]}..."
+                            )
                             processed_body = await self.interceptor.process_request(
                                 bytes(body_data), host, path
                             )
@@ -338,10 +342,12 @@ class ProxyServer:
                 if "Broken pipe" in str(e) or "Connection reset" in str(e):
                     self.logger.debug(f"[Proxy] Client disconnected: {e}")
                 else:
-                    self.logger.error(f"Error processing client data: {e}", exc_info=True)
+                    self.logger.error(
+                        f"Error processing client data: {e}", exc_info=True
+                    )
             finally:
                 self._safe_close(server_writer)
-        
+
         async def _process_server_data():
             nonlocal server_buffer, should_sniff
             try:
@@ -371,16 +377,20 @@ class ProxyServer:
 
                         headers: dict[str, str] = {}
                         for i in range(1, len(lines)):
-                            if not lines[i]: continue
+                            if not lines[i]:
+                                continue
                             try:
                                 key, value = lines[i].decode("utf-8").split(":", 1)
                                 headers[key.strip()] = value.strip()
-                            except ValueError: continue
+                            except ValueError:
+                                continue
 
                         if should_sniff:
                             try:
                                 if status_code >= 400:
-                                    self.logger.error(f"[UPSTREAM ERROR] {status_code} {status_message}")
+                                    self.logger.error(
+                                        f"[UPSTREAM ERROR] {status_code} {status_message}"
+                                    )
                                     if self.queue is not None:
                                         error_payload = {
                                             "error": True,
@@ -396,15 +406,20 @@ class ProxyServer:
                                     if self.queue is not None:
                                         payload = {
                                             "ts": request_context.get("request_ts", 0),
-                                            "data": resp
+                                            "data": resp,
                                         }
                                         self.queue.put(json.dumps(payload))
                                         if resp.get("done", False):
-                                            self.logger.debug(f"[Proxy] Stream complete: body={len(resp.get('body', ''))}")
+                                            self.logger.debug(
+                                                f"[Proxy] Stream complete: body={len(resp.get('body', ''))}"
+                                            )
                             except asyncio.CancelledError:
                                 raise
                             except Exception as e:
-                                self.logger.error(f"Error during response interception: {e}", exc_info=True)
+                                self.logger.error(
+                                    f"Error during response interception: {e}",
+                                    exc_info=True,
+                                )
 
                     client_writer.write(data)
                     if b"0\r\n\r\n" in server_buffer:
@@ -415,21 +430,26 @@ class ProxyServer:
                 self.logger.error(f"Error processing server data: {e}", exc_info=True)
             finally:
                 self._safe_close(client_writer)
-        
+
         client_to_server = asyncio.create_task(_process_client_data())
         server_to_client = asyncio.create_task(_process_server_data())
 
         tasks = [client_to_server, server_to_client]
         try:
-            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            _done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
         except asyncio.CancelledError:
-            for task in tasks: task.cancel()
+            for task in tasks:
+                task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
         for task in pending:
             task.cancel()
-            try: await task
-            except asyncio.CancelledError: pass
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     async def start(self) -> None:
         """
