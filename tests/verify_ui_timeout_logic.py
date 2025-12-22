@@ -25,7 +25,7 @@ import pytest
 async def test_ui_timeout_is_2000ms():
     """
     Test that check_ui_generation_active uses 2000ms timeout for is_disabled check.
-    
+
     This verifies the timeout was increased from 1000ms to 2000ms.
     """
     # Arrange: Create mock page and locators
@@ -107,7 +107,7 @@ async def test_ui_timeout_is_2000ms():
 async def test_ui_timeout_uses_centralized_selector():
     """
     Test that check_ui_generation_active uses SUBMIT_BUTTON_SELECTOR from config.
-    
+
     This verifies the hardcoded selector was replaced with centralized config.
     """
     # Arrange
@@ -179,7 +179,7 @@ async def test_ui_timeout_uses_centralized_selector():
 async def test_ui_timeout_handles_exception_gracefully():
     """
     Test that check_ui_generation_active handles timeout exceptions gracefully.
-    
+
     This verifies the nested try-except catches timeout errors and returns False.
     """
     # Arrange: Setup mocks that will raise timeout exception
@@ -255,7 +255,7 @@ async def test_ui_timeout_handles_exception_gracefully():
 async def test_ui_timeout_returns_false_on_timeout():
     """
     Test that check_ui_generation_active returns False when timeout occurs.
-    
+
     This verifies the function degrades gracefully instead of crashing.
     """
     # Arrange: Create a scenario where we can directly test check_ui_generation_active
@@ -332,7 +332,7 @@ async def test_ui_timeout_returns_false_on_timeout():
 async def test_ui_nested_exception_handling():
     """
     Test that nested try-except specifically catches timeout on is_disabled().
-    
+
     Verifies the nested exception handling structure is in place.
     """
     # Arrange
@@ -406,7 +406,7 @@ async def test_ui_nested_exception_handling():
 async def test_ui_check_with_various_exception_types():
     """
     Test that UI check handles different exception types correctly.
-    
+
     Timeout exceptions should return False, other exceptions should be re-raised.
     """
     test_cases = [

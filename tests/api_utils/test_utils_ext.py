@@ -363,7 +363,7 @@ async def test_clear_stream_queue():
 
 @pytest.mark.asyncio
 async def test_clear_stream_queue_none():
-    with patch("server.STREAM_QUEUE", None), patch("server.logger") as mock_logger:
+    with patch("server.STREAM_QUEUE", None), patch("server.logger"):
         await clear_stream_queue()
         # Should do nothing and not log anything related to clearing
 
@@ -483,7 +483,7 @@ async def test_use_stream_response_dict_with_stale_done():
 
     with (
         patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger") as mock_logger,
+        patch("server.logger"),
     ):
         chunks = []
         async for chunk in use_stream_response("req1", enable_silence_detection=True):
@@ -512,7 +512,7 @@ async def test_use_stream_response_timeout_after_data():
 
     with (
         patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger") as mock_logger,
+        patch("server.logger"),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         chunks = []
@@ -565,7 +565,7 @@ async def test_clear_stream_queue_exception_during_clear():
 
     with (
         patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger") as mock_logger,
+        patch("server.logger"),
     ):
         await clear_stream_queue()
 
@@ -584,7 +584,7 @@ async def test_clear_stream_queue_empty_queue():
 
     with (
         patch("server.STREAM_QUEUE", mock_queue),
-        patch("server.logger") as mock_logger,
+        patch("server.logger"),
         patch("asyncio.to_thread", side_effect=queue.Empty),
     ):
         await clear_stream_queue()

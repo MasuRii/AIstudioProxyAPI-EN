@@ -4,7 +4,7 @@ Test to verify the fix for quota rotation stream termination issue.
 
 This test simulates the exact scenario from the bug report:
 1. Quota exceeded triggers rotation
-2. Rotation completes successfully 
+2. Rotation completes successfully
 3. Stream receives empty DONE signal (Body=0, Reason=0)
 4. System should NOT complete the stream, but ignore the stale DONE
 

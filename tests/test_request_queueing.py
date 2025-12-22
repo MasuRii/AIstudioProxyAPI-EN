@@ -52,7 +52,6 @@ class TestRequestQueueing(unittest.TestCase):
         self.assertEqual(GlobalState.queued_request_count, 0)
 
         # Record initial queue count
-        initial_queue_count = GlobalState.queued_request_count
 
         # Test the logic directly from ensure_request_lock function
         # When lock is set, is_waiting should be False

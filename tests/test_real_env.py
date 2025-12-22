@@ -41,22 +41,22 @@ def test_real_env_loading():
 
         # Verify the fix worked
         success = True
-        if args.debug_logs != True:
+        if not args.debug_logs:
             print("ERROR: debug_logs should be True")
             success = False
-        if args.trace_logs != True:
+        if not args.trace_logs:
             print("ERROR: trace_logs should be True")
             success = False
-        if args.auto_save_auth != True:
+        if not args.auto_save_auth:
             print("ERROR: auto_save_auth should be True")
             success = False
-        if getattr(args, 'debug_logs_from_cli', True) != False:
+        if getattr(args, 'debug_logs_from_cli', True):
             print("ERROR: debug_logs_from_cli should be False")
             success = False
-        if getattr(args, 'trace_logs_from_cli', True) != False:
+        if getattr(args, 'trace_logs_from_cli', True):
             print("ERROR: trace_logs_from_cli should be False")
             success = False
-        if getattr(args, 'auto_save_auth_from_cli', True) != False:
+        if getattr(args, 'auto_save_auth_from_cli', True):
             print("ERROR: auto_save_auth_from_cli should be False")
             success = False
 

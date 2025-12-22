@@ -6,10 +6,28 @@ asyncio.Queue, catching edge cases that mocked tests miss.
 """
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+
+
+# Test stub for QueueManager used in these tests
+class QueueManager:
+    """Stub class for queue management in tests."""
+
+    request_queue: Any = None
+    processing_lock: Any = None
+    logger: Any = None
+
+    async def check_queue_disconnects(self, *args: Any, **kwargs: Any) -> Any:
+        """Stub method."""
+        pass
+
+    async def get_next_request(self, *args: Any, **kwargs: Any) -> Any:
+        """Stub method."""
+        pass
 
 
 @pytest.mark.integration

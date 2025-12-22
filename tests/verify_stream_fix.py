@@ -24,7 +24,7 @@ import pytest
 async def test_stream_response_no_unbound_local_error():
     """
     Test that use_stream_response initializes without UnboundLocalError.
-    
+
     This test verifies that max_empty_retries is defined before it's used in logging.
     """
     # Arrange: Mock all dependencies
@@ -113,7 +113,7 @@ async def test_stream_response_no_unbound_local_error():
 async def test_stream_response_variable_initialization_order():
     """
     Test that max_empty_retries is initialized BEFORE the logging statement.
-    
+
     This verifies the execution order is correct.
     """
     # Arrange: Mock dependencies
@@ -177,7 +177,7 @@ async def test_stream_response_variable_initialization_order():
 async def test_stream_response_with_various_timeout_values():
     """
     Test max_empty_retries calculation with various timeout and silence threshold values.
-    
+
     Verifies the fix works correctly with different parameter combinations.
     """
     test_cases = [

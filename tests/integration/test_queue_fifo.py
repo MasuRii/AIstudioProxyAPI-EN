@@ -14,9 +14,23 @@ Coverage Target: Queue processing order integrity
 """
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+# Test stub for QueueManager used in these tests
+class QueueManager:
+    """Stub class for queue management in tests."""
+
+    request_queue: Any = None
+    processing_lock: Any = None
+    logger: Any = None
+
+    async def check_queue_disconnects(self, *args: Any, **kwargs: Any) -> Any:
+        """Stub method."""
+        pass
 
 
 @pytest.mark.integration

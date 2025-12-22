@@ -14,7 +14,7 @@ Coverage Target: Disconnect detection integrity and resource cleanup
 """
 
 import asyncio
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,6 +22,23 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from api_utils.context_types import QueueItem
+
+
+# Test stub for QueueManager used in these tests
+class QueueManager:
+    """Stub class for queue management in tests."""
+
+    request_queue: Any = None
+    processing_lock: Any = None
+    logger: Any = None
+
+    async def process_request(self, *args: Any, **kwargs: Any) -> Any:
+        """Stub process_request method."""
+        pass
+
+    async def check_queue_disconnects(self, *args: Any, **kwargs: Any) -> Any:
+        """Stub check_queue_disconnects method."""
+        pass
 
 
 @pytest.mark.integration

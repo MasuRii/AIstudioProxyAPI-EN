@@ -167,7 +167,7 @@ class TestSoftContextSwapping(unittest.TestCase):
         mock_canary.return_value = True
 
         # Create a separate mock to track browser restart attempts
-        original_browser_close = getattr(server.browser_instance, 'close', None) if server.browser_instance else None
+        getattr(server.browser_instance, 'close', None) if server.browser_instance else None
 
         # Mock the page instance to ensure it's NOT closed
         self.mock_page.close = AsyncMock()

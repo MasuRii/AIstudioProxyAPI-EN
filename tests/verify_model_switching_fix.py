@@ -24,7 +24,7 @@ import pytest
 async def test_handle_model_switching_no_name_error():
     """
     Test that handle_model_switching uses state.current_ai_studio_model_id without NameError.
-    
+
     This verifies the fix: all `server` references replaced with `state`.
     """
     # Arrange: Create mock context with all required fields
@@ -62,7 +62,7 @@ async def test_handle_model_switching_no_name_error():
 
         # Act: Call the function - should not raise NameError
         try:
-            result_context = await handle_model_switching(
+            await handle_model_switching(
                 req_id="test_req_model_001",
                 context=context
             )
@@ -98,7 +98,7 @@ async def test_handle_model_switching_no_name_error():
 async def test_handle_model_switching_state_not_server():
     """
     Test that handle_model_switching uses 'state' object, not undefined 'server'.
-    
+
     This explicitly verifies that no reference to 'server' module exists.
     """
     # Arrange
@@ -163,7 +163,7 @@ async def test_handle_model_switching_state_not_server():
 async def test_handle_model_switch_failure_uses_state():
     """
     Test that _handle_model_switch_failure also uses state, not server.
-    
+
     According to bug fix design, this function also had 'import server' removed.
     """
     # Arrange
@@ -223,7 +223,7 @@ async def test_handle_model_switch_failure_uses_state():
 async def test_model_switching_consistency_check():
     """
     Test that all model ID references use state consistently.
-    
+
     Verifies consistency across the entire model switching flow.
     """
     # Arrange
@@ -299,7 +299,7 @@ async def test_model_switching_consistency_check():
 async def test_no_model_switch_needed():
     """
     Test that when models match, no switching occurs but state is still accessible.
-    
+
     Edge case: Current model == target model.
     """
     # Arrange
