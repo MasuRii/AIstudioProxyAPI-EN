@@ -158,7 +158,7 @@ class HttpInterceptor:
                         elif (
                             len(payload) == 11
                             and payload[1] is None
-                            and type(payload[10]) == list
+                            and isinstance(payload[10], list)
                         ):  # function
                             array_tool_calls = payload[10]
                             func_name = array_tool_calls[0]

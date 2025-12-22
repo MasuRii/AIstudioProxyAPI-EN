@@ -142,8 +142,8 @@ async def _handle_model_list_response(response: Any):
     # Need access to global variables
     from api_utils.server_state import state
 
-    global_model_list_raw_json = state.global_model_list_raw_json
-    parsed_model_list = state.parsed_model_list
+    global_model_list_raw_json = state.global_model_list_raw_json  # noqa: F841
+    parsed_model_list = state.parsed_model_list  # noqa: F841
     model_list_fetch_event = state.model_list_fetch_event
     excluded_model_ids = state.excluded_model_ids
 
@@ -956,7 +956,7 @@ async def get_response_via_edit_button(
     except ClientDisconnectedError:
         logger.info(f"[{req_id}] (Helper Edit) Client disconnected.")
         raise
-    except Exception as e:
+    except Exception:
         logger.exception(
             f"[{req_id}] Unexpected error during getting response via edit button"
         )
@@ -1061,7 +1061,7 @@ async def get_response_via_copy_button(
     except ClientDisconnectedError:
         logger.info(f"[{req_id}] (Helper Copy) Client disconnected.")
         raise
-    except Exception as e:
+    except Exception:
         logger.exception(f"[{req_id}] Unexpected error during copying response")
         await save_error_snapshot(f"copy_response_unexpected_error_{req_id}")
         return None
@@ -1112,7 +1112,7 @@ async def _wait_for_response_completion(
                 f"[{req_id}] (WaitV3) Rotation detected - enforcing minimum timeout: {timeout_seconds:.2f}s"
             )
 
-    timeout_ms = timeout_seconds * 1000
+    _timeout_ms = timeout_seconds * 1000
 
     logger.info(
         f"[{req_id}] (WaitV3) Waiting for response completion... (Dynamic Timeout: {timeout_seconds:.2f}s)"
@@ -1143,12 +1143,12 @@ async def _wait_for_response_completion(
                 if (sessionContent) {
                      sessionContent.scrollTop = sessionContent.scrollHeight;
                 }
-                
+
                 const lastTurn = document.querySelector(lastTurnSel);
                 if (lastTurn) {
                     lastTurn.scrollIntoView({behavior: "instant", block: "end"});
                 }
-                
+
                 window.scrollTo(0, document.body.scrollHeight);
             }""",
                 [

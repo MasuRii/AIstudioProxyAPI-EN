@@ -8,7 +8,6 @@ Strategy: Mock server module globals, verify each function returns correct objec
 from asyncio import Event, Lock, Queue
 from unittest.mock import MagicMock, patch
 
-from api_utils.server_state import state
 from api_utils.dependencies import (
     get_current_ai_studio_model_id,
     get_excluded_model_ids,
@@ -22,6 +21,7 @@ from api_utils.dependencies import (
     get_server_state,
     get_worker_task,
 )
+from api_utils.server_state import state
 
 
 def test_get_logger():

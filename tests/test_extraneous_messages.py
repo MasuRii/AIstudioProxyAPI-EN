@@ -31,13 +31,13 @@ async def test_extraneous_messages_ignored():
     )
     check_client_disconnected = MagicMock()
     event_to_set = asyncio.Event()
-    
-    # We mock api_utils.response_generators.use_stream_response 
-    # because that's what gen_sse_from_aux_stream imports/uses (via the module scope usually, 
+
+    # We mock api_utils.response_generators.use_stream_response
+    # because that's what gen_sse_from_aux_stream imports/uses (via the module scope usually,
     # but gen_sse_from_aux_stream imports it from .utils)
     # Let's patch where it is defined or imported.
     # gen_sse_from_aux_stream imports use_stream_response from .utils
-    
+
     with patch('api_utils.response_generators.use_stream_response', side_effect=mock_use_stream_response_generator):
         gen = gen_sse_from_aux_stream(
             req_id,
@@ -48,11 +48,11 @@ async def test_extraneous_messages_ignored():
             timeout=1.0,
             page=None
         )
-        
+
         chunks = []
         async for chunk in gen:
             chunks.append(chunk)
-            
+
         full_content = ""
         for chunk in chunks:
             if "data: " in chunk and "[DONE]" not in chunk:
@@ -64,9 +64,9 @@ async def test_extraneous_messages_ignored():
                         full_content += delta['content']
                 except:
                     pass
-        
+
         print(f"Full content received: '{full_content}'")
-        
+
         # If the fix is working, " EXTRA" should NOT be in full_content.
         # If the fix is NOT working (current state), " EXTRA" WILL be in full_content.
         assert "EXTRA" not in full_content, f"Extraneous content found in response: {full_content}"

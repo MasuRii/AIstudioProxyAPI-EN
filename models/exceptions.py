@@ -7,10 +7,10 @@ from fastapi import HTTPException
 class AIStudioProxyError(Exception):
     """Base exception for AIStudio Proxy errors."""
     def __init__(
-        self, 
-        message: str, 
-        req_id: Optional[str] = None, 
-        http_status: int = 500, 
+        self,
+        message: str,
+        req_id: Optional[str] = None,
+        http_status: int = 500,
         retry_after: Optional[int] = None,
         **kwargs: Any
     ):
@@ -20,7 +20,7 @@ class AIStudioProxyError(Exception):
         self.retry_after = retry_after
         self.timestamp = time.time()
         self.context = kwargs
-        
+
         # Format message with req_id if present for string representation
         super().__init__(self.__str__())
 
@@ -36,7 +36,7 @@ class AIStudioProxyError(Exception):
         headers = {}
         if self.retry_after is not None:
             headers["Retry-After"] = str(self.retry_after)
-        
+
         return HTTPException(
             status_code=self.http_status,
             detail=str(self),

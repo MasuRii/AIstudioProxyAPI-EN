@@ -28,7 +28,7 @@ sys.modules['api_utils.utils_ext.cooldown_manager'].load_cooldown_profiles.retur
 logging.basicConfig(level=logging.INFO)
 
 # --- IMPORT ---
-# We need to import the actual functions. 
+# We need to import the actual functions.
 # Since we mocked dependencies, we can import the module.
 from browser_utils.auth_rotation import _get_next_profile
 
@@ -58,13 +58,13 @@ def create_profile(path):
 def test_emergency_inclusion():
     print("--- Test 1: Emergency Inclusion in Standard Scan ---")
     setup_test_files()
-    
+
     # Case: Only profile in emergency
     create_profile("auth_profiles/emergency/emergency_1.json")
-    
+
     print("Searching for profile (Active/Saved empty, Emergency has file)...")
     profile = _get_next_profile()
-    
+
     if profile and "emergency" in profile:
         print(f"SUCCESS: Found emergency profile: {profile}")
     else:
@@ -74,7 +74,7 @@ def test_active_empty_logic():
     print("\n--- Test 2: Active/Saved Empty ---")
     setup_test_files()
     # No files created
-    
+
     print("Searching for profile (All empty)...")
     profile = _get_next_profile()
     print(f"Result: {profile}")

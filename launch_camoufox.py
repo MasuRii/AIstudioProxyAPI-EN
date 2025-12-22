@@ -248,7 +248,7 @@ def cleanup():
                     )
                     if result.returncode == 0:
                         logger.info(
-                            f"  ✅ Successfully force-killed Camoufox process tree via taskkill."
+                            "  ✅ Successfully force-killed Camoufox process tree via taskkill."
                         )
                     else:
                         logger.warning(
@@ -297,7 +297,7 @@ def cleanup():
                     )
                     if result.returncode == 0:
                         logger.info(
-                            f"  ✅ Fallback: Successfully force-killed Camoufox process tree."
+                            "  ✅ Fallback: Successfully force-killed Camoufox process tree."
                         )
                     else:
                         logger.warning(
@@ -398,7 +398,7 @@ def check_dependencies():
         is_any_internal_arg = any(arg.startswith("--internal-") for arg in sys.argv)
         if is_any_internal_arg and (launch_server is None or DefaultAddons is None):
             logger.error(
-                f"  ❌ Internal launch mode (--internal-*) requires 'camoufox' package, but import failed."
+                "  ❌ Internal launch mode (--internal-*) requires 'camoufox' package, but import failed."
             )
             dependencies_ok = False
         elif not is_any_internal_arg:
@@ -410,12 +410,12 @@ def check_dependencies():
         from server import app as server_app_check
 
         if server_app_check:
-            logger.info(f"  ✓ Successfully imported 'app' object from 'server.py'.")
+            logger.info("  ✓ Successfully imported 'app' object from 'server.py'.")
     except ImportError as e_import_server:
         logger.error(
             f"  ❌ Failed to import 'app' object from 'server.py': {e_import_server}"
         )
-        logger.error(f"     Please ensure 'server.py' exists and has no import errors.")
+        logger.error("     Please ensure 'server.py' exists and has no import errors.")
         dependencies_ok = False
 
     if not dependencies_ok:
@@ -471,7 +471,7 @@ def find_pids_on_port(port: int) -> list[int]:
                 "command not found" in stderr.lower() or "未找到命令" in stderr
             ):
                 logger.error(
-                    f"Command 'lsof' not found. Please ensure it is installed."
+                    "Command 'lsof' not found. Please ensure it is installed."
                 )
             elif process.returncode not in [0, 1]:  # lsof returns 1 when not found
                 logger.warning(
@@ -956,7 +956,7 @@ if __name__ == "__main__":
             flush=True,
         )
         print(
-            f"--- [Internal Camoufox Launch] Calling camoufox.server.launch_server ... ---",
+            "--- [Internal Camoufox Launch] Calling camoufox.server.launch_server ... ---",
             flush=True,
         )
 
@@ -1117,7 +1117,7 @@ if __name__ == "__main__":
             new_auth_filename = ""
             while not new_auth_filename:
                 new_auth_filename_input = input_with_timeout(
-                    f"  Enter filename to save (no .json suffix, alphanumeric/-/_): ",
+                    "  Enter filename to save (no .json suffix, alphanumeric/-/_): ",
                     args.auth_save_timeout,
                 ).strip()
                 # Simple validation
@@ -1178,7 +1178,7 @@ if __name__ == "__main__":
                 # Using input_with_timeout for consistency, though timeout might not be strictly needed here
                 choice = (
                     input_with_timeout(
-                        f"     Attempt to terminate these processes? (y/n, n continues and may fail, 15s timeout): ",
+                        "     Attempt to terminate these processes? (y/n, n continues and may fail, 15s timeout): ",
                         15,
                     )
                     .strip()
@@ -1205,7 +1205,7 @@ if __name__ == "__main__":
                     )
             else:
                 logger.error(
-                    f"     Headless mode will not attempt auto-termination of port-hogging processes. Server start may fail."
+                    "     Headless mode will not attempt auto-termination of port-hogging processes. Server start may fail."
                 )
         else:
             logger.warning(
@@ -1255,7 +1255,7 @@ if __name__ == "__main__":
                 ):
                     effective_active_auth_json_path = path_rel_to_script
                 # 4. If just a filename, check in ACTIVE_AUTH_DIR then SAVED_AUTH_DIR
-                elif not os.path.sep in candidate_path:  # This is a simple filename
+                elif os.path.sep not in candidate_path:  # This is a simple filename
                     path_in_active = os.path.join(ACTIVE_AUTH_DIR, candidate_path)
                     if os.path.exists(path_in_active) and os.path.isfile(
                         path_in_active
@@ -1282,7 +1282,7 @@ if __name__ == "__main__":
         if final_launch_mode == "debug":
             # For debug mode, scan dirs and prompt user, don't auto-use files
             logger.info(
-                f"  Debug Mode: Scanning directories to prompt user selection from available auth files..."
+                "  Debug Mode: Scanning directories to prompt user selection from available auth files..."
             )
         else:
             # For headless mode, check default auth file in active/ dir
@@ -1324,7 +1324,7 @@ if __name__ == "__main__":
             available_profiles = []
             # Scan ACTIVE_AUTH_DIR first, then SAVED_AUTH_DIR
             logger.info(
-                f"[DIAGNOSTIC] Scanning for profiles in: active, saved, emergency."
+                "[DIAGNOSTIC] Scanning for profiles in: active, saved, emergency."
             )
             for profile_dir_path_str, dir_label in [
                 (ACTIVE_AUTH_DIR, "active"),
@@ -1435,7 +1435,7 @@ if __name__ == "__main__":
 
             if has_backups:
                 logger.info(
-                    f"  ⚠️ No active profile selected, but profiles exist in saved/emergency and auto-rotation is enabled. Allowing startup (runtime rotation will select one)."
+                    "  ⚠️ No active profile selected, but profiles exist in saved/emergency and auto-rotation is enabled. Allowing startup (runtime rotation will select one)."
                 )
             else:
                 # For headless mode, error if --active-auth-json not provided and active/ is empty AND no backups
@@ -1570,11 +1570,11 @@ if __name__ == "__main__":
             camoufox_proc and camoufox_proc.poll() is not None
         ):
             logger.error(
-                f"  ❌ Camoufox internal process exited, and failed to capture WebSocket endpoint."
+                "  ❌ Camoufox internal process exited, and failed to capture WebSocket endpoint."
             )
             sys.exit(1)
         elif not captured_ws_endpoint:
-            logger.error(f"  ❌ Failed to capture WebSocket endpoint.")
+            logger.error("  ❌ Failed to capture WebSocket endpoint.")
             sys.exit(1)
 
     except Exception as e_launch_camoufox_internal:
@@ -1624,7 +1624,7 @@ if __name__ == "__main__":
 
             if sapisid:
                 logger.info(
-                    f"    ✅ Successfully loaded SAPISID. Will set HELPER_SAPISID env var."
+                    "    ✅ Successfully loaded SAPISID. Will set HELPER_SAPISID env var."
                 )
                 os.environ["HELPER_SAPISID"] = sapisid
             else:
@@ -1635,7 +1635,7 @@ if __name__ == "__main__":
                     del os.environ["HELPER_SAPISID"]
         else:  # args.helper has value (Helper mode enabled), but no auth file
             logger.warning(
-                f"    ⚠️ Helper mode enabled but no valid auth file to extract SAPISID. HELPER_SAPISID will not be set."
+                "    ⚠️ Helper mode enabled but no valid auth file to extract SAPISID. HELPER_SAPISID will not be set."
             )
             if "HELPER_SAPISID" in os.environ:  # Clean up
                 del os.environ["HELPER_SAPISID"]
@@ -1712,7 +1712,7 @@ if __name__ == "__main__":
     elif "HOST_OS_FOR_SHORTCUT" in os.environ:
         del os.environ["HOST_OS_FOR_SHORTCUT"]
 
-    logger.info(f"  Environment variables set for server.app:")
+    logger.info("  Environment variables set for server.app:")
     env_keys_to_log = [
         "CAMOUFOX_WS_ENDPOINT",
         "LAUNCH_MODE",

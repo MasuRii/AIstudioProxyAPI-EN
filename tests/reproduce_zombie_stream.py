@@ -53,22 +53,22 @@ logger = logging.getLogger("repro")
 
 async def reproduce():
     print("--- Starting Reproduction Test ---")
-    
+
     # 1. Setup State: Quota was exceeded, but just recovered (Rotation finished)
     # The bug is that IS_QUOTA_EXCEEDED is False (because we recovered),
     # but the stream logic thinks an empty DONE is "stale" because it's the first item.
     MockGlobalState.IS_QUOTA_EXCEEDED = False
     MockGlobalState.IS_RECOVERING = False
-    
+
     import json
     # 2. Add an empty DONE signal to the queue (simulating the end of the rotated request)
     # NOTE: We must send it as a string to bypass the early 'isinstance(data, dict)' check at line 186
     # and force it into the parsing logic where the 'stale data' check exists.
     await server.STREAM_QUEUE.put(json.dumps({"done": True, "body": "", "reason": ""}))
-    
+
     # 3. Run stream handler with a short timeout to catch the hang
     print("Running stream handler...")
-    
+
     # We expect it to exit immediately. If it hangs, we'll catch the timeout.
     try:
         # Use a short timeout for the generator itself, but inside the function
@@ -85,11 +85,11 @@ async def reproduce():
         return
 
     except asyncio.TimeoutError:
-        # This won't be raised by the generator loop itself usually, 
-        # unless we wrap it. The generator yields items. 
+        # This won't be raised by the generator loop itself usually,
+        # unless we wrap it. The generator yields items.
         # If it enters the "wait loop", it won't yield.
         pass
-        
+
     print("FAILURE: Stream handler did not yield completion (likely stuck in wait loop).")
 
 async def main():

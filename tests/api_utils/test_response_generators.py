@@ -47,7 +47,7 @@ class TestGenSSEFromAuxStream:
         async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-    
+
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -105,7 +105,7 @@ class TestGenSSEFromAuxStream:
         async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-    
+
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -162,7 +162,7 @@ class TestGenSSEFromAuxStream:
         async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-    
+
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",
@@ -219,7 +219,7 @@ class TestGenSSEFromAuxStream:
         async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-    
+
         with patch(
             "api_utils.response_generators.use_stream_response",
             side_effect=mock_stream_gen,
@@ -256,7 +256,7 @@ class TestGenSSEFromAuxStream:
         async def mock_stream_gen(rid, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):
             for item in stream_data:
                 yield item
-    
+
         with (
             patch(
                 "api_utils.response_generators.use_stream_response",

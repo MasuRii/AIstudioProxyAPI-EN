@@ -27,31 +27,31 @@ from config.global_state import GlobalState
 
 class TestRaceConditionFix(unittest.TestCase):
     """Test CRIT-01: Race condition elimination in queue worker"""
-    
+
     def setUp(self):
         """Reset global state before each test"""
         GlobalState.IS_QUOTA_EXCEEDED = False
         GlobalState.QUOTA_EXCEEDED_TIMESTAMP = 0.0
         GlobalState.QUOTA_EXCEEDED_EVENT.clear()
-        
+
     def test_quota_check_before_queue_get(self):
         """Test that quota exceeded is checked BEFORE getting next request"""
         # Simulate quota exceeded state
         GlobalState.set_quota_exceeded()
-        
+
         # Verify quota state is set
         self.assertTrue(GlobalState.IS_QUOTA_EXCEEDED)
         self.assertTrue(GlobalState.QUOTA_EXCEEDED_EVENT.is_set())
-        
+
     def test_quota_reset_after_rotation(self):
         """Test that quota status is properly reset after rotation"""
         # Set quota exceeded
         GlobalState.set_quota_exceeded()
         self.assertTrue(GlobalState.IS_QUOTA_EXCEEDED)
-        
+
         # Reset quota status (simulating successful rotation)
         GlobalState.reset_quota_status()
-        
+
         # Verify reset
         self.assertFalse(GlobalState.IS_QUOTA_EXCEEDED)
         self.assertEqual(GlobalState.QUOTA_EXCEEDED_TIMESTAMP, 0.0)
@@ -59,7 +59,7 @@ class TestRaceConditionFix(unittest.TestCase):
 
 class TestRotationLogging(unittest.TestCase):
     """Test CORE-02 & OBS-04: Enhanced rotation logging"""
-    
+
     def test_rotation_logging_visibility(self):
         """Test that rotation events have distinctive logging"""
         # This test validates the visual separators are implemented
@@ -68,7 +68,7 @@ class TestRotationLogging(unittest.TestCase):
         # 2. Clear start/finish markers
         # 3. Rotation attempt counting
         pass
-        
+
     def test_rotation_status_indicators(self):
         """Test rotation success/failure status indicators"""
         # The rotation function should log:
@@ -79,33 +79,33 @@ class TestRotationLogging(unittest.TestCase):
 
 class TestDynamicTimeout(unittest.TestCase):
     """Test FIX-03: Dynamic TTFB timeout with rotation awareness"""
-    
+
     def test_timeout_during_rotation(self):
         """Test that timeouts are extended during rotation"""
         # Set quota exceeded to simulate rotation state
         GlobalState.set_quota_exceeded()
-        
+
         # Expected: during rotation, minimum 30s timeout regardless of prompt length
         pass
-    
+
     def test_timeout_bounds(self):
         """Test that timeouts stay within reasonable bounds"""
         # Test normal operation (no rotation)
         GlobalState.reset_quota_status()
-        
+
         # Expected bounds:
         # - Minimum: 10s for normal operation
-        # - Maximum: 120s for normal operation  
+        # - Maximum: 120s for normal operation
         # - Minimum: 30s during rotation
         pass
 
 class TestStopTheWorldProtocol(unittest.TestCase):
     """Test the Stop-the-World protocol during rotation"""
-    
+
     def setUp(self):
         """Initialize rotation lock before each test"""
         GlobalState.init_rotation_lock()
-        
+
     def test_rotation_lock_behavior(self):
         """Test that rotation properly blocks new requests"""
         # The rotation function should:
@@ -113,7 +113,7 @@ class TestStopTheWorldProtocol(unittest.TestCase):
         # 2. Perform rotation
         # 3. Set AUTH_ROTATION_LOCK to allow new requests
         self.assertTrue(GlobalState.AUTH_ROTATION_LOCK.is_set())
-        
+
     def test_concurrent_rotation_prevention(self):
         """Test that multiple rotation attempts are prevented"""
         # If rotation is already in progress, subsequent attempts should be skipped
@@ -150,12 +150,12 @@ class TestAuthRotationLogic(unittest.TestCase):
 
             mock_get_profile.return_value = "profiles/new.json"
             mock_canary_test.return_value = True
-            
+
             mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
             mock_global_state.AUTH_ROTATION_LOCK.set()
             mock_global_state.last_error_type = 'QUOTA'
             mock_global_state.queued_request_count = 1
-            
+
             # Act
             result = await perform_auth_rotation()
 
@@ -192,7 +192,7 @@ class TestAuthRotationLogic(unittest.TestCase):
 
             mock_get_profile.side_effect = [f"profiles/new_{i}.json" for i in range(5)]
             mock_canary_test.return_value = False
-            
+
             mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
             mock_global_state.AUTH_ROTATION_LOCK.set()
             mock_global_state.last_error_type = 'QUOTA'
@@ -223,15 +223,15 @@ class TestAuthRotationLogic(unittest.TestCase):
             # Add 4 timestamps within the rotation window to trigger depletion
             auth_rotation._ROTATION_TIMESTAMPS.clear()
             auth_rotation._ROTATION_TIMESTAMPS.extend([current_time - i for i in range(4)])
-            
+
             # No emergency profiles available
             mock_find_profile.return_value = None
-            
+
             mock_page = AsyncMock()
             mock_page.is_closed = Mock(return_value=False)
             mock_server.page_instance = mock_page
             mock_server.browser_instance = AsyncMock()
-            
+
             mock_global_state.AUTH_ROTATION_LOCK = asyncio.Event()
             mock_global_state.AUTH_ROTATION_LOCK.set()
             mock_global_state.queued_request_count = 1
@@ -250,22 +250,22 @@ class TestAuthRotationLogic(unittest.TestCase):
 
 class TestIntegrationScenarios(unittest.TestCase):
     """Integration tests for complete rotation flow"""
-    
+
     def test_quota_exceeded_to_rotation_flow(self):
         """Test complete flow from quota detection to rotation"""
         async def run_test():
             # 1. Simulate quota exceeded detection
             GlobalState.set_quota_exceeded()
             self.assertTrue(GlobalState.IS_QUOTA_EXCEEDED)
-            
+
             # 2. Verify rotation is triggered
             # 3. Verify rotation completes successfully
             # 4. Verify quota status is reset
             GlobalState.reset_quota_status()
             self.assertFalse(GlobalState.IS_QUOTA_EXCEEDED)
-        
+
         asyncio.run(run_test())
-    
+
     def test_multiple_quota_exceeded_events(self):
         """Test handling of rapid quota exceeded events"""
         async def run_test():
@@ -273,14 +273,14 @@ class TestIntegrationScenarios(unittest.TestCase):
             for i in range(3):
                 GlobalState.set_quota_exceeded()
                 await asyncio.sleep(0.1)
-                
+
         asyncio.run(run_test())
 
 def run_tests():
     """Run all tests and provide summary"""
     print("Authentication Rotation Fixes - Test Suite")
     print("=" * 60)
-    
+
     test_classes = [
         TestRaceConditionFix,
         TestRotationLogging,
@@ -289,33 +289,33 @@ def run_tests():
         TestAuthRotationLogic,
         TestIntegrationScenarios
     ]
-    
+
     total_tests = 0
     passed_tests = 0
-    
+
     for test_class in test_classes:
         print(f"\nRunning {test_class.__name__}...")
         suite = unittest.TestLoader().loadTestsFromTestCase(test_class)
         result = unittest.TextTestRunner(verbosity=1).run(suite)
-        
+
         total_tests += result.testsRun
         passed_tests += result.testsRun - len(result.failures) - len(result.errors)
-        
+
         if result.failures:
             print(f"  Failures: {len(result.failures)}")
         if result.errors:
             print(f"  Errors: {len(result.errors)}")
-    
+
     print("\n" + "=" * 60)
     print("Test Summary:")
     print(f"  Total Tests: {total_tests}")
     print(f"  Passed: {passed_tests}")
-    
+
     if passed_tests == total_tests:
         print("\nAll tests passed! Authentication rotation fixes are working correctly.")
     else:
-        print(f"\nSome tests failed. Review the implementation.")
-    
+        print("\nSome tests failed. Review the implementation.")
+
     return passed_tests == total_tests
 
 if __name__ == "__main__":

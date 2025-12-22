@@ -22,9 +22,9 @@ def setup_teardown():
     GlobalState.AUTH_ROTATION_LOCK.set()
     GlobalState.DEPLOYMENT_EMERGENCY_MODE = False
     GlobalState.reset_quota_status()
-    
+
     yield
-    
+
     GlobalState.reset_quota_status()
     GlobalState.AUTH_ROTATION_LOCK.set()
 
@@ -41,10 +41,10 @@ async def test_perform_auth_rotation_waits_for_cooldown():
         "/path/to/profile1.json": {"global": (datetime.now() + timedelta(seconds=10)).timestamp()},
         "/path/to/profile2.json": {"global": (datetime.now() + timedelta(seconds=cooldown_duration)).timestamp()}
     }
-    
+
     # Track calls to _get_next_profile
     call_count = 0
-    
+
     def mock_get_next_profile(*args, **kwargs):
         nonlocal call_count
         call_count += 1
@@ -54,7 +54,7 @@ async def test_perform_auth_rotation_waits_for_cooldown():
         else:
             # Subsequent calls: profile becomes available after cooldown
             return "/path/to/profile2.json"
-    
+
     # Set up mocks
     mock_canary = AsyncMock(return_value=True)
     mock_page = MagicMock()
@@ -63,7 +63,7 @@ async def test_perform_auth_rotation_waits_for_cooldown():
     mock_context.clear_cookies = AsyncMock()
     mock_context.add_cookies = AsyncMock()
     mock_page.context = mock_context
-    
+
     # Mock other dependencies
     with patch('browser_utils.auth_rotation._get_next_profile', side_effect=mock_get_next_profile), \
          patch('browser_utils.auth_rotation._COOLDOWN_PROFILES', mock_cooldown_profiles), \
@@ -76,24 +76,24 @@ async def test_perform_auth_rotation_waits_for_cooldown():
          patch('browser_utils.auth_rotation.RATE_LIMIT_COOLDOWN_SECONDS', 10), \
          patch('builtins.open') as mock_open, \
          patch('os.path.exists', return_value=True):
-        
+
         # Configure file opening to return valid profile data
         mock_file = MagicMock()
         mock_file.read.return_value = '{"cookies": []}'
         mock_open.return_value.__enter__.return_value = mock_file
-        
+
         # Run the function
         result = await perform_auth_rotation()
-    
+
     # Verify the result
     end_time = time.time()
     execution_time = end_time - start_time
-    
+
     # Assertions
     assert result is True, "perform_auth_rotation should return True after waiting"
     assert execution_time >= cooldown_duration, \
         f"Expected wait time >= {cooldown_duration}s, got {execution_time:.2f}s"
     assert call_count >= 2, f"Expected at least 2 calls to _get_next_profile, got {call_count}"
-    
+
     # Verify that the mock was called and waiting occurred
     assert mock_canary.called, "Canary test should have been called"

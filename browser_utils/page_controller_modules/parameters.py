@@ -381,7 +381,7 @@ class ParameterController(BaseController):
             current_page_stops = await self._get_current_stop_sequences()
 
             if current_page_stops == normalized_requested_stops:
-                self.logger.debug(f"[Param] Stop Sequences already match page")
+                self.logger.debug("[Param] Stop Sequences already match page")
                 page_params_cache["stop_sequences"] = normalized_requested_stops
                 return
 
@@ -425,7 +425,7 @@ class ParameterController(BaseController):
                 final_page_stops = await self._get_current_stop_sequences()
                 if final_page_stops == normalized_requested_stops:
                     page_params_cache["stop_sequences"] = normalized_requested_stops
-                    self.logger.debug(f"[Param] Stop Sequences updated successfully")
+                    self.logger.debug("[Param] Stop Sequences updated successfully")
                 else:
                     self.logger.warning(
                         f"Stop Sequences verification failed. "

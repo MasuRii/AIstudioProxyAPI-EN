@@ -15,7 +15,6 @@ def clear_debug_logs() -> None:
 
 
 # --- Imports ---
-import logging
 
 from browser_utils.auth_rotation import perform_auth_rotation
 from config import (

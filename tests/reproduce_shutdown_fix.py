@@ -29,17 +29,17 @@ async def mock_expect_async_visible(timeout):
 
 async def test_shutdown_interruption():
     logger.info("Starting test_shutdown_interruption...")
-    
+
     # Reset event just in case
     GlobalState.IS_SHUTTING_DOWN.clear()
-    
+
     # 1. Start the long running task (simulating waiting for element)
     # Simulating 35000ms timeout like in the real code
     expect_task = asyncio.create_task(mock_expect_async_visible(timeout=35000))
-    
+
     # 2. Start the shutdown waiter
     shutdown_task = asyncio.create_task(_wait_for_shutdown())
-    
+
     # 3. Schedule the shutdown event trigger in 2 seconds (simulating user Ctrl+C)
     def trigger_shutdown():
         logger.info("Simulating Ctrl+C (waiting 2s then setting IS_SHUTTING_DOWN)...")
@@ -50,13 +50,13 @@ async def test_shutdown_interruption():
     # Run trigger in a separate thread to simulate external signal/event
     trigger_thread = threading.Thread(target=trigger_shutdown)
     trigger_thread.start()
-    
+
     start_time = time.time()
-    
+
     # 4. Wait for FIRST_COMPLETED
     logger.info("Waiting for tasks...")
     done, pending = await asyncio.wait([expect_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED)
-    
+
     end_time = time.time()
     duration = end_time - start_time
     logger.info(f"Await finished in {duration:.2f} seconds.")
@@ -69,7 +69,7 @@ async def test_shutdown_interruption():
         except asyncio.CancelledError:
             pass
         logger.info("Verified: expect_task cancelled successfully.")
-        
+
         if duration < 5.0:
              logger.info("✅ SUCCESS: Test completed quickly (well under 35s). Fix verified.")
         else:

@@ -16,7 +16,7 @@ def run_internal_camoufox(args, launch_server, DefaultAddons):
     internal_mode_arg = args.internal_launch_mode
     auth_file = args.internal_auth_file
     camoufox_port_internal = args.internal_camoufox_port
-    
+
     proxy_config = determine_proxy_configuration(args.internal_camoufox_proxy)
     actual_proxy_to_use = proxy_config["camoufox_proxy"]
     print(f"--- [Internal Camoufox Start] Proxy Config: {proxy_config['source']} ---", flush=True)
@@ -42,7 +42,7 @@ def run_internal_camoufox(args, launch_server, DefaultAddons):
             launch_args_for_internal_camoufox["proxy"] = {
                 "server": camoufox_proxy_internal
             }
-        
+
         if auth_file:
             launch_args_for_internal_camoufox["storage_state"] = auth_file
 

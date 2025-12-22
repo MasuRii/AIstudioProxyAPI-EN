@@ -30,11 +30,11 @@ class TestCooldownPersistence(unittest.TestCase):
             'profile1': now,
             'profile2': now - timedelta(hours=1)
         }
-        
+
         cooldown_manager.save_cooldown_profiles(profiles)
-        
+
         loaded_profiles = cooldown_manager.load_cooldown_profiles()
-        
+
         self.assertIn('profile1', loaded_profiles)
         self.assertIsInstance(loaded_profiles['profile1'], datetime)
         # Compare ISO strings to avoid microsecond precision issues during serialization
@@ -50,17 +50,17 @@ class TestCooldownPersistence(unittest.TestCase):
             },
             'profile2': now
         }
-        
+
         cooldown_manager.save_cooldown_profiles(profiles)
-        
+
         loaded_profiles = cooldown_manager.load_cooldown_profiles()
-        
+
         # Check nested structure
         self.assertIn('profile1', loaded_profiles)
         self.assertIsInstance(loaded_profiles['profile1'], dict)
         self.assertIn('gpt-4', loaded_profiles['profile1'])
         self.assertEqual(loaded_profiles['profile1']['gpt-4'].isoformat(), now.isoformat())
-        
+
         # Check mixed flat structure
         self.assertIn('profile2', loaded_profiles)
         self.assertIsInstance(loaded_profiles['profile2'], datetime)
@@ -70,7 +70,7 @@ class TestCooldownPersistence(unittest.TestCase):
         """Test handling of corrupted data"""
         with open(self.test_file, 'w') as f:
             f.write("{invalid_json")
-            
+
         loaded_profiles = cooldown_manager.load_cooldown_profiles()
         self.assertEqual(loaded_profiles, {})
 

@@ -42,7 +42,6 @@ __all__ = [
     "_close_page_logic",
     "signal_camoufox_shutdown",
     "enable_temporary_chat_mode",
-    
     # Page operations
     "_handle_model_list_response",
     "detect_and_extract_page_error",
@@ -53,7 +52,6 @@ __all__ = [
     "_get_final_response_content",
     "get_raw_text_content",
     "check_quota_limit",
-    
     # Model management
     "switch_ai_studio_model",
     "load_excluded_models",
@@ -63,10 +61,8 @@ __all__ = [
     "_force_ui_state_settings",
     "_force_ui_state_with_retry",
     "_verify_and_apply_ui_state",
-    
     # Page Controller
     "PageController",
-    
     # Debug utilities (comprehensive error snapshots)
     "save_comprehensive_snapshot",
     "save_error_snapshot_enhanced",

@@ -22,7 +22,7 @@ async def switch_ai_studio_model(page: AsyncPage, model_id: str, req_id: str) ->
     """Switch AI Studio model"""
     logger.info(f"[Model] Switching to -> {model_id}")
     original_prefs_str: Optional[str] = None
-    original_prompt_model: Optional[str] = None
+    _original_prompt_model: Optional[str] = None
     new_chat_url = f"https://{AI_STUDIO_URL_PATTERN}prompts/new_chat"
 
     try:
@@ -32,7 +32,7 @@ async def switch_ai_studio_model(page: AsyncPage, model_id: str, req_id: str) ->
         if original_prefs_str:
             try:
                 original_prefs_obj = json.loads(original_prefs_str)
-                original_prompt_model = original_prefs_obj.get("promptModel")
+                _original_prompt_model = original_prefs_obj.get("promptModel")
             except json.JSONDecodeError:
                 logger.warning(
                     "Failed to parse original aiStudioUserPreference JSON string."

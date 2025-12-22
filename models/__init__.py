@@ -20,12 +20,12 @@ __all__ = [
     'MessageContentItem',
     'Message',
     'ChatCompletionRequest',
-    
+
     # Exceptions
     'ClientDisconnectedError',
     'QuotaExceededError',
     'QuotaExceededRetry',
-    
+
     # Logging tools
     'StreamToLogger',
     'WebSocketConnectionManager',

@@ -36,22 +36,22 @@ async def mock_check_quota_limit(page, req_id):
 @pytest.mark.asyncio
 async def test_quota_fix_logic():
     print("Starting test_quota_fix")
-    
+
     # Reset GlobalState
     GlobalState.IS_QUOTA_EXCEEDED = False
     GlobalState.IS_RECOVERING = False
-    
+
     # Mock dependencies
     mock_page = AsyncMock()
     mock_event = asyncio.Event()
     mock_check_disconnect = MagicMock()
-    
+
     # Patch dependencies
     # 1. Patch use_stream_response where it is used in response_generators
     # 2. Patch check_quota_limit in browser_utils.operations so the import inside the function gets the mock
     with patch('api_utils.response_generators.use_stream_response', side_effect=mock_use_stream_response), \
          patch.object(browser_utils.operations, 'check_quota_limit', side_effect=mock_check_quota_limit):
-            
+
             generator = gen_sse_from_aux_stream(
                 req_id="test_req",
                 request=create_mock_request(),
@@ -61,7 +61,7 @@ async def test_quota_fix_logic():
                 timeout=10.0,
                 page=mock_page
             )
-            
+
             items = []
             try:
                 # Iterate through the generator
@@ -69,21 +69,21 @@ async def test_quota_fix_logic():
                 async for item in generator:
                     print(f"Received item: {item.strip()[:100]}...") # Print first 100 chars
                     items.append(item)
-                    
+
                     if ": heartbeat" in item:
                         print("Verified: Received heartbeat.")
                         # We entered the holding pattern! Break loop to finish test.
                         break
-                        
+
                     if "Model finished thinking but generated no code/text output" in item:
                         print("FAILURE: Received fallback text.")
                         break
-                        
+
                     # Safety break to prevent infinite loops if logic is wrong
-                    if len(items) > 20: 
+                    if len(items) > 20:
                         print("FAILURE: Loop limit reached without heartbeat.")
                         break
-                        
+
             except Exception as e:
                 print(f"Exception during generation: {e}")
                 import traceback
@@ -91,14 +91,14 @@ async def test_quota_fix_logic():
 
             # --- Assertions ---
             print("\n--- Assertions ---")
-            
+
             # 1. Assert GlobalState is updated
             if GlobalState.IS_QUOTA_EXCEEDED:
                 print("PASS: GlobalState.IS_QUOTA_EXCEEDED is True")
             else:
                 print("FAIL: GlobalState.IS_QUOTA_EXCEEDED is False")
                 sys.exit(1)
-            
+
             # 2. Assert NO fallback text
             has_fallback = any("Model finished thinking" in item for item in items)
             if not has_fallback:
@@ -106,7 +106,7 @@ async def test_quota_fix_logic():
             else:
                 print("FAIL: Fallback text WAS sent")
                 sys.exit(1)
-            
+
             # 3. Assert heartbeat received
             has_heartbeat = any(": heartbeat" in item for item in items)
             if has_heartbeat:
@@ -114,7 +114,7 @@ async def test_quota_fix_logic():
             else:
                 print("FAIL: Heartbeat signal NOT received")
                 sys.exit(1)
-            
+
             print("\nSUCCESS: All criteria met. Quota fix verified.")
 
 if __name__ == "__main__":

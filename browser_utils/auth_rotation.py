@@ -505,7 +505,7 @@ async def perform_auth_rotation(target_model_id: str = None) -> bool:
 
             # Always place the *previous* profile on cooldown on the first attempt
             if failed_attempts == 0:
-                old_profile = getattr(server, "current_auth_profile_path", "unknown")
+                old_profile = getattr(state, "current_auth_profile_path", "unknown")
                 if old_profile != "unknown" and os.path.exists(old_profile):
                     # Calculate cooldown based on error type
                     error_type = GlobalState.last_error_type
@@ -564,7 +564,7 @@ async def perform_auth_rotation(target_model_id: str = None) -> bool:
                             else:
                                 # Only use "default" if we truly cannot identify any model
                                 logger.warning(
-                                    f"⚠️ Unable to identify specific model, falling back to 'default'. This should be rare."
+                                    "⚠️ Unable to identify specific model, falling back to 'default'. This should be rare."
                                 )
                                 models_to_cooldown.add("default")
 

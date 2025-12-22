@@ -128,7 +128,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CAMOUFOX_PORT,
         help=f"Internal Camoufox instance debugging port (Default: {DEFAULT_CAMOUFOX_PORT})",
     )
-    
+
     mode_selection_group = parser.add_mutually_exclusive_group()
     mode_selection_group.add_argument(
         "--debug",
@@ -152,11 +152,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="[Optional] Path to active authentication JSON file.",
     )
-    
+
     debug_logs_default = os.environ.get('DEBUG_LOGS_ENABLED', 'false').lower() == 'true'
     trace_logs_default = os.environ.get('TRACE_LOGS_ENABLED', 'false').lower() == 'true'
     auto_save_auth_default = os.environ.get('AUTO_SAVE_AUTH', 'false').lower() == 'true'
-    
+
     parser.add_argument(
         "--auto-save-auth",
         action="store_true",
@@ -179,7 +179,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="[Debug Mode] Automatically close the launcher and processes after saving new auth file.",
     )
-    
+
     parser.add_argument(
         "--server-log-level",
         type=str,
@@ -211,12 +211,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     args = parser.parse_args()
-    
+
     # Mark which arguments were explicitly set via CLI
     args.debug_logs_from_cli = '--debug-logs' in sys.argv
     args.trace_logs_from_cli = '--trace-logs' in sys.argv
     args.auto_save_auth_from_cli = '--auto-save-auth' in sys.argv
-    
+
     # Use environment variables if not set via CLI
     if not args.debug_logs_from_cli:
         args.debug_logs = debug_logs_default
