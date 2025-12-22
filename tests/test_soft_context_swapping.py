@@ -23,9 +23,9 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 # Add project root to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import server
+from api_utils.server_state import state
 from browser_utils.auth_rotation import _get_next_profile, perform_auth_rotation
 from config.global_state import GlobalState
 
@@ -49,11 +49,13 @@ class TestSoftContextSwapping(unittest.TestCase):
         self.mock_context.clear_cookies = AsyncMock()
         self.mock_context.add_cookies = AsyncMock()
 
-        # Mock server globals
-        self.original_page_instance = getattr(server, 'page_instance', None)
-        self.original_browser_instance = getattr(server, 'browser_instance', None)
-        server.page_instance = self.mock_page
-        server.browser_instance = None  # Should not be used in soft swap
+        # Store original state values
+        self.original_page_instance = state.page_instance
+        self.original_browser_instance = state.browser_instance
+
+        # Set mock state values
+        state.page_instance = self.mock_page
+        state.browser_instance = None  # Should not be used in soft swap
 
         # Mock profile data
         self.test_cookies = [
@@ -61,43 +63,40 @@ class TestSoftContextSwapping(unittest.TestCase):
                 "name": "session_id",
                 "value": "test_session_123",
                 "domain": ".aistudio.google.com",
-                "path": "/"
+                "path": "/",
             },
             {
                 "name": "auth_token",
                 "value": "test_auth_456",
                 "domain": ".aistudio.google.com",
-                "path": "/"
-            }
+                "path": "/",
+            },
         ]
 
-        self.test_storage_state = {
-            "cookies": self.test_cookies,
-            "origins": []
-        }
+        self.test_storage_state = {"cookies": self.test_cookies, "origins": []}
 
     def tearDown(self):
         """Clean up after each test"""
-        # Restore original server state
-        if self.original_page_instance is not None:
-            server.page_instance = self.original_page_instance
-        if self.original_browser_instance is not None:
-            server.browser_instance = self.original_browser_instance
+        # Restore original state values
+        state.page_instance = self.original_page_instance
+        state.browser_instance = self.original_browser_instance
 
         # Clean up any test files
         test_profile_paths = [
             "auth_profiles/saved/test_profile_1.json",
             "auth_profiles/active/test_profile_2.json",
-            "auth_profiles/emergency/test_emergency.json"
+            "auth_profiles/emergency/test_emergency.json",
         ]
         for path in test_profile_paths:
             if os.path.exists(path):
                 os.remove(path)
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
-    async def test_soft_context_swap_performed(self, mock_canary, mock_open, mock_get_next_profile):
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
+    async def test_soft_context_swap_performed(
+        self, mock_canary, mock_open, mock_get_next_profile
+    ):
         """Test that soft context swap is performed with clear_cookies() and add_cookies()"""
 
         # Setup mocks
@@ -120,15 +119,17 @@ class TestSoftContextSwapping(unittest.TestCase):
 
         # Verify browser restart functions were NOT called
         # (These should remain None/unmocked, indicating they weren't used)
-        self.assertIsNone(server.browser_instance)
+        self.assertIsNone(state.browser_instance)
 
         # Verify canary test was called
         mock_canary.assert_called_once_with(self.mock_page)
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
-    async def test_rotation_performance_benchmark(self, mock_canary, mock_open, mock_get_next_profile):
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
+    async def test_rotation_performance_benchmark(
+        self, mock_canary, mock_open, mock_get_next_profile
+    ):
         """Test that soft context swapping completes within performance target (<1 second)"""
 
         # Setup mocks
@@ -150,14 +151,17 @@ class TestSoftContextSwapping(unittest.TestCase):
 
         # Verify performance target
         self.assertTrue(result, "Rotation should complete successfully")
-        self.assertLess(rotation_time, 1.0,
-                       f"Soft context swap took {rotation_time:.3f}s, should be < 1.0s")
+        self.assertLess(
+            rotation_time,
+            1.0,
+            f"Soft context swap took {rotation_time:.3f}s, should be < 1.0s",
+        )
 
         # Log performance for verification
         print(f"Soft context swap completed in {rotation_time:.3f} seconds")
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
     async def test_browser_restart_not_called(self, mock_canary, mock_get_next_profile):
         """Test that browser restart functions are not called during soft context swap"""
 
@@ -167,13 +171,15 @@ class TestSoftContextSwapping(unittest.TestCase):
         mock_canary.return_value = True
 
         # Create a separate mock to track browser restart attempts
-        getattr(server.browser_instance, 'close', None) if server.browser_instance else None
+        getattr(
+            state.browser_instance, "close", None
+        ) if state.browser_instance else None
 
         # Mock the page instance to ensure it's NOT closed
         self.mock_page.close = AsyncMock()
 
         # Mock file operations
-        with patch('builtins.open') as mock_file_open:
+        with patch("builtins.open") as mock_file_open:
             mock_file = Mock()
             mock_file_open.return_value.__enter__.return_value = mock_file
             mock_file.read.return_value = json.dumps(self.test_storage_state)
@@ -185,12 +191,14 @@ class TestSoftContextSwapping(unittest.TestCase):
             self.mock_page.close.assert_not_called()
 
             # Verify browser instance was not used (remains None)
-            self.assertIsNone(server.browser_instance)
+            self.assertIsNone(state.browser_instance)
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
-    async def test_context_operations_sequence(self, mock_canary, mock_open, mock_get_next_profile):
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
+    async def test_context_operations_sequence(
+        self, mock_canary, mock_open, mock_get_next_profile
+    ):
         """Test that context operations are called in the correct sequence"""
 
         # Setup mocks
@@ -211,20 +219,28 @@ class TestSoftContextSwapping(unittest.TestCase):
         add_call_args = self.mock_context.add_cookies.call_args_list
 
         # Should have exactly one call to each
-        self.assertEqual(len(clear_call_args), 1, "clear_cookies should be called exactly once")
-        self.assertEqual(len(add_call_args), 1, "add_cookies should be called exactly once")
+        self.assertEqual(
+            len(clear_call_args), 1, "clear_cookies should be called exactly once"
+        )
+        self.assertEqual(
+            len(add_call_args), 1, "add_cookies should be called exactly once"
+        )
 
         # Verify clear_cookies was called before add_cookies
-        clear_time = clear_call_args[0][1].get('timestamp', 0) if clear_call_args else 0
-        add_time = add_call_args[0][1].get('timestamp', 1) if add_call_args else 1
+        clear_time = clear_call_args[0][1].get("timestamp", 0) if clear_call_args else 0
+        add_time = add_call_args[0][1].get("timestamp", 1) if add_call_args else 1
 
         # In the actual implementation, we verify this by call order
-        self.assertLess(clear_time, add_time, "clear_cookies should be called before add_cookies")
+        self.assertLess(
+            clear_time, add_time, "clear_cookies should be called before add_cookies"
+        )
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
-    async def test_error_during_soft_swap(self, mock_canary, mock_open, mock_get_next_profile):
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
+    async def test_error_during_soft_swap(
+        self, mock_canary, mock_open, mock_get_next_profile
+    ):
         """Test error handling during soft context swap"""
 
         # Setup mocks
@@ -250,7 +266,7 @@ class TestSoftContextSwapping(unittest.TestCase):
         self.mock_context.clear_cookies.assert_called_once()
         self.mock_context.add_cookies.assert_called_once()
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
+    @patch("browser_utils.auth_rotation._get_next_profile")
     async def test_no_available_profiles(self, mock_get_next_profile):
         """Test behavior when no auth profiles are available"""
 
@@ -267,8 +283,8 @@ class TestSoftContextSwapping(unittest.TestCase):
         self.mock_context.clear_cookies.assert_not_called()
         self.mock_context.add_cookies.assert_not_called()
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
     async def test_page_instance_unavailable(self, mock_open, mock_get_next_profile):
         """Test behavior when page instance is unavailable or closed"""
 
@@ -294,10 +310,12 @@ class TestSoftContextSwapping(unittest.TestCase):
         self.mock_context.clear_cookies.assert_not_called()
         self.mock_context.add_cookies.assert_not_called()
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
-    async def test_canary_test_failure_handling(self, mock_canary, mock_open, mock_get_next_profile):
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
+    async def test_canary_test_failure_handling(
+        self, mock_canary, mock_open, mock_get_next_profile
+    ):
         """Test behavior when canary test fails after soft context swap"""
 
         # Setup mocks
@@ -324,16 +342,20 @@ class TestSoftContextSwapping(unittest.TestCase):
         """Test that rotation lock is properly managed during soft context swap"""
 
         # Verify initial state
-        self.assertTrue(GlobalState.AUTH_ROTATION_LOCK.is_set(),
-                       "Rotation lock should be initially set")
+        self.assertTrue(
+            GlobalState.AUTH_ROTATION_LOCK.is_set(),
+            "Rotation lock should be initially set",
+        )
 
         # Test will be completed by the async tests above which verify lock behavior
         # This is a basic test to ensure the lock mechanism is working
 
-    @patch('browser_utils.auth_rotation._get_next_profile')
-    @patch('builtins.open')
-    @patch('browser_utils.auth_rotation._perform_canary_test')
-    async def test_profile_state_updated(self, mock_canary, mock_open, mock_get_next_profile):
+    @patch("browser_utils.auth_rotation._get_next_profile")
+    @patch("builtins.open")
+    @patch("browser_utils.auth_rotation._perform_canary_test")
+    async def test_profile_state_updated(
+        self, mock_canary, mock_open, mock_get_next_profile
+    ):
         """Test that global profile state is updated after successful rotation"""
 
         # Setup mocks
@@ -353,8 +375,8 @@ class TestSoftContextSwapping(unittest.TestCase):
         self.assertTrue(result, "Rotation should complete successfully")
 
         # Verify server state was updated
-        self.assertEqual(server.current_auth_profile_path, test_profile_path)
-        self.assertEqual(os.environ.get('ACTIVE_AUTH_JSON_PATH'), test_profile_path)
+        self.assertEqual(state.current_auth_profile_path, test_profile_path)
+        self.assertEqual(os.environ.get("ACTIVE_AUTH_JSON_PATH"), test_profile_path)
 
 
 class TestSoftContextSwappingIntegration(unittest.TestCase):
@@ -368,14 +390,11 @@ class TestSoftContextSwappingIntegration(unittest.TestCase):
                 "name": "session_id",
                 "value": "test_session_123",
                 "domain": ".aistudio.google.com",
-                "path": "/"
+                "path": "/",
             }
         ]
 
-        self.test_storage_state = {
-            "cookies": self.test_cookies,
-            "origins": []
-        }
+        self.test_storage_state = {"cookies": self.test_cookies, "origins": []}
 
         # Create test profile directories
         os.makedirs("auth_profiles/saved", exist_ok=True)
@@ -387,20 +406,16 @@ class TestSoftContextSwappingIntegration(unittest.TestCase):
         self.test_profile_2 = "auth_profiles/active/test_profile_2.json"
         self.test_emergency = "auth_profiles/emergency/test_emergency.json"
 
-        with open(self.test_profile_1, 'w') as f:
+        with open(self.test_profile_1, "w") as f:
             json.dump(self.test_storage_state, f)
-        with open(self.test_profile_2, 'w') as f:
+        with open(self.test_profile_2, "w") as f:
             json.dump(self.test_storage_state, f)
-        with open(self.test_emergency, 'w') as f:
+        with open(self.test_emergency, "w") as f:
             json.dump(self.test_storage_state, f)
 
     def tearDown(self):
         """Clean up integration test files"""
-        test_files = [
-            self.test_profile_1,
-            self.test_profile_2,
-            self.test_emergency
-        ]
+        test_files = [self.test_profile_1, self.test_profile_2, self.test_emergency]
         for file_path in test_files:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -413,12 +428,21 @@ class TestSoftContextSwappingIntegration(unittest.TestCase):
 
         # Should find and return one of our test profiles
         self.assertIsNotNone(selected_profile, "Should find available profiles")
-        self.assertTrue(selected_profile.endswith('.json'), "Should return JSON file")
+        assert selected_profile is not None  # Type narrowing for type checker
+        self.assertTrue(selected_profile.endswith(".json"), "Should return JSON file")
 
-        # Should be one of our test profiles
-        valid_profiles = [self.test_profile_1, self.test_profile_2]
-        self.assertIn(selected_profile, valid_profiles,
-                     "Should select from standard directories first")
+        # Should be one of our test profiles (use absolute paths for comparison)
+        # Note: The rotation logic now includes emergency profiles in standard rotation scan
+        valid_profiles = [
+            os.path.abspath(self.test_profile_1),
+            os.path.abspath(self.test_profile_2),
+            os.path.abspath(self.test_emergency),
+        ]
+        self.assertIn(
+            os.path.abspath(selected_profile),
+            valid_profiles,
+            "Should select from available profiles",
+        )
 
     def test_cooldown_profile_exclusion(self):
         """Test that profiles in cooldown are excluded from selection"""
@@ -434,8 +458,9 @@ class TestSoftContextSwappingIntegration(unittest.TestCase):
 
         # Should not return the cooled-down profile
         self.assertIsNotNone(selected_profile, "Should find available profiles")
-        self.assertNotEqual(selected_profile, self.test_profile_1,
-                           "Should exclude cooled-down profiles")
+        self.assertNotEqual(
+            selected_profile, self.test_profile_1, "Should exclude cooled-down profiles"
+        )
 
 
 def run_tests():
@@ -447,10 +472,7 @@ def run_tests():
     print("=" * 60)
 
     # Create test suite
-    test_classes = [
-        TestSoftContextSwapping,
-        TestSoftContextSwappingIntegration
-    ]
+    test_classes = [TestSoftContextSwapping, TestSoftContextSwappingIntegration]
 
     total_tests = 0
     passed_tests = 0
@@ -476,7 +498,11 @@ def run_tests():
     print("Test Summary:")
     print(f"  Total Tests: {total_tests}")
     print(f"  Passed: {passed_tests}")
-    print(f"  Success Rate: {(passed_tests/total_tests)*100:.1f}%" if total_tests > 0 else "  Success Rate: 0%")
+    print(
+        f"  Success Rate: {(passed_tests / total_tests) * 100:.1f}%"
+        if total_tests > 0
+        else "  Success Rate: 0%"
+    )
 
     if passed_tests == total_tests:
         print("\n🎉 All tests passed! Soft Context Swapping is working correctly.")
@@ -484,7 +510,9 @@ def run_tests():
         print("✅ Cookie-based rotation confirmed")
         print("✅ Browser restart prevention verified")
     else:
-        print(f"\n⚠️  {total_tests - passed_tests} test(s) failed. Review the implementation.")
+        print(
+            f"\n⚠️  {total_tests - passed_tests} test(s) failed. Review the implementation."
+        )
 
     return passed_tests == total_tests
 

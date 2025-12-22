@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add project root to the Python path to resolve module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
 
@@ -38,8 +38,14 @@ async def test_perform_auth_rotation_waits_for_cooldown():
 
     # Set up cooldown profiles
     mock_cooldown_profiles = {
-        "/path/to/profile1.json": {"global": (datetime.now() + timedelta(seconds=10)).timestamp()},
-        "/path/to/profile2.json": {"global": (datetime.now() + timedelta(seconds=cooldown_duration)).timestamp()}
+        "/path/to/profile1.json": {
+            "global": (datetime.now() + timedelta(seconds=10)).timestamp()
+        },
+        "/path/to/profile2.json": {
+            "global": (
+                datetime.now() + timedelta(seconds=cooldown_duration)
+            ).timestamp()
+        },
     }
 
     # Track calls to _get_next_profile
@@ -65,18 +71,27 @@ async def test_perform_auth_rotation_waits_for_cooldown():
     mock_page.context = mock_context
 
     # Mock other dependencies
-    with patch('browser_utils.auth_rotation._get_next_profile', side_effect=mock_get_next_profile), \
-         patch('browser_utils.auth_rotation._COOLDOWN_PROFILES', mock_cooldown_profiles), \
-         patch('browser_utils.auth_rotation._perform_canary_test', mock_canary), \
-         patch('browser_utils.auth_rotation.save_cooldown_profiles'), \
-         patch('browser_utils.auth_rotation.GlobalState.last_error_type', 'QUOTA_EXCEEDED'), \
-         patch('server.page_instance', mock_page), \
-         patch('server.current_auth_profile_path', "/path/to/old_profile.json"), \
-         patch('browser_utils.auth_rotation.QUOTA_EXCEEDED_COOLDOWN_SECONDS', 30), \
-         patch('browser_utils.auth_rotation.RATE_LIMIT_COOLDOWN_SECONDS', 10), \
-         patch('builtins.open') as mock_open, \
-         patch('os.path.exists', return_value=True):
-
+    with (
+        patch(
+            "browser_utils.auth_rotation._get_next_profile",
+            side_effect=mock_get_next_profile,
+        ),
+        patch("browser_utils.auth_rotation._COOLDOWN_PROFILES", mock_cooldown_profiles),
+        patch("browser_utils.auth_rotation._perform_canary_test", mock_canary),
+        patch("browser_utils.auth_rotation.save_cooldown_profiles"),
+        patch(
+            "browser_utils.auth_rotation.GlobalState.last_error_type", "QUOTA_EXCEEDED"
+        ),
+        patch("browser_utils.auth_rotation.state.page_instance", mock_page),
+        patch(
+            "browser_utils.auth_rotation.state.current_auth_profile_path",
+            "/path/to/old_profile.json",
+        ),
+        patch("browser_utils.auth_rotation.QUOTA_EXCEEDED_COOLDOWN_SECONDS", 30),
+        patch("browser_utils.auth_rotation.RATE_LIMIT_COOLDOWN_SECONDS", 10),
+        patch("builtins.open") as mock_open,
+        patch("os.path.exists", return_value=True),
+    ):
         # Configure file opening to return valid profile data
         mock_file = MagicMock()
         mock_file.read.return_value = '{"cookies": []}'
@@ -91,9 +106,12 @@ async def test_perform_auth_rotation_waits_for_cooldown():
 
     # Assertions
     assert result is True, "perform_auth_rotation should return True after waiting"
-    assert execution_time >= cooldown_duration, \
+    assert execution_time >= cooldown_duration, (
         f"Expected wait time >= {cooldown_duration}s, got {execution_time:.2f}s"
-    assert call_count >= 2, f"Expected at least 2 calls to _get_next_profile, got {call_count}"
+    )
+    assert call_count >= 2, (
+        f"Expected at least 2 calls to _get_next_profile, got {call_count}"
+    )
 
     # Verify that the mock was called and waiting occurred
     assert mock_canary.called, "Canary test should have been called"

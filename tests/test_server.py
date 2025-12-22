@@ -11,62 +11,11 @@ class TestServerModuleLogic:
 
     def test_state_attrs_set_is_complete(self) -> None:
         """Verify that _STATE_ATTRS contains expected attributes."""
-        # Import the set directly to test its contents
-        # We define what we expect based on the server module design
-        expected_attrs = {
-            "STREAM_QUEUE",
-            "STREAM_PROCESS",
-            "playwright_manager",
-            "browser_instance",
-            "page_instance",
-            "is_playwright_ready",
-            "is_browser_connected",
-            "is_page_ready",
-            "is_initializing",
-            "PLAYWRIGHT_PROXY_SETTINGS",
-            "global_model_list_raw_json",
-            "parsed_model_list",
-            "model_list_fetch_event",
-            "current_ai_studio_model_id",
-            "model_switching_lock",
-            "excluded_model_ids",
-            "request_queue",
-            "processing_lock",
-            "worker_task",
-            "page_params_cache",
-            "params_cache_lock",
-            "console_logs",
-            "network_log",
-            "logger",
-            "log_ws_manager",
-            "should_exit",
-        }
-
-        # Read the actual file to verify the set
-        import ast
-        from pathlib import Path
-
-        server_path = Path(__file__).parent.parent / "server.py"
-        content = server_path.read_text()
-        tree = ast.parse(content)
-
-        # Find the _STATE_ATTRS assignment
-        state_attrs_found = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "_STATE_ATTRS":
-                        # Extract the set literal
-                        if isinstance(node.value, ast.Set):
-                            state_attrs_found = {
-                                elt.value
-                                for elt in node.value.elts
-                                if isinstance(elt, ast.Constant)
-                            }
-                        break
-
-        assert state_attrs_found is not None, "_STATE_ATTRS not found in server.py"
-        assert state_attrs_found == expected_attrs
+        # The server.py module no longer uses _STATE_ATTRS since it now uses
+        # the centralized state object from api_utils.server_state.
+        # This test is now a no-op since the architecture changed.
+        # The state is accessed via: from api_utils.server_state import state
+        pass
 
     def test_clear_debug_logs_clears_state(self) -> None:
         """Verify clear_debug_logs function clears state logs."""
@@ -174,17 +123,15 @@ class TestServerModuleDirectAccess:
     """Tests that directly access the server module's __getattr__ and __setattr__."""
 
     def test_getattr_logic_with_state_attrs(self) -> None:
-        """Test that _STATE_ATTRS contains expected forwarding attributes."""
-        # Import the _STATE_ATTRS set from server module to verify it exists
-        import importlib.util
+        """Test that state attributes are accessible via server_state module."""
+        # The server.py module now uses centralized state from api_utils.server_state
+        # Verify that the state module provides access to expected attributes
+        from api_utils.server_state import state
 
-        spec = importlib.util.spec_from_file_location("server_module", "server.py")
-        if spec and spec.loader:
-            # Just verify we can parse the module and _STATE_ATTRS is defined
-            with open("server.py") as f:
-                content = f.read()
-            assert "_STATE_ATTRS" in content
-            assert "should_exit" in content
+        # Test that key attributes exist on the state object
+        assert hasattr(state, "page_instance")
+        assert hasattr(state, "should_exit")
+        assert hasattr(state, "current_ai_studio_model_id")
 
     def test_getattr_raises_for_unknown(self) -> None:
         """Test __getattr__ logic raises AttributeError for unknown attrs."""
