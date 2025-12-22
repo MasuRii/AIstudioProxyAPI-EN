@@ -5,7 +5,6 @@ Tests for server control API endpoints including status and restart.
 """
 
 import os
-import time
 from unittest.mock import patch
 
 import pytest
@@ -15,10 +14,8 @@ from api_utils.routers.server import (
     RestartRequest,
     ServerStatus,
     _format_uptime,
-    _init_start_time,
     router,
 )
-
 
 # ==================== _format_uptime TESTS ====================
 

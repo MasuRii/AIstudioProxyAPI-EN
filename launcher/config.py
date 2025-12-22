@@ -1,7 +1,7 @@
 import argparse
 import os
-import sys
 import re
+import sys
 from typing import Dict, Optional
 
 from launcher.utils import get_proxy_from_gsettings

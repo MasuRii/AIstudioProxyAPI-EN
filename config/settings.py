@@ -5,6 +5,7 @@ Contains runtime settings such as environment variable configuration, path confi
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load .env file
@@ -36,7 +37,11 @@ LOG_FILE_BACKUP_COUNT = int(os.environ.get("LOG_FILE_BACKUP_COUNT", "5"))
 # --- Auth Related Configuration ---
 AUTO_SAVE_AUTH = os.environ.get("AUTO_SAVE_AUTH", "").lower() in ("1", "true", "yes")
 AUTH_SAVE_TIMEOUT = int(os.environ.get("AUTH_SAVE_TIMEOUT", "30"))
-AUTO_CONFIRM_LOGIN = os.environ.get('AUTO_CONFIRM_LOGIN', 'true').lower() in ('1', 'true', 'yes')
+AUTO_CONFIRM_LOGIN = os.environ.get("AUTO_CONFIRM_LOGIN", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # --- Path Configuration (Using pathlib) ---
 _CONFIG_DIR = Path(__file__).parent
@@ -49,17 +54,20 @@ LOG_DIR = str(_PROJECT_ROOT / "logs")
 APP_LOG_FILE_PATH = str(_PROJECT_ROOT / "logs" / "app.log")
 UPLOAD_FILES_DIR = str(_PROJECT_ROOT / "upload_files")
 
-def get_environment_variable(key: str, default: str = '') -> str:
+
+def get_environment_variable(key: str, default: str = "") -> str:
     """Get environment variable value"""
     return os.environ.get(key, default)
 
+
 def get_boolean_env(key: str, default: bool = False) -> bool:
     """Get boolean environment variable"""
-    value = os.environ.get(key, '').lower()
+    value = os.environ.get(key, "").lower()
     if default:
-        return value not in ('false', '0', 'no', 'off')
+        return value not in ("false", "0", "no", "off")
     else:
-        return value in ('true', '1', 'yes', 'on')
+        return value in ("true", "1", "yes", "on")
+
 
 def get_int_env(key: str, default: int = 0) -> int:
     """Get integer environment variable"""
@@ -68,23 +76,27 @@ def get_int_env(key: str, default: int = 0) -> int:
     except (ValueError, TypeError):
         return default
 
+
 # --- Proxy Configuration ---
-NO_PROXY_ENV = os.environ.get('NO_PROXY')
+NO_PROXY_ENV = os.environ.get("NO_PROXY")
 
 # --- Script Injection Configuration ---
-ENABLE_SCRIPT_INJECTION = get_boolean_env('ENABLE_SCRIPT_INJECTION', True)
-ONLY_COLLECT_CURRENT_USER_ATTACHMENTS = get_boolean_env('ONLY_COLLECT_CURRENT_USER_ATTACHMENTS', False)
-USERSCRIPT_PATH = get_environment_variable('USERSCRIPT_PATH', 'browser_utils/more_models.js')
+ENABLE_SCRIPT_INJECTION = get_boolean_env("ENABLE_SCRIPT_INJECTION", True)
+ONLY_COLLECT_CURRENT_USER_ATTACHMENTS = get_boolean_env(
+    "ONLY_COLLECT_CURRENT_USER_ATTACHMENTS", False
+)
 
 # --- Response Integrity Verification Configuration ---
-EMERGENCY_WAIT_SECONDS = get_int_env('EMERGENCY_WAIT_SECONDS', 3)
+EMERGENCY_WAIT_SECONDS = get_int_env("EMERGENCY_WAIT_SECONDS", 3)
 
 # --- Thinking Budget Configuration ---
-DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE = get_boolean_env("DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE", default=True)
+DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE = get_boolean_env(
+    "DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE", default=True
+)
 
 # --- Proactive Rotation Configuration ---
-QUOTA_SOFT_LIMIT = get_int_env('QUOTA_SOFT_LIMIT', 650000)
-QUOTA_HARD_LIMIT = get_int_env('QUOTA_HARD_LIMIT', 800000)
+QUOTA_SOFT_LIMIT = get_int_env("QUOTA_SOFT_LIMIT", 650000)
+QUOTA_HARD_LIMIT = get_int_env("QUOTA_HARD_LIMIT", 800000)
 
 MODEL_QUOTA_LIMITS = {}
 for key, value in os.environ.items():
@@ -98,11 +110,14 @@ for key, value in os.environ.items():
 PROACTIVE_ROTATION_TOKEN_LIMIT = QUOTA_HARD_LIMIT
 
 # --- Dynamic Rotation Guard Configuration ---
-HIGH_TRAFFIC_QUEUE_THRESHOLD = get_int_env('HIGH_TRAFFIC_QUEUE_THRESHOLD', 5)
-ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC = get_int_env('ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC', 10)
+HIGH_TRAFFIC_QUEUE_THRESHOLD = get_int_env("HIGH_TRAFFIC_QUEUE_THRESHOLD", 5)
+ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC = get_int_env(
+    "ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC", 10
+)
 
 # --- Granular Configuration for Auth and Budget ---
-AUTO_ROTATE_AUTH_PROFILE = get_boolean_env('AUTO_ROTATE_AUTH_PROFILE', True)
+AUTO_ROTATE_AUTH_PROFILE = get_boolean_env("AUTO_ROTATE_AUTH_PROFILE", True)
+
 
 def _get_thinking_budget_value(env_key: str, default: int, level_name: str) -> int:
     try:
@@ -113,8 +128,11 @@ def _get_thinking_budget_value(env_key: str, default: int, level_name: str) -> i
     except (ValueError, TypeError):
         return default
 
-THINKING_BUDGET_LOW = _get_thinking_budget_value('THINKING_BUDGET_LOW', 8000, "LOW")
-THINKING_BUDGET_MEDIUM = _get_thinking_budget_value('THINKING_BUDGET_MEDIUM', 16000, "MEDIUM")
-THINKING_BUDGET_HIGH = _get_thinking_budget_value('THINKING_BUDGET_HIGH', 32000, "HIGH")
 
-DEFAULT_THINKING_LEVEL = os.environ.get('DEFAULT_THINKING_LEVEL', 'low')
+THINKING_BUDGET_LOW = _get_thinking_budget_value("THINKING_BUDGET_LOW", 8000, "LOW")
+THINKING_BUDGET_MEDIUM = _get_thinking_budget_value(
+    "THINKING_BUDGET_MEDIUM", 16000, "MEDIUM"
+)
+THINKING_BUDGET_HIGH = _get_thinking_budget_value("THINKING_BUDGET_HIGH", 32000, "HIGH")
+
+DEFAULT_THINKING_LEVEL = os.environ.get("DEFAULT_THINKING_LEVEL", "low")

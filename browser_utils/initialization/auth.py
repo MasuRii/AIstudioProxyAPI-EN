@@ -17,12 +17,12 @@ logger = logging.getLogger("AIStudioProxyServer")
 
 async def wait_for_model_list_and_handle_auth_save(temp_context, launch_mode, loop):
     """Wait for model list response and handle authentication saving"""
-    import server
+    from api_utils.server_state import state
 
     # Wait for model list response to confirm login success
     logger.info("Waiting for model list response to confirm login success...")
     try:
-        await asyncio.wait_for(server.model_list_fetch_event.wait(), timeout=30.0)
+        await asyncio.wait_for(state.model_list_fetch_event.wait(), timeout=30.0)
         logger.info("Model list response detected, login confirmed!")
     except asyncio.TimeoutError:
         logger.warning(

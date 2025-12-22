@@ -7,7 +7,6 @@ from playwright.async_api import Page as AsyncPage
 from playwright.async_api import expect as expect_async
 
 from config import RESPONSE_CONTAINER_SELECTOR, RESPONSE_TEXT_SELECTOR
-from logging_utils import set_request_id
 
 
 async def locate_response_elements(

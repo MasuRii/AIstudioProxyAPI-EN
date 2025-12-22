@@ -14,12 +14,10 @@ Test scenarios:
 Run with: python tests/test_request_queueing.py
 """
 
-import asyncio
+import os
+import sys
 import time
 import unittest
-import sys
-import os
-from unittest.mock import Mock, patch, AsyncMock
 
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))

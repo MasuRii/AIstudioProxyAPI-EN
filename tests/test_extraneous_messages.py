@@ -1,15 +1,17 @@
-import pytest
 import asyncio
 import json
-import sys
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Ensure root is in path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from api_utils.response_generators import gen_sse_from_aux_stream
 from models import ChatCompletionRequest, Message
+
 
 # Mock use_stream_response to yield sequence including messages after done
 async def mock_use_stream_response_generator(req_id, timeout=5.0, page=None, check_client_disconnected=None, enable_silence_detection=True):

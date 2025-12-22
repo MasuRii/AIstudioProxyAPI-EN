@@ -415,7 +415,6 @@ class InputController(BaseController):
         self, prompt_textarea_locator, check_client_disconnected: Callable
     ) -> bool:
         """Submit using the Enter key."""
-        import os
 
         try:
             await prompt_textarea_locator.focus(timeout=5000)

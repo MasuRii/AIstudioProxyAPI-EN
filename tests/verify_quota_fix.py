@@ -1,17 +1,19 @@
-import sys
-import os
 import asyncio
 import json
+import os
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 # Add repository root to sys.path
 sys.path.append(os.getcwd())
 
-from config.global_state import GlobalState
-from api_utils.response_generators import gen_sse_from_aux_stream
-from models import ChatCompletionRequest, Message
 import browser_utils.operations  # Import to ensure we can patch it
+from api_utils.response_generators import gen_sse_from_aux_stream
+from config.global_state import GlobalState
+from models import ChatCompletionRequest, Message
+
 
 # Mock ChatCompletionRequest
 def create_mock_request():

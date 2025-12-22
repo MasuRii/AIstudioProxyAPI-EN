@@ -15,20 +15,19 @@ Key improvements being tested:
 Run with: python tests/test_soft_context_swapping.py
 """
 
-import asyncio
-import time
-import unittest
 import json
 import os
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
 import sys
+import time
+import unittest
+from unittest.mock import AsyncMock, Mock, patch
 
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from config.global_state import GlobalState
-from browser_utils.auth_rotation import perform_auth_rotation, _get_next_profile
 import server
+from browser_utils.auth_rotation import _get_next_profile, perform_auth_rotation
+from config.global_state import GlobalState
 
 
 class TestSoftContextSwapping(unittest.TestCase):

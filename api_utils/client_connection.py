@@ -4,7 +4,6 @@ from typing import Any, Callable, Coroutine, Dict, Tuple
 
 from fastapi import HTTPException, Request
 
-from logging_utils import set_request_id
 from models import ClientDisconnectedError
 
 
@@ -129,7 +128,9 @@ async def non_streaming_disconnect_monitor(
 async def setup_disconnect_monitoring(
     req_id: str, http_request: Request, result_future
 ) -> Tuple[Event, asyncio.Task, Callable]:
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     client_disconnected_event = Event()
     disconnect_count = 0

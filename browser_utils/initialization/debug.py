@@ -19,7 +19,7 @@ def setup_debug_listeners(page: AsyncPage) -> None:
     """
     from datetime import datetime, timezone
 
-    import server
+    from api_utils.server_state import state
 
     def handle_console(msg):
         """Handle console messages from the browser."""
@@ -32,7 +32,7 @@ def setup_debug_listeners(page: AsyncPage) -> None:
                 if url or line:
                     location_str = f"{url}:{line}"
 
-            server.console_logs.append(
+            state.console_logs.append(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "type": msg.type,
@@ -59,7 +59,7 @@ def setup_debug_listeners(page: AsyncPage) -> None:
             ):
                 return  # Skip static assets
 
-            server.network_log["requests"].append(
+            state.network_log["requests"].append(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "url": request.url,
@@ -81,7 +81,7 @@ def setup_debug_listeners(page: AsyncPage) -> None:
             ):
                 return  # Skip static assets
 
-            server.network_log["responses"].append(
+            state.network_log["responses"].append(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "url": response.url,

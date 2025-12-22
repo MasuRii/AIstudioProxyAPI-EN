@@ -7,7 +7,9 @@ async def use_helper_get_response(
 ) -> AsyncGenerator[str, None]:
     import aiohttp
 
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     logger.info(f"Attempting to use Helper endpoint: {helper_endpoint}")
 

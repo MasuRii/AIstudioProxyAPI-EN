@@ -22,15 +22,17 @@ def get_log_ws_manager():
 
 
 def get_request_queue() -> "Queue[QueueItem]":
-    from api_utils.server_state import state
     from typing import cast
+
+    from api_utils.server_state import state
 
     return cast("Queue[QueueItem]", state.request_queue)
 
 
 def get_processing_lock() -> Lock:
-    from api_utils.server_state import state
     from typing import cast
+
+    from api_utils.server_state import state
 
     return cast(Lock, state.processing_lock)
 
@@ -60,8 +62,9 @@ def get_page_instance():
 
 
 def get_model_list_fetch_event() -> Event:
-    from api_utils.server_state import state
     from typing import cast
+
+    from api_utils.server_state import state
 
     return cast(Event, state.model_list_fetch_event)
 
@@ -79,8 +82,9 @@ def get_excluded_model_ids() -> Set[str]:
 
 
 def get_current_ai_studio_model_id() -> str:
-    from api_utils.server_state import state
     from typing import cast
+
+    from api_utils.server_state import state
 
     return cast(str, state.current_ai_studio_model_id)
 
@@ -91,10 +95,11 @@ async def ensure_request_lock():
     If Auth Rotation is in progress (Lock is cleared) or Quota is Exceeded (Rotation imminent),
     this will pause the request until the system is ready.
     """
-    from config.global_state import GlobalState
     import asyncio
-    from api_utils.server_state import state as server_state
     import time
+
+    from api_utils.server_state import state as server_state
+    from config.global_state import GlobalState
 
     logger = server_state.logger
 

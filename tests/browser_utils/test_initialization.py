@@ -18,19 +18,17 @@ from browser_utils.initialization import (
 async def test_initialize_page_logic_success(
     mock_browser, mock_browser_context, mock_page, mock_env, mock_expect
 ):
-    # Mock server module
+    # Mock state
+    mock_state = MagicMock()
+    mock_state.PLAYWRIGHT_PROXY_SETTINGS = None
     with (
-        patch.dict("sys.modules", {"server": MagicMock()}),
+        patch("api_utils.server_state.state", mock_state),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
         ),
         patch("browser_utils.initialization.core.setup_debug_listeners"),
     ):
-        import server
-
-        setattr(server, "PLAYWRIGHT_PROXY_SETTINGS", None)
-
         # Mock page finding logic
         mock_page.url = "https://aistudio.google.com/prompts/new_chat"
         mock_page.is_closed.return_value = False

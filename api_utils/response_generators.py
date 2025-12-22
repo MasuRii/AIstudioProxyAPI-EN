@@ -8,20 +8,21 @@ from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, cast
 
 from playwright.async_api import Page as AsyncPage
 
-from models import (
-    ClientDisconnectedError,
-    ChatCompletionRequest,
-    QuotaExceededRetry,
-    QuotaExceededError,
-)
+from api_utils.utils_ext.usage_tracker import increment_profile_usage
 from config import CHAT_COMPLETION_ID_PREFIX
 from config.global_state import GlobalState
+from logging_utils import set_request_id
+from models import (
+    ChatCompletionRequest,
+    ClientDisconnectedError,
+    QuotaExceededError,
+    QuotaExceededRetry,
+)
+
 from .common_utils import random_id
 from .sse import generate_sse_chunk, generate_sse_stop_chunk
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
-from api_utils.utils_ext.usage_tracker import increment_profile_usage
-from logging_utils import set_request_id
 
 
 async def resilient_stream_generator(
@@ -34,7 +35,9 @@ async def resilient_stream_generator(
     Wraps a stream generator with resiliency logic.
     Handles QuotaExceededError by triggering auth rotation and retrying.
     """
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
     from browser_utils.auth_rotation import perform_auth_rotation
 
     max_retries = 3
@@ -409,14 +412,14 @@ async def gen_sse_from_aux_stream(
             )
             total_tokens = usage_stats.get("total_tokens", 0)
             GlobalState.increment_token_count(total_tokens)
-            import server
+            from api_utils.server_state import state
 
             if (
-                hasattr(server, "current_auth_profile_path")
-                and server.current_auth_profile_path
+                hasattr(state, "current_auth_profile_path")
+                and state.current_auth_profile_path
             ):
                 await increment_profile_usage(
-                    server.current_auth_profile_path, total_tokens
+                    state.current_auth_profile_path, total_tokens
                 )
 
             final_chunk = {
@@ -490,15 +493,13 @@ async def gen_sse_from_playwright(
         )
         total_tokens = usage_stats.get("total_tokens", 0)
         GlobalState.increment_token_count(total_tokens)
-        import server
+        from api_utils.server_state import state
 
         if (
-            hasattr(server, "current_auth_profile_path")
-            and server.current_auth_profile_path
+            hasattr(state, "current_auth_profile_path")
+            and state.current_auth_profile_path
         ):
-            await increment_profile_usage(
-                server.current_auth_profile_path, total_tokens
-            )
+            await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
         yield generate_sse_stop_chunk(
             req_id, model_name_for_stream, "stop", usage_stats

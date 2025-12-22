@@ -5,9 +5,7 @@ from playwright.async_api import Error as PlaywrightAsyncError
 
 from browser_utils.operations import (
     _get_final_response_content,
-    _get_injected_models,
     _handle_model_list_response,
-    _parse_userscript_models,
     _wait_for_response_completion,
     detect_and_extract_page_error,
     get_raw_text_content,
@@ -101,58 +99,6 @@ async def test_get_raw_text_content_fallback():
     assert result == "element content"
 
 
-def test_parse_userscript_models():
-    """Test parsing models from userscript."""
-    script = """
-    const SCRIPT_VERSION = 'v1.0';
-    const MODELS_TO_INJECT = [
-        {
-            name: 'models/test-model',
-            displayName: 'Test Model',
-            description: 'A test model'
-        }
-    ];
-    """
-    models = _parse_userscript_models(script)
-    assert len(models) == 1
-    assert models[0]["name"] == "models/test-model"
-
-
-def test_parse_userscript_models_empty():
-    """Test parsing empty or invalid userscript."""
-    script = "const SCRIPT_VERSION = 'v1.0';"
-    models = _parse_userscript_models(script)
-    assert models == []
-
-
-@patch("os.environ.get")
-@patch("os.path.exists")
-@patch("builtins.open")
-def test_get_injected_models(
-    mock_open: MagicMock, mock_exists: MagicMock, mock_env: MagicMock
-):
-    """Test getting injected models."""
-    mock_env.return_value = "true"
-    mock_exists.return_value = True
-
-    script_content = """
-    const SCRIPT_VERSION = 'v1.0';
-    const MODELS_TO_INJECT = [
-        {
-            name: 'models/test-model',
-            displayName: 'Test Model',
-            description: 'A test model'
-        }
-    ];
-    """
-    mock_open.return_value.__enter__.return_value.read.return_value = script_content
-
-    models = _get_injected_models()
-    assert len(models) == 1
-    assert models[0]["id"] == "test-model"
-    assert models[0]["injected"] is True
-
-
 @pytest.mark.asyncio
 async def test_handle_model_list_response_success():
     """Test handling successful model list response."""
@@ -171,12 +117,12 @@ async def test_handle_model_list_response_success():
         }
     )
 
-    mock_server = MagicMock()
-    mock_server.parsed_model_list = []
-    mock_server.global_model_list_raw_json = None
-    mock_server.model_list_fetch_event = None
+    mock_state = MagicMock()
+    mock_state.parsed_model_list = []
+    mock_state.global_model_list_raw_json = None
+    mock_state.model_list_fetch_event = MagicMock()
 
-    with patch.dict("sys.modules", {"server": mock_server}):
+    with patch("api_utils.server_state.state", mock_state):
         await _handle_model_list_response(response)
 
 
@@ -293,7 +239,9 @@ async def test_wait_for_response_completion_success(mock_page: MagicMock):
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=1000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=1.0,
         initial_wait_ms=0,
     )
     assert result is True
@@ -1323,7 +1271,9 @@ async def test_wait_for_response_completion_client_disconnect_early():
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=1000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=1.0,
         initial_wait_ms=0,
     )
 
@@ -1354,7 +1304,9 @@ async def test_wait_for_response_completion_timeout():
             edit_btn,
             "req_id",
             check_disconnect,
-            timeout_ms=100,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=0.1,
             initial_wait_ms=0,
         )
 
@@ -1391,7 +1343,9 @@ async def test_wait_for_response_completion_client_disconnect_after_timeout_chec
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1429,7 +1383,9 @@ async def test_wait_for_response_completion_submit_button_timeout():
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1465,7 +1421,9 @@ async def test_wait_for_response_completion_client_disconnect_after_button_check
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1499,7 +1457,9 @@ async def test_wait_for_response_completion_debug_logging():
             edit_btn,
             "req_id",
             check_disconnect,
-            timeout_ms=5000,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=5.0,
             initial_wait_ms=0,
         )
 
@@ -1538,7 +1498,9 @@ async def test_wait_for_response_completion_edit_button_timeout():
             edit_btn,
             "req_id",
             check_disconnect,
-            timeout_ms=5000,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=5.0,
             initial_wait_ms=0,
         )
 
@@ -1575,7 +1537,9 @@ async def test_wait_for_response_completion_client_disconnect_after_edit_check()
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1602,7 +1566,9 @@ async def test_wait_for_response_completion_heuristic_completion():
         edit_btn,
         "req_id",
         check_disconnect,
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1638,7 +1604,9 @@ async def test_wait_for_response_completion_conditions_not_met_with_debug():
             edit_btn,
             "req_id",
             check_disconnect,
-            timeout_ms=5000,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=5.0,
             initial_wait_ms=0,
         )
 

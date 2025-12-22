@@ -1,11 +1,12 @@
-import unittest
-from unittest.mock import patch, MagicMock
 import os
 import time
+import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 # Import the module to test
 from browser_utils import auth_rotation
+
 
 class TestSmartRotationLogic(unittest.TestCase):
 

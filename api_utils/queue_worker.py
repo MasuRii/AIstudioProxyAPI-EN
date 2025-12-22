@@ -4,51 +4,49 @@ Handles tasks in the request queue
 """
 
 import asyncio
-import logging
 import time
-from asyncio import Event, Future, Lock, Queue, Task
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
+from asyncio import Event, Future, Task
+from typing import Callable, Optional, cast
 
 from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-from playwright.async_api import Locator, expect as expect_async
+from playwright.async_api import Locator
+from playwright.async_api import expect as expect_async
 
 from api_utils.context_types import QueueItem
+from models import QuotaExceededError
+
 from .client_connection import check_client_connection
-from logging_utils import set_request_id, set_source
-from models import ChatCompletionRequest, QuotaExceededError
 
 
 async def queue_worker() -> None:
     """Queue worker, processes tasks in the request queue"""
     # Delayed imports to avoid circularity
-    import server
-    from server import (
-        logger,
-        request_queue,
-        processing_lock,
-        model_switching_lock,
-        params_cache_lock,
-        RESPONSE_COMPLETION_TIMEOUT,
-    )
+    from api_utils.server_state import state
+    from config import RESPONSE_COMPLETION_TIMEOUT
+
+    logger = state.logger
+    request_queue = state.request_queue
+    processing_lock = state.processing_lock
+    model_switching_lock = state.model_switching_lock
+    params_cache_lock = state.params_cache_lock
+    from browser_utils.auth_rotation import perform_auth_rotation
+    from browser_utils.page_controller import PageController
     from config.global_state import GlobalState
 
-    # Internal imports for queue worker logic
-    from .request_processor import (
-        _test_client_connection,
-        ClientDisconnectedError,
-        save_error_snapshot,
-        _process_request_refactored,
-    )
     from .error_utils import (
         client_cancelled,
         client_disconnected,
         server_error,
-        processing_timeout,
+    )
+
+    # Internal imports for queue worker logic
+    from .request_processor import (
+        ClientDisconnectedError,
+        _process_request_refactored,
+        _test_client_connection,
+        save_error_snapshot,
     )
     from .utils_ext.stream import clear_stream_queue
-    from browser_utils.auth_rotation import perform_auth_rotation
-    from browser_utils.page_controller import PageController
 
     logger.info("--- Queue Worker Started ---")
 
@@ -154,10 +152,7 @@ async def queue_worker() -> None:
                 logger.info(f"⏸️ Pausing worker for Auth Rotation ({reason})...")
                 GlobalState.start_recovery()
                 try:
-                    current_model_id = cast(
-                        Optional[str],
-                        getattr(server, "current_ai_studio_model_id", None),
-                    )
+                    current_model_id = state.current_ai_studio_model_id
                     rotation_success = await perform_auth_rotation(
                         target_model_id=current_model_id or ""
                     )
@@ -266,8 +261,8 @@ async def queue_worker() -> None:
                                     completion_event.get("done")
                                     and is_streaming_request
                                 ):
-                                    if server.STREAM_QUEUE:
-                                        await server.STREAM_QUEUE.put(completion_event)
+                                    if state.STREAM_QUEUE:
+                                        await state.STREAM_QUEUE.put(completion_event)
                                 if result_future and not result_future.done():
                                     result_future.set_result(completion_event)
                                 client_disconnected_early = False
@@ -391,9 +386,7 @@ async def queue_worker() -> None:
             # [ROTATION] Post-request rotation check
             just_rotated = False
             if GlobalState.NEEDS_ROTATION:
-                current_model_id_rot = cast(
-                    Optional[str], getattr(server, "current_ai_studio_model_id", None)
-                )
+                current_model_id_rot = state.current_ai_studio_model_id
                 if await perform_auth_rotation(
                     target_model_id=current_model_id_rot or ""
                 ):
@@ -409,11 +402,9 @@ async def queue_worker() -> None:
                     and not GlobalState.IS_SHUTTING_DOWN.is_set()
                 ):
                     if submit_btn_loc and client_disco_checker:
-                        from server import (
-                            page_instance as s_page,
-                            is_page_ready as s_ready,
-                            browser_instance as s_browser,
-                        )
+                        s_page = state.page_instance
+                        s_ready = state.is_page_ready
+                        s_browser = state.browser_instance
 
                         if (
                             s_page

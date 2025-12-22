@@ -6,7 +6,6 @@ Focus: Test helper functions and path configuration.
 
 import os
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -16,7 +15,6 @@ from config.settings import (
     get_environment_variable,
     get_int_env,
 )
-
 
 # ===================== get_environment_variable Tests =====================
 

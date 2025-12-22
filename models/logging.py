@@ -3,7 +3,7 @@ import datetime
 import json
 import logging
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from fastapi import WebSocket, WebSocketDisconnect
 

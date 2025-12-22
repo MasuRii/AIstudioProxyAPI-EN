@@ -10,12 +10,12 @@ from playwright.async_api import Page as AsyncPage
 from config import DEFAULT_FALLBACK_MODEL_ID
 
 from ..dependencies import (
+    ensure_request_lock,
     get_excluded_model_ids,
     get_logger,
     get_model_list_fetch_event,
     get_page_instance,
     get_parsed_model_list,
-    ensure_request_lock,
 )
 
 

@@ -5,8 +5,10 @@ import sys
 import zlib
 from typing import Any, Dict, Tuple, Union
 from urllib.parse import unquote
+
 from config.global_state import GlobalState
 from logging_utils.grid_logger import GridFormatter
+
 
 class HttpInterceptor:
     """
@@ -15,7 +17,7 @@ class HttpInterceptor:
 
     def __init__(self, log_dir: str = "logs"):
         self.log_dir = log_dir
-        self.logger = logging.getLogger('http_interceptor')
+        self.logger = logging.getLogger("http_interceptor")
         self.response_buffer = ""  # Persistent buffer for accumulating response data
         self.setup_logging()
 
@@ -24,11 +26,7 @@ class HttpInterceptor:
         """Set up logging configuration with colored output"""
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setFormatter(
-            GridFormatter(
-                show_tree=False,
-                colorize=True,
-                burst_suppression=False
-            )
+            GridFormatter(show_tree=False, colorize=True, burst_suppression=False)
         )
         console_handler.setLevel(logging.INFO)
 
@@ -49,11 +47,11 @@ class HttpInterceptor:
         # Check if the endpoint contains GenerateContent
         if "GenerateContent" in path or "generateContent" in path:
             return True
-            
+
         # Check for jserror logging endpoint
-        if 'jserror' in path:
+        if "jserror" in path:
             return True
-        
+
         return False
 
     async def process_request(
@@ -67,17 +65,29 @@ class HttpInterceptor:
 
         # Log the request
         self.logger.debug(f"[Network] Intercepted request: {host}{path}")
-        
+
         # Check for Quota Exceeded errors in jserror requests
-        if 'jserror' in path:
+        if "jserror" in path:
             try:
                 decoded_path = unquote(path)
-                if any(keyword in decoded_path for keyword in ["exceeded quota", "RESOURCE_EXHAUSTED", "Failed to generate content"]):
-                    self.logger.critical(f"🚨 CRITICAL: Detected Quota Exceeded error in network traffic! URL: {path}")
-                    
-                    from server import current_ai_studio_model_id
-                    model_id = current_ai_studio_model_id
-                    GlobalState.set_quota_exceeded(message=decoded_path, model_id=model_id or "")
+                if any(
+                    keyword in decoded_path
+                    for keyword in [
+                        "exceeded quota",
+                        "RESOURCE_EXHAUSTED",
+                        "Failed to generate content",
+                    ]
+                ):
+                    self.logger.critical(
+                        f"🚨 CRITICAL: Detected Quota Exceeded error in network traffic! URL: {path}"
+                    )
+
+                    from api_utils.server_state import state
+
+                    model_id = state.current_ai_studio_model_id
+                    GlobalState.set_quota_exceeded(
+                        message=decoded_path, model_id=model_id or ""
+                    )
             except Exception as e:
                 self.logger.error(f"Error parsing jserror path: {e}")
 
@@ -98,15 +108,15 @@ class HttpInterceptor:
             decoded_data, is_done = self._decode_chunked(bytes(response_data))
             # Handle gzip encoding
             decoded_data = self._decompress_zlib_stream(decoded_data)
-            
+
             # Convert to string and accumulate in persistent buffer
             try:
-                decoded_str = decoded_data.decode('utf-8')
+                decoded_str = decoded_data.decode("utf-8")
                 self.response_buffer += decoded_str
             except UnicodeDecodeError:
                 # Not UTF-8 data, return empty result
                 return {"reason": "", "body": "", "function": [], "done": is_done}
-            
+
             # Try to parse complete JSON objects from the buffer
             result = self.parse_response_from_buffer(is_done)
             return result
@@ -118,64 +128,69 @@ class HttpInterceptor:
         """
         Parse complete JSON objects from the persistent response buffer.
         """
-        resp = {
-            "reason": "",
-            "body": "",
-            "function": [],
-            "done": is_done
-        }
-        
+        resp = {"reason": "", "body": "", "function": [], "done": is_done}
+
         try:
             # Check buffer size to prevent memory leaks
             if len(self.response_buffer) > 10 * 1024 * 1024:  # 10MB limit
-                self.logger.warning("Response buffer exceeded 10MB, clearing to prevent memory leak")
+                self.logger.warning(
+                    "Response buffer exceeded 10MB, clearing to prevent memory leak"
+                )
                 self.response_buffer = ""
                 return resp
-            
+
             # Look for complete JSON objects in the buffer
             pattern = rb'\[\[\[null,.*?]],"model"]'
-            
+
             # Convert buffer to bytes for pattern matching
-            buffer_bytes = self.response_buffer.encode('utf-8')
+            buffer_bytes = self.response_buffer.encode("utf-8")
             matches = list(re.finditer(pattern, buffer_bytes))
-            
+
             if matches:
                 # Process all complete matches found in buffer
                 for match in matches:
                     try:
                         json_data = json.loads(match.group(0))
                         payload = json_data[0][0]
-                        
+
                         if len(payload) == 2:  # body
                             resp["body"] += payload[1]
-                        elif len(payload) == 11 and payload[1] is None and type(payload[10]) == list:  # function
+                        elif (
+                            len(payload) == 11
+                            and payload[1] is None
+                            and type(payload[10]) == list
+                        ):  # function
                             array_tool_calls = payload[10]
                             func_name = array_tool_calls[0]
                             params = self.parse_toolcall_params(array_tool_calls[1])
-                            resp["function"].append({"name": func_name, "params": params})
+                            resp["function"].append(
+                                {"name": func_name, "params": params}
+                            )
                         elif len(payload) > 2:  # reason
                             resp["reason"] += payload[1]
-                            
+
                     except (json.JSONDecodeError, IndexError, TypeError) as e:
                         self.logger.debug(f"Failed to parse JSON chunk: {e}")
                         continue
-                
+
                 # Remove processed data from buffer
                 last_match_end = matches[-1].end()
                 if last_match_end < len(buffer_bytes):
                     remaining_bytes = buffer_bytes[last_match_end:]
-                    self.response_buffer = remaining_bytes.decode('utf-8', errors='ignore')
+                    self.response_buffer = remaining_bytes.decode(
+                        "utf-8", errors="ignore"
+                    )
                 else:
                     self.response_buffer = ""
             else:
                 self.logger.debug("Buffering incomplete JSON data...")
-                
+
         except UnicodeDecodeError as e:
             self.logger.debug(f"Unicode decode error in buffer parsing: {e}")
             self.response_buffer = ""
         except Exception as e:
             self.logger.debug(f"Error in buffer parsing: {e}")
-            
+
         return resp
 
     def parse_toolcall_params(self, args: Any) -> Dict[str, Any]:

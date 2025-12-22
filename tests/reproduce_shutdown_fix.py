@@ -1,7 +1,7 @@
 import asyncio
+import logging
 import threading
 import time
-import logging
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

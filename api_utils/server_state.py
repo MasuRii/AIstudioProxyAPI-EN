@@ -16,7 +16,7 @@ import asyncio
 import logging
 import multiprocessing
 from asyncio import Event, Lock, Queue, Task
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     from playwright.async_api import (

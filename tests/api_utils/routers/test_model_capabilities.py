@@ -12,7 +12,6 @@ from api_utils.routers.model_capabilities import (
     router,
 )
 
-
 # ==================== _get_model_capabilities TESTS ====================
 
 

@@ -4,8 +4,6 @@ Encapsulates all complex logic for direct interaction with Playwright pages.
 """
 
 import asyncio
-import base64
-import mimetypes
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -15,54 +13,33 @@ from playwright.async_api import expect as expect_async
 from config import (
     CLEAR_CHAT_BUTTON_SELECTOR,
     CLEAR_CHAT_CONFIRM_BUTTON_SELECTOR,
-    CLEAR_CHAT_VERIFY_TIMEOUT_MS,
     CLICK_TIMEOUT_MS,
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_STOP_SEQUENCES,
     DEFAULT_TEMPERATURE,
     DEFAULT_TOP_P,
     EDIT_MESSAGE_BUTTON_SELECTOR,
-    ENABLE_GOOGLE_SEARCH,
-    ENABLE_THINKING_MODE_TOGGLE_SELECTOR,
     ENABLE_URL_CONTEXT,
-    GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR,
     PROMPT_TEXTAREA_SELECTOR,
-    RESPONSE_CONTAINER_SELECTOR,
-    RESPONSE_TEXT_SELECTOR,
-    SET_THINKING_BUDGET_TOGGLE_SELECTOR,
     SUBMIT_BUTTON_SELECTOR,
-    TEMPERATURE_INPUT_SELECTOR,
-    THINKING_BUDGET_INPUT_SELECTOR,
-    THINKING_LEVEL_DROPDOWN_SELECTOR,
-    THINKING_LEVEL_OPTION_HIGH_SELECTOR,
-    THINKING_LEVEL_OPTION_LOW_SELECTOR,
-    THINKING_LEVEL_SELECT_SELECTOR,
-    TOP_P_INPUT_SELECTOR,
     UPLOAD_BUTTON_SELECTOR,
-    USE_URL_CONTEXT_SELECTOR,
-    AI_STUDIO_URL_PATTERN,
 )
 from models import ClientDisconnectedError, QuotaExceededError
+
 from .initialization import enable_temporary_chat_mode
 from .operations import (
     _get_final_response_content,
     _wait_for_response_completion,
     check_quota_limit,
-    save_error_snapshot,
-    get_response_via_edit_button,
     get_response_via_copy_button,
-    capture_response_state_for_debug,
+    get_response_via_edit_button,
 )
-from .thinking_normalizer import (
-    format_directive_log,
-    normalize_reasoning_effort_with_stream_check,
-)
-from .page_controller_modules.parameters import ParameterController
-from .page_controller_modules.input import InputController
+from .page_controller_modules.base import BaseController
 from .page_controller_modules.chat import ChatController
+from .page_controller_modules.input import InputController
+from .page_controller_modules.parameters import ParameterController
 from .page_controller_modules.response import ResponseController
 from .page_controller_modules.thinking import ThinkingController
-from .page_controller_modules.base import BaseController
 
 
 class PageController(

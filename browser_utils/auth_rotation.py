@@ -1,30 +1,30 @@
 import asyncio
-import os
-import logging
 import glob
-import time
-import random
 import json
+import logging
+import os
+import random
+import time
 from datetime import datetime, timedelta
 from typing import Optional
+
 from playwright.async_api import Page, TimeoutError
 
-
-from config.global_state import GlobalState
-from config.settings import (
-    HIGH_TRAFFIC_QUEUE_THRESHOLD,
-    ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC,
-    AUTO_ROTATE_AUTH_PROFILE,
-)
-from config.timeouts import RATE_LIMIT_COOLDOWN_SECONDS, QUOTA_EXCEEDED_COOLDOWN_SECONDS
-from config import AI_STUDIO_URL_PATTERN
-from config.selectors import PROMPT_TEXTAREA_SELECTOR
 from api_utils.server_state import state
-from api_utils.utils_ext.usage_tracker import get_profile_usage
 from api_utils.utils_ext.cooldown_manager import (
     load_cooldown_profiles,
     save_cooldown_profiles,
 )
+from api_utils.utils_ext.usage_tracker import get_profile_usage
+from config import AI_STUDIO_URL_PATTERN
+from config.global_state import GlobalState
+from config.selectors import PROMPT_TEXTAREA_SELECTOR
+from config.settings import (
+    AUTO_ROTATE_AUTH_PROFILE,
+    HIGH_TRAFFIC_QUEUE_THRESHOLD,
+    ROTATION_DEPLETION_GUARD_HIGH_TRAFFIC,
+)
+from config.timeouts import QUOTA_EXCEEDED_COOLDOWN_SECONDS, RATE_LIMIT_COOLDOWN_SECONDS
 
 logger = logging.getLogger("AuthRotation")
 

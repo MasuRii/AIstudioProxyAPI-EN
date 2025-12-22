@@ -6,9 +6,8 @@ This script tests that .env file settings are respected when not explicitly over
 
 import os
 import sys
-import subprocess
 import tempfile
-import json
+
 
 def test_config_fix():
     """Test that environment variables from .env are respected."""

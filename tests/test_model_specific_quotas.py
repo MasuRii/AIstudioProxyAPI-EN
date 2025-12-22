@@ -2,9 +2,9 @@
 
 import unittest
 from unittest.mock import patch
-import os
-from config.global_state import GlobalState
+
 from config import global_state
+from config.global_state import GlobalState
 
 
 class TestModelSpecificQuotas(unittest.TestCase):

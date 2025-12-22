@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "playwright": "^1.44.1",
-    "@playwright/test": "^1.44.1"
-  }
-}

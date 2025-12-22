@@ -11,8 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from api_utils.queue_worker import queue_worker
-
 
 @pytest.mark.integration
 @pytest.mark.asyncio

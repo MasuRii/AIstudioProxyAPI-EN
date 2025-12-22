@@ -169,25 +169,25 @@ async def initialize_page_logic(  # pragma: no cover
         context_options: Dict[str, Any] = {"viewport": {"width": 460, "height": 800}}
         if storage_state_path_to_use:
             context_options["storage_state"] = storage_state_path_to_use
-            import server
+            from api_utils.server_state import state
 
-            server.current_auth_profile_path = storage_state_path_to_use
+            state.current_auth_profile_path = storage_state_path_to_use
             logger.info(
                 f"   (Using storage_state='{os.path.basename(storage_state_path_to_use)}')"
             )
         else:
-            import server
+            from api_utils.server_state import state
 
-            server.current_auth_profile_path = None
+            state.current_auth_profile_path = None
             logger.info("   (Not using storage_state)")
 
         # Proxy settings need to be retrieved from the server module
-        import server
+        from api_utils.server_state import state
 
-        if server.PLAYWRIGHT_PROXY_SETTINGS:
-            context_options["proxy"] = server.PLAYWRIGHT_PROXY_SETTINGS
+        if state.PLAYWRIGHT_PROXY_SETTINGS:
+            context_options["proxy"] = state.PLAYWRIGHT_PROXY_SETTINGS
             logger.debug(
-                f"[Browser] Context configured with proxy: {server.PLAYWRIGHT_PROXY_SETTINGS['server']}"
+                f"[Browser] Context configured with proxy: {state.PLAYWRIGHT_PROXY_SETTINGS['server']}"
             )
 
         context_options["ignore_https_errors"] = True
@@ -531,9 +531,9 @@ async def signal_camoufox_shutdown() -> None:  # pragma: no cover
         return
 
     # Need to access global browser instance
-    import server
+    from api_utils.server_state import state
 
-    if not server.browser_instance or not server.browser_instance.is_connected():
+    if not state.browser_instance or not state.browser_instance.is_connected():
         logger.warning(
             "Browser instance disconnected or not initialized, skipping shutdown signal send."
         )

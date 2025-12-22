@@ -138,7 +138,8 @@ class TestGetTexasTimestamp:
     @patch("browser_utils.debug_utils.datetime")
     def test_timezone_offset_local(self, mock_datetime):
         """Test local timezone offset (using system timezone)."""
-        from datetime import datetime as real_datetime, timezone as real_timezone
+        from datetime import datetime as real_datetime
+        from datetime import timezone as real_timezone
 
         # Create a mock datetime that returns a proper aware datetime
         # Simulate a UTC time that can be converted to local time

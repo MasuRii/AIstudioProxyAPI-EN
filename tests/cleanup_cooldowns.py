@@ -7,6 +7,7 @@ Removes 'default' entries when specific model entries exist for the same profile
 import json
 import os
 
+
 def cleanup_cooldown_file():
     cooldown_file = "config/cooldown_status.json"
     

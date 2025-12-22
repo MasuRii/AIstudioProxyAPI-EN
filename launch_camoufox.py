@@ -1,45 +1,27 @@
 #!/usr/bin/env python3
 # launch_camoufox.py
-import asyncio
-import sys
-import subprocess
-import time
-import re
-import os
-import signal
-import atexit
 import argparse
-import select
-import traceback
+import asyncio
+import atexit
 import json
-import threading
-import queue
 import logging
 import logging.handlers
-import socket
+import os
 import platform
+import queue
+import re
+import select
 import shutil
+import signal
+import socket
+import subprocess
 
 #!/usr/bin/env python3
 # launch_camoufox.py
 import sys
-import subprocess
-import time
-import re
-import os
-import signal
-import atexit
-import argparse
-import select
-import traceback
-import json
 import threading
-import queue
-import logging
-import logging.handlers
-import socket
-import platform
-import shutil
+import time
+import traceback
 
 # --- New imports ---
 from dotenv import load_dotenv
@@ -48,17 +30,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import uvicorn
+
 from server import app  # Import FastAPI app object from server.py
+
 # -----------------
 
 # Try importing launch_server (for internal launch mode, simulating Camoufox behavior)
 try:
     import camoufox.server
     import camoufox.utils
-    from camoufox.server import launch_server
     from camoufox import (
         DefaultAddons,
     )  # Assuming DefaultAddons contains AntiFingerprint
+    from camoufox.server import launch_server
 
     # --- Monkeypatch Fix Start ---
     # Fix "proxy: expected object, got null" error in camoufox.
@@ -1049,17 +1033,6 @@ if __name__ == "__main__":
     ensure_auth_dirs_exist()
     check_dependencies()
     logger.info("=================================================")
-
-    deprecated_auth_state_path = os.path.join(
-        os.path.dirname(__file__), "auth_state.json"
-    )
-    if os.path.exists(deprecated_auth_state_path):
-        logger.warning(
-            f"Detected deprecated auth file: {deprecated_auth_state_path}. This file is no longer used directly."
-        )
-        logger.warning(
-            "Please use debug mode to generate new auth files and manage files in 'auth_profiles' directory."
-        )
 
     final_launch_mode = None  # from dev
     if args.debug:

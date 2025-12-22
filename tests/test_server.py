@@ -242,8 +242,9 @@ class TestServerModuleDirectAccess:
 
     def test_app_creation(self) -> None:
         """Test that create_app produces a valid FastAPI instance."""
-        from api_utils import create_app
         from fastapi import FastAPI
+
+        from api_utils import create_app
 
         app = create_app()
         assert isinstance(app, FastAPI)

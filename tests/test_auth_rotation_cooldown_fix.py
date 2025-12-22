@@ -1,15 +1,14 @@
-import sys
 import os
-import asyncio
+import sys
 import unittest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 # Add repository root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from config.global_state import GlobalState
 from browser_utils import auth_rotation
+from config.global_state import GlobalState
+
 
 class TestAuthRotationCooldownFix(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

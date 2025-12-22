@@ -74,10 +74,11 @@ class Launcher:  # pragma: no cover
 
         # Automatically check and rebuild frontend if needed
         from launcher.frontend_build import ensure_frontend_built
+
         ensure_frontend_built(skip_build=self.args.skip_frontend_build)
 
-        self._check_deprecated_auth_file()
         self._determine_launch_mode()
+
         if not DIRECT_LAUNCH:
             self._handle_auth_file_selection()
         self._check_xvfb()
@@ -121,18 +122,6 @@ class Launcher:  # pragma: no cover
 
         logger.info("Launcher main logic completed")
 
-    def _check_deprecated_auth_file(self):
-        deprecated_auth_state_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "auth_state.json"
-        )
-        if os.path.exists(deprecated_auth_state_path):
-            logger.warning(
-                f"Detected deprecated auth file: {deprecated_auth_state_path}. It is no longer used."
-            )
-            logger.warning(
-                "Please use debug mode to generate new auth files in 'auth_profiles' directory."
-            )
-
     def _determine_launch_mode(self):
         if self.args.debug:
             self.final_launch_mode = "debug"
@@ -157,7 +146,9 @@ class Launcher:  # pragma: no cover
                 default_interactive_choice = "2"
             elif env_launch_mode in ("virtual_display", "virtual_headless"):
                 default_mode_from_env = "virtual_headless"
-                default_interactive_choice = "3" if platform.system() == "Linux" else "1"
+                default_interactive_choice = (
+                    "3" if platform.system() == "Linux" else "1"
+                )
 
             if DIRECT_LAUNCH:
                 self.final_launch_mode = default_mode_from_env or "headless"
@@ -176,7 +167,9 @@ class Launcher:  # pragma: no cover
                 prompt_options_text += ", [3] Headless (Virtual Display Xvfb)"
                 valid_choices["3"] = "virtual_headless"
 
-            default_mode_name = valid_choices.get(default_interactive_choice, "headless")
+            default_mode_name = valid_choices.get(
+                default_interactive_choice, "headless"
+            )
             user_mode_choice = (
                 input_with_timeout(
                     f"  Enter launch mode ({prompt_options_text}; Default: {default_interactive_choice} {default_mode_name} mode, 15s timeout): ",
@@ -198,7 +191,8 @@ class Launcher:  # pragma: no cover
         if self.final_launch_mode == "debug" and not self.args.active_auth_json:
             create_new_auth_choice = (
                 input_with_timeout(
-                    "  Create and save new auth file? (y/n; Default: n, 15s timeout): ", 15
+                    "  Create and save new auth file? (y/n; Default: n, 15s timeout): ",
+                    15,
                 )
                 .strip()
                 .lower()
@@ -229,7 +223,10 @@ class Launcher:  # pragma: no cover
                 logger.info("New auth file will not be created.")
 
     def _check_xvfb(self):
-        if self.final_launch_mode == "virtual_headless" and platform.system() == "Linux":
+        if (
+            self.final_launch_mode == "virtual_headless"
+            and platform.system() == "Linux"
+        ):
             if not shutil.which("Xvfb"):
                 logger.error("Xvfb not found. Required for virtual display mode.")
                 sys.exit(1)
@@ -256,7 +253,9 @@ class Launcher:  # pragma: no cover
                     if choice == "y":
                         all(kill_process_interactive(pid) for pid in pids_on_port)
                         time.sleep(2)
-                        if not is_port_in_use(server_target_port, host=uvicorn_bind_host):
+                        if not is_port_in_use(
+                            server_target_port, host=uvicorn_bind_host
+                        ):
                             logger.info("Port is now available.")
                             port_is_available = True
                         else:
@@ -300,7 +299,11 @@ class Launcher:  # pragma: no cover
                 try:
                     if os.path.exists(ACTIVE_AUTH_DIR):
                         active_json_files = sorted(
-                            [f for f in os.listdir(ACTIVE_AUTH_DIR) if f.lower().endswith(".json")]
+                            [
+                                f
+                                for f in os.listdir(ACTIVE_AUTH_DIR)
+                                if f.lower().endswith(".json")
+                            ]
                         )
                         if active_json_files:
                             self.effective_active_auth_json_path = os.path.join(
@@ -311,35 +314,58 @@ class Launcher:  # pragma: no cover
 
             if self.final_launch_mode == "debug" and not self.args.auto_save_auth:
                 available_profiles = []
-                for d, label in [(ACTIVE_AUTH_DIR, "active"), (SAVED_AUTH_DIR, "saved")]:
+                for d, label in [
+                    (ACTIVE_AUTH_DIR, "active"),
+                    (SAVED_AUTH_DIR, "saved"),
+                ]:
                     if os.path.exists(d):
                         try:
                             for f in sorted(os.listdir(d)):
                                 if f.lower().endswith(".json"):
-                                    available_profiles.append({"name": f"{label}/{f}", "path": os.path.join(d, f)})
-                        except OSError: pass
+                                    available_profiles.append(
+                                        {
+                                            "name": f"{label}/{f}",
+                                            "path": os.path.join(d, f),
+                                        }
+                                    )
+                        except OSError:
+                            pass
 
                 if available_profiles:
                     available_profiles.sort(key=lambda x: x["name"])
                     if DIRECT_LAUNCH:
-                        self.effective_active_auth_json_path = available_profiles[0]["path"]
+                        self.effective_active_auth_json_path = available_profiles[0][
+                            "path"
+                        ]
                     else:
                         print("-" * 60 + "\nAvailable auth files:")
                         for i, p in enumerate(available_profiles):
                             print(f"{i + 1}: {p['name']}")
                         print("N: None (use current browser state)\n" + "-" * 60)
-                        choice = input_with_timeout("Select number (N/Enter for none, 30s): ", 30)
+                        choice = input_with_timeout(
+                            "Select number (N/Enter for none, 30s): ", 30
+                        )
                         if choice.strip().lower() not in ["n", ""]:
                             try:
                                 idx = int(choice.strip()) - 1
                                 if 0 <= idx < len(available_profiles):
-                                    self.effective_active_auth_json_path = available_profiles[idx]["path"]
-                                    logger.info(f"Selected: {available_profiles[idx]['name']}")
-                            except ValueError: pass
+                                    self.effective_active_auth_json_path = (
+                                        available_profiles[idx]["path"]
+                                    )
+                                    logger.info(
+                                        f"Selected: {available_profiles[idx]['name']}"
+                                    )
+                            except ValueError:
+                                pass
                 else:
                     logger.info("No auth files found.")
-            elif not self.effective_active_auth_json_path and not self.args.auto_save_auth:
-                logger.error(f"Headless mode error: no auth file found in {ACTIVE_AUTH_DIR}.")
+            elif (
+                not self.effective_active_auth_json_path
+                and not self.args.auto_save_auth
+            ):
+                logger.error(
+                    f"Headless mode error: no auth file found in {ACTIVE_AUTH_DIR}."
+                )
                 sys.exit(1)
 
     def _setup_helper_mode(self):
@@ -348,10 +374,15 @@ class Launcher:  # pragma: no cover
             os.environ["HELPER_ENDPOINT"] = self.args.helper
             if self.effective_active_auth_json_path:
                 try:
-                    with open(self.effective_active_auth_json_path, "r", encoding="utf-8") as f:
+                    with open(
+                        self.effective_active_auth_json_path, "r", encoding="utf-8"
+                    ) as f:
                         data = json.load(f)
                         for cookie in data.get("cookies", []):
-                            if cookie.get("name") == "SAPISID" and cookie.get("domain") == ".google.com":
+                            if (
+                                cookie.get("name") == "SAPISID"
+                                and cookie.get("domain") == ".google.com"
+                            ):
                                 os.environ["HELPER_SAPISID"] = cookie.get("value", "")
                                 break
                 except Exception as e:
@@ -365,15 +396,21 @@ class Launcher:  # pragma: no cover
         os.environ["CAMOUFOX_WS_ENDPOINT"] = captured_ws_endpoint
         os.environ["LAUNCH_MODE"] = self.final_launch_mode
         os.environ["SERVER_LOG_LEVEL"] = self.args.server_log_level.upper()
-        os.environ["SERVER_REDIRECT_PRINT"] = str(self.args.server_redirect_print).lower()
-        
-        if hasattr(self.args, 'debug_logs_from_cli') and self.args.debug_logs_from_cli:
+        os.environ["SERVER_REDIRECT_PRINT"] = str(
+            self.args.server_redirect_print
+        ).lower()
+
+        if hasattr(self.args, "debug_logs_from_cli") and self.args.debug_logs_from_cli:
             os.environ["DEBUG_LOGS_ENABLED"] = str(self.args.debug_logs).lower()
-        if hasattr(self.args, 'trace_logs_from_cli') and self.args.trace_logs_from_cli:
+        if hasattr(self.args, "trace_logs_from_cli") and self.args.trace_logs_from_cli:
             os.environ["TRACE_LOGS_ENABLED"] = str(self.args.trace_logs).lower()
         if self.effective_active_auth_json_path:
             os.environ["ACTIVE_AUTH_JSON_PATH"] = self.effective_active_auth_json_path
-        if self.final_launch_mode == "debug" and hasattr(self.args, 'auto_save_auth_from_cli') and self.args.auto_save_auth_from_cli:
+        if (
+            self.final_launch_mode == "debug"
+            and hasattr(self.args, "auto_save_auth_from_cli")
+            and self.args.auto_save_auth_from_cli
+        ):
             os.environ["AUTO_SAVE_AUTH"] = str(self.args.auto_save_auth).lower()
 
         if self.args.save_auth_as:
@@ -393,19 +430,25 @@ class Launcher:  # pragma: no cover
             os.environ["HOST_OS_FOR_SHORTCUT"] = host_os_map[camoufox_os]
 
     def _start_server(self):
-        logger.info(f"--- Step 5: Starting integrated FastAPI server on port {self.args.server_port} ---")
+        logger.info(
+            f"--- Step 5: Starting integrated FastAPI server on port {self.args.server_port} ---"
+        )
         if app is None:
             logger.error("FastAPI app not found.")
             sys.exit(1)
 
         if not self.args.exit_on_auth_save:
             try:
-                uvicorn.run(app, host="0.0.0.0", port=self.args.server_port, log_config=None)
+                uvicorn.run(
+                    app, host="0.0.0.0", port=self.args.server_port, log_config=None
+                )
             except Exception as e:
                 logger.critical(f"Uvicorn error: {e}", exc_info=True)
                 sys.exit(1)
         else:
-            server_config = uvicorn.Config(app, host="0.0.0.0", port=self.args.server_port, log_config=None)
+            server_config = uvicorn.Config(
+                app, host="0.0.0.0", port=self.args.server_port, log_config=None
+            )
             server = uvicorn.Server(server_config)
             stop_watcher = threading.Event()
 
@@ -416,12 +459,16 @@ class Launcher:  # pragma: no cover
                     try:
                         new_files = set(os.listdir(SAVED_AUTH_DIR)) - initial_files
                         if new_files:
-                            logger.info(f"New auth file detected: {', '.join(new_files)}. Shutting down in 3s...")
+                            logger.info(
+                                f"New auth file detected: {', '.join(new_files)}. Shutting down in 3s..."
+                            )
                             time.sleep(3)
                             server.should_exit = True
                             break
-                    except Exception: pass
-                    if stop_watcher.wait(1): break
+                    except Exception:
+                        pass
+                    if stop_watcher.wait(1):
+                        break
 
             watcher_thread = threading.Thread(target=watch_for_saved_auth_and_shutdown)
             try:
@@ -432,14 +479,17 @@ class Launcher:  # pragma: no cover
                 sys.exit(1)
             finally:
                 stop_watcher.set()
-                if watcher_thread.is_alive(): watcher_thread.join()
+                if watcher_thread.is_alive():
+                    watcher_thread.join()
 
 
 def signal_handler(sig, frame):
     sys.exit(0)
 
+
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
+
 
 def cleanup():
     pass

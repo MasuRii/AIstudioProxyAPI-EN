@@ -16,7 +16,6 @@ from browser_utils.operations_modules.errors import (
     save_minimal_snapshot,
 )
 
-
 # === ErrorCategory Tests ===
 
 

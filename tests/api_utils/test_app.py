@@ -9,7 +9,6 @@ from api_utils.app import (
     APIKeyAuthMiddleware,
     _initialize_browser_and_page,
     _initialize_globals,
-    _initialize_globals as _init_globals,
     _initialize_proxy_settings,
     _setup_logging,
     _shutdown_resources,
@@ -246,8 +245,6 @@ def test_initialize_globals():
     # Ensure state starts clean
     state.request_queue = None
     state.processing_lock = None
-    state.model_switching_lock = None
-    state.params_cache_lock = None
 
     with patch("api_utils.auth_utils.initialize_keys") as mock_init_keys:
         _initialize_globals()

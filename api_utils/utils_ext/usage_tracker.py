@@ -1,8 +1,8 @@
-import json
-import os
-import logging
 import asyncio
-from typing import Dict, Optional
+import json
+import logging
+import os
+from typing import Dict
 
 logger = logging.getLogger("UsageTracker")
 

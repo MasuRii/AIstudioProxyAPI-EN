@@ -12,18 +12,18 @@ Run with: python tests/test_auth_rotation_fixes.py
 """
 
 import asyncio
+import os
+import sys
 import time
 import unittest
-from unittest.mock import Mock, patch, AsyncMock
-import sys
-import os
+from unittest.mock import AsyncMock, Mock, patch
 
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from browser_utils.auth_rotation import perform_auth_rotation
 from config.global_state import GlobalState
-from browser_utils.auth_rotation import perform_auth_rotation, _get_next_profile
-from browser_utils.operations import _wait_for_response_completion
+
 
 class TestRaceConditionFix(unittest.TestCase):
     """Test CRIT-01: Race condition elimination in queue worker"""

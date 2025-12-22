@@ -2,31 +2,33 @@
 # Browser page operation functional module
 
 import asyncio
-import time
 import json
-import os
-import re
 import logging
-from typing import Optional, Any, List, Dict, Callable, Set
+import os
+import time
+from typing import Any, Callable, Dict, Optional
 
 from playwright.async_api import (
-    Page as AsyncPage,
-    Locator,
     Error as PlaywrightAsyncError,
+)
+from playwright.async_api import (
+    Locator,
+)
+from playwright.async_api import (
+    Page as AsyncPage,
 )
 
 # Import config and models
 from config import (
-    DEBUG_LOGS_ENABLED,
-    MODELS_ENDPOINT_URL_CONTAINS,
-    ERROR_TOAST_SELECTOR,
-    QUOTA_EXCEEDED_SELECTOR,
-    CLICK_TIMEOUT_MS,
-    RESPONSE_COMPLETION_TIMEOUT,
-    INITIAL_WAIT_MS_BEFORE_POLLING,
-    SCROLL_CONTAINER_SELECTOR,
     CHAT_SESSION_CONTENT_SELECTOR,
+    CLICK_TIMEOUT_MS,
+    DEBUG_LOGS_ENABLED,
+    ERROR_TOAST_SELECTOR,
+    INITIAL_WAIT_MS_BEFORE_POLLING,
     LAST_CHAT_TURN_SELECTOR,
+    MODELS_ENDPOINT_URL_CONTAINS,
+    QUOTA_EXCEEDED_SELECTOR,
+    SCROLL_CONTAINER_SELECTOR,
 )
 from config.global_state import GlobalState
 from models import ClientDisconnectedError, QuotaExceededError
@@ -135,153 +137,20 @@ async def get_raw_text_content(
     return raw_text
 
 
-def _parse_userscript_models(script_content: str):
-    """Parse model list from userscript using JSON parsing"""
-    try:
-        # Find script version number
-        version_pattern = r'const\s+SCRIPT_VERSION\s*=\s*[\'"]([^\'"]+)[\'"]'
-        version_match = re.search(version_pattern, script_content)
-        script_version = version_match.group(1) if version_match else "v1.6"
-
-        # Find content of MODELS_TO_INJECT array
-        models_array_pattern = r"const\s+MODELS_TO_INJECT\s*=\s*(\[.*?\]);"
-        models_match = re.search(models_array_pattern, script_content, re.DOTALL)
-
-        if not models_match:
-            logger.warning("MODELS_TO_INJECT array not found")
-            return []
-
-        models_js_code = models_match.group(1)
-
-        # Convert JavaScript array to JSON format
-        # 1. Replace variables in template strings
-        models_js_code = models_js_code.replace("${SCRIPT_VERSION}", script_version)
-
-        # 2. Remove JavaScript comments
-        models_js_code = re.sub(r"//.*?$", "", models_js_code, flags=re.MULTILINE)
-
-        # 3. Convert JavaScript objects to JSON format
-        # Remove trailing commas
-        models_js_code = re.sub(r",\s*([}\]])", r"\1", models_js_code)
-
-        # Replace single quotes with double quotes
-        models_js_code = re.sub(r"(\w+):\s*'([^']*)'", r'"\1": "\2"', models_js_code)
-        # Replace backticks with double quotes
-        models_js_code = re.sub(r"(\w+):\s*`([^`]*)`", r'"\1": "\2"', models_js_code)
-        # Ensure property names are double quoted
-        models_js_code = re.sub(r"(\w+):", r'"\1":', models_js_code)
-
-        # 4. Parse JSON
-        import json
-
-        models_data = json.loads(models_js_code)
-
-        models = []
-        for model_obj in models_data:
-            if isinstance(model_obj, dict) and "name" in model_obj:
-                models.append(
-                    {
-                        "name": model_obj.get("name", ""),
-                        "displayName": model_obj.get("displayName", ""),
-                        "description": model_obj.get("description", ""),
-                    }
-                )
-
-        logger.info(f"Successfully parsed {len(models)} models from userscript")
-        return models
-
-    except Exception as e:
-        logger.error(f"Failed to parse model list from userscript: {e}")
-        return []
-
-
-def _get_injected_models():
-    """Get injected model list from userscript, converted to API format"""
-    try:
-        # Read environment variable directly to avoid complex imports
-        enable_injection = os.environ.get(
-            "ENABLE_SCRIPT_INJECTION", "true"
-        ).lower() in ("true", "1", "yes")
-
-        if not enable_injection:
-            return []
-
-        # Get script file path
-        script_path = os.environ.get("USERSCRIPT_PATH", "browser_utils/more_modles.js")
-
-        # Check if script file exists
-        if not os.path.exists(script_path):
-            # Script file does not exist, silently return empty list
-            return []
-
-        # Read userscript content
-        with open(script_path, "r", encoding="utf-8") as f:
-            script_content = f.read()
-
-        # Parse model list from script
-        models = _parse_userscript_models(script_content)
-
-        if not models:
-            return []
-
-        # Convert to API format
-        injected_models = []
-        for model in models:
-            model_name = model.get("name", "")
-            if not model_name:
-                continue  # Skip models without name
-
-            if model_name.startswith("models/"):
-                simple_id = model_name[7:]  # Remove 'models/' prefix
-            else:
-                simple_id = model_name
-
-            display_name = model.get(
-                "displayName", model.get("display_name", simple_id)
-            )
-            description = model.get("description", f"Injected model: {simple_id}")
-
-            # Note: No longer cleaning display name, keep original emoji and version info
-
-            model_entry = {
-                "id": simple_id,
-                "object": "model",
-                "created": int(time.time()),
-                "owned_by": "ai_studio_injected",
-                "display_name": display_name,
-                "description": description,
-                "raw_model_path": model_name,
-                "default_temperature": 1.0,
-                "default_max_output_tokens": 65536,
-                "supported_max_output_tokens": 65536,
-                "default_top_p": 0.95,
-                "injected": True,  # Flag as injected model
-            }
-            injected_models.append(model_entry)
-
-        return injected_models
-
-    except Exception as e:
-        # Silently handle error, return empty list
-        return []
-
-
 async def _handle_model_list_response(response: Any):
     """Handle model list response"""
     # Need access to global variables
-    import server
+    from api_utils.server_state import state
 
-    global_model_list_raw_json = getattr(server, "global_model_list_raw_json", None)
-    parsed_model_list = getattr(server, "parsed_model_list", [])
-    model_list_fetch_event = getattr(server, "model_list_fetch_event", None)
-    excluded_model_ids = getattr(server, "excluded_model_ids", set())
+    global_model_list_raw_json = state.global_model_list_raw_json
+    parsed_model_list = state.parsed_model_list
+    model_list_fetch_event = state.model_list_fetch_event
+    excluded_model_ids = state.excluded_model_ids
 
     if MODELS_ENDPOINT_URL_CONTAINS in response.url and response.ok:
         # Check if in login flow
         launch_mode = os.environ.get("LAUNCH_MODE", "debug")
-        is_in_login_flow = launch_mode in ["debug"] and not getattr(
-            server, "is_page_ready", False
-        )
+        is_in_login_flow = launch_mode in ["debug"] and not state.is_page_ready
 
         if is_in_login_flow:
             # Silent during login flow
@@ -628,24 +497,24 @@ async def _handle_model_list_response(response: Any):
                     # Note: No longer add injected models in backend
                     # Only rely on network interception injection
 
-                    server.parsed_model_list = sorted(
+                    state.parsed_model_list = sorted(
                         new_parsed_list, key=lambda m: m.get("display_name", "").lower()
                     )
-                    server.global_model_list_raw_json = json.dumps(
-                        {"data": server.parsed_model_list, "object": "list"}
+                    state.global_model_list_raw_json = json.dumps(
+                        {"data": state.parsed_model_list, "object": "list"}
                     )
                     if DEBUG_LOGS_ENABLED:
-                        log_output = f"Successfully parsed and updated model list. Total parsed models: {len(server.parsed_model_list)}.\n"
+                        log_output = f"Successfully parsed and updated model list. Total parsed models: {len(state.parsed_model_list)}.\n"
                         for i, item in enumerate(
-                            server.parsed_model_list[
-                                : min(3, len(server.parsed_model_list))
+                            state.parsed_model_list[
+                                : min(3, len(state.parsed_model_list))
                             ]
                         ):
                             log_output += f"  Model {i + 1}: ID={item.get('id')}, Name={item.get('display_name')}, Temp={item.get('default_temperature')}, MaxTokDef={item.get('default_max_output_tokens')}, MaxTokSup={item.get('supported_max_output_tokens')}, TopP={item.get('default_top_p')}\n"
                         logger.info(log_output)
                     if model_list_fetch_event and not model_list_fetch_event.is_set():
                         model_list_fetch_event.set()
-                elif not server.parsed_model_list:
+                elif not state.parsed_model_list:
                     logger.warning("Model list remains empty after parsing.")
                     if model_list_fetch_event and not model_list_fetch_event.is_set():
                         model_list_fetch_event.set()
@@ -704,7 +573,7 @@ async def save_error_snapshot(
         error_name: Error name used for filename generation
         extra_context: Extra context info to be saved as JSON file
     """
-    import server
+    from api_utils.server_state import state
 
     name_parts = error_name.split("_")
     req_id = (
@@ -712,11 +581,11 @@ async def save_error_snapshot(
     )
     base_error_name = error_name if not req_id else "_".join(name_parts[:-1])
     log_prefix = f"[{req_id}]" if req_id else "[No ReqID]"
-    page_to_snapshot = server.page_instance
+    page_to_snapshot = state.page_instance
 
     if (
-        not server.browser_instance
-        or not server.browser_instance.is_connected()
+        not state.browser_instance
+        or not state.browser_instance.is_connected()
         or not page_to_snapshot
         or page_to_snapshot.is_closed()
     ):
@@ -807,9 +676,9 @@ async def capture_response_state_for_debug(
     req_id: str, captured_content: str = "", detection_method: str = ""
 ) -> Dict[str, Any]:
     """Capture response state for debug - dedicated for analysis of response integrity issues"""
-    import server
+    from api_utils.server_state import state
 
-    page = server.page_instance
+    page = state.page_instance
 
     if not page or page.is_closed():
         return {"error": "Page not available"}
@@ -832,9 +701,9 @@ async def capture_response_state_for_debug(
     try:
         # Check Thinking blocks
         from config.selectors import (
-            THINKING_CONTAINER_SELECTOR,
             FINAL_RESPONSE_SELECTOR,
             GENERATION_STATUS_SELECTOR,
+            THINKING_CONTAINER_SELECTOR,
         )
 
         # Find Thinking containers
@@ -899,8 +768,8 @@ async def capture_response_state_for_debug(
         # Check key UI elements
         from config.selectors import (
             INPUT_SELECTOR,
-            SUBMIT_BUTTON_SELECTOR,
             REGENERATE_BUTTON_SELECTOR,
+            SUBMIT_BUTTON_SELECTOR,
         )
 
         key_elements = {

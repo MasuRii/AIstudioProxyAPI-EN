@@ -1,10 +1,11 @@
 import asyncio
+import logging
 import threading
 import time
-import logging
-from typing import Dict, Set, Optional
 from collections import defaultdict
-from config.settings import QUOTA_SOFT_LIMIT, QUOTA_HARD_LIMIT, MODEL_QUOTA_LIMITS
+from typing import Dict, Optional, Set
+
+from config.settings import MODEL_QUOTA_LIMITS, QUOTA_HARD_LIMIT, QUOTA_SOFT_LIMIT
 from models.exceptions import QuotaExceededError
 
 logger = logging.getLogger(__name__)

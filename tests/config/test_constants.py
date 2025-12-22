@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 
-
 # ===================== DEFAULT_STOP_SEQUENCES Tests =====================
 
 

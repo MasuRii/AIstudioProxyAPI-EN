@@ -103,8 +103,6 @@ SET_THINKING_BUDGET_TOGGLE_SELECTOR = (
 )
 
 THINKING_BUDGET_INPUT_SELECTOR = (
-    '[data-test-slider] input[type="number"], '
-    'ms-slider input[type="number"], '
     '[data-test-id="user-setting-budget-animation-wrapper"] input[type="number"]'
 )
 

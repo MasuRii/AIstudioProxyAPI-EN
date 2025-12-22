@@ -142,7 +142,7 @@ graph TD
 
 ## 🚀 Quick Start
 
-New users are recommended to follow the **[Quick Start Guide](docs/quick-start-guide.md)** for deployment, which should take 15-30 minutes to complete.
+New users are recommended to follow the **[Quick Start Guide](docs/guides/quick-start-guide.md)** for deployment, which should take 15-30 minutes to complete.
 
 ### Three-Step Quick Deployment
 
@@ -299,24 +299,24 @@ nano .env  # or use other editor
 
 #### 🚀 Quick Start
 
-- **[Quick Start Guide](docs/quick-start-guide.md)** - 15-minute quick deployment and testing 🎯
-- [Installation Guide](docs/installation-guide.md) - Detailed installation steps and environment configuration
-- [Environment Configuration Guide](docs/environment-configuration.md) - .env file configuration management ⭐
-- [Complete Environment Variables Reference](docs/env-variables-reference.md) - Detailed description of all configuration items 📋
-- [Authentication Setup Guide](docs/authentication-setup.md) - Initial run and authentication file setup
-- [Daily Usage Guide](docs/daily-usage.md) - Daily use and configuration options
+- **[Quick Start Guide](docs/guides/quick-start-guide.md)** - 15-minute quick deployment and testing 🎯
+- [Installation Guide](docs/guides/installation-guide.md) - Detailed installation steps and environment configuration
+- [Environment Configuration Guide](docs/guides/environment-configuration.md) - .env file configuration management ⭐
+- [Complete Environment Variables Reference](docs/guides/env-variables-reference.md) - Detailed description of all configuration items 📋
+- [Authentication Setup Guide](docs/guides/authentication-setup.md) - Initial run and authentication file setup
+- [Daily Usage Guide](docs/guides/daily-usage.md) - Daily use and configuration options
 
 #### 🔧 Feature Usage
 
-- [API Usage Guide](docs/api-usage.md) - API endpoints and client configuration
-- **[OpenAI Compatibility Guide](docs/openai-compatibility.md)** - Differences and limitations with OpenAI API 🔄
-- **[Client Integration Examples](docs/client-examples.md)** - Python, JavaScript, cURL and other example code 💻
-- [Web UI Usage Guide](docs/webui-guide.md) - Web interface feature description
-- [Script Injection Guide](docs/script_injection_guide.md) - Tampermonkey script dynamic mounting feature usage guide (v3.0) 🆕
+- [API Usage Guide](docs/guides/api-usage.md) - API endpoints and client configuration
+- **[OpenAI Compatibility Guide](docs/guides/openai-compatibility.md)** - Differences and limitations with OpenAI API 🔄
+- **[Client Integration Examples](docs/guides/client-examples.md)** - Python, JavaScript, cURL and other example code 💻
+- [Web UI Usage Guide](docs/guides/webui-guide.md) - Web interface feature description
+- [Script Injection Guide](docs/guides/script_injection_guide.md) - Tampermonkey script dynamic mounting feature usage guide (v3.0) 🆕
 
 #### 🌍 Platform & Deployment
 
-- [Platform Differences](docs/platform-differences.md) - Windows/macOS/Linux differences and considerations
+- [Platform Differences](docs/guides/platform-differences.md) - Windows/macOS/Linux differences and considerations
 - [Docker Deployment Guide (docker/README-Docker.md)](docker/README-Docker.md) - Complete containerized deployment process
 - [Docker Quick Guide (docker/README.md)](docker/README.md) - One-click Compose start
 

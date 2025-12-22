@@ -3,17 +3,15 @@ Test for smart auth profile rotation fix
 Tests that rotation properly considers model-specific cooldowns
 """
 
-import unittest
-import asyncio
-import tempfile
 import json
 import os
-from unittest.mock import patch, MagicMock
-import time
+import tempfile
+import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 # Import the functions we want to test
-from browser_utils.auth_rotation import _normalize_model_id, _find_best_profile_in_dirs
+from browser_utils.auth_rotation import _find_best_profile_in_dirs, _normalize_model_id
 
 
 class TestSmartRotationFix(unittest.TestCase):

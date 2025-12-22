@@ -5,16 +5,13 @@ Tests for Camoufox process management including command building,
 process lifecycle, and cleanup.
 """
 
-import asyncio
 import os
 import queue
 import signal
 import subprocess
 import sys
-import threading
-import time
 from io import BytesIO
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,7 +20,6 @@ from launcher.process import (
     _enqueue_output,
     build_launch_command,
 )
-
 
 # ==================== build_launch_command TESTS ====================
 

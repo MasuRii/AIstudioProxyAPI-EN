@@ -3,7 +3,6 @@ import logging
 import random
 import time
 from asyncio import Future, Queue
-from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -13,11 +12,11 @@ from logging_utils import set_request_id, set_source
 from models import ChatCompletionRequest
 
 from ..dependencies import (
+    ensure_request_lock,
     get_logger,
     get_request_queue,
     get_server_state,
     get_worker_task,
-    ensure_request_lock,
 )
 from ..error_utils import service_unavailable
 

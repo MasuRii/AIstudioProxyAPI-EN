@@ -175,7 +175,7 @@ async def capture_system_context(
     import platform
     import sys
 
-    import server
+    from api_utils.server_state import state
 
     iso_time, texas_time = get_texas_timestamp()
 
@@ -224,32 +224,32 @@ async def capture_system_context(
         },
         "application_state": {
             "flags": {
-                "is_playwright_ready": server.is_playwright_ready,
-                "is_browser_connected": server.is_browser_connected,
-                "is_page_ready": server.is_page_ready,
-                "is_initializing": server.is_initializing,
+                "is_playwright_ready": state.is_playwright_ready,
+                "is_browser_connected": state.is_browser_connected,
+                "is_page_ready": state.is_page_ready,
+                "is_initializing": state.is_initializing,
             },
             "queues": {
-                "request_queue_size": get_qsize(server.request_queue),
-                "stream_queue_active": server.STREAM_QUEUE is not None,
+                "request_queue_size": get_qsize(state.request_queue),
+                "stream_queue_active": state.STREAM_QUEUE is not None,
             },
             "locks": {
-                "processing_lock_locked": is_locked(server.processing_lock),
-                "model_switching_lock_locked": is_locked(server.model_switching_lock),
+                "processing_lock_locked": is_locked(state.processing_lock),
+                "model_switching_lock_locked": is_locked(state.model_switching_lock),
             },
             "active_model": {
-                "current_id": server.current_ai_studio_model_id,
-                "excluded_count": len(server.excluded_model_ids),
+                "current_id": state.current_ai_studio_model_id,
+                "excluded_count": len(state.excluded_model_ids),
             },
         },
         "browser_state": {
             "connected": (
-                server.browser_instance.is_connected()
-                if server.browser_instance
+                state.browser_instance.is_connected()
+                if state.browser_instance
                 else False
             ),
             "page_available": (
-                not server.page_instance.is_closed() if server.page_instance else False
+                not state.page_instance.is_closed() if state.page_instance else False
             ),
         },
         "configuration": {
@@ -257,32 +257,32 @@ async def capture_system_context(
                 "headless": os.environ.get("HEADLESS", "unknown"),
                 "debug_logs": os.environ.get("DEBUG_LOGS_ENABLED", "unknown"),
             },
-            "proxy_settings": _sanitize_proxy(server.PLAYWRIGHT_PROXY_SETTINGS),
+            "proxy_settings": _sanitize_proxy(state.PLAYWRIGHT_PROXY_SETTINGS),
         },
         "recent_activity": {
-            "console_logs_count": len(server.console_logs),
-            "network_requests_count": len(server.network_log.get("requests", [])),
+            "console_logs_count": len(state.console_logs),
+            "network_requests_count": len(state.network_log.get("requests", [])),
         },
     }
 
     # Add snippets of recent logs (last 5)
-    if server.console_logs:
-        context["recent_activity"]["last_console_logs"] = server.console_logs[-5:]
+    if state.console_logs:
+        context["recent_activity"]["last_console_logs"] = state.console_logs[-5:]
 
         # Filter for errors/warnings
         console_errors = [
             log
-            for log in server.console_logs
+            for log in state.console_logs
             if str(log.get("type", "")).lower() in ("error", "warning")
         ]
         if console_errors:
             context["recent_activity"]["recent_console_errors"] = console_errors[-5:]
 
     # Add failed network requests summary
-    if server.network_log and "responses" in server.network_log:
+    if state.network_log and "responses" in state.network_log:
         failed_responses = [
             resp
-            for resp in server.network_log["responses"]
+            for resp in state.network_log["responses"]
             if isinstance(resp.get("status"), int) and resp.get("status") >= 400
         ]
         if failed_responses:
@@ -291,9 +291,9 @@ async def capture_system_context(
             ]
 
     # Add current page details if available
-    if server.page_instance and not server.page_instance.is_closed():
+    if state.page_instance and not state.page_instance.is_closed():
         try:
-            context["browser_state"]["current_url"] = server.page_instance.url
+            context["browser_state"]["current_url"] = state.page_instance.url
         except Exception:
             context["browser_state"]["current_url"] = "error_getting_url"
 
@@ -510,7 +510,9 @@ async def save_comprehensive_snapshot(
         console_logs_path = snapshot_dir / "console_logs.txt"
         try:
             # Get console logs from global state
-            from server import console_logs
+            from api_utils.server_state import state
+
+            console_logs = state.console_logs
 
             if console_logs:
                 with open(console_logs_path, "w", encoding="utf-8") as f:
@@ -537,7 +539,9 @@ async def save_comprehensive_snapshot(
         # === 5. Network Requests ===
         network_path = snapshot_dir / "network_requests.json"
         try:
-            from server import network_log
+            from api_utils.server_state import state
+
+            network_log = state.network_log
 
             with open(network_path, "w", encoding="utf-8") as f:
                 json.dump(network_log, f, indent=2, ensure_ascii=False)
@@ -715,7 +719,7 @@ async def save_error_snapshot_enhanced(
         additional_context: Extra context dict to include in metadata (optional)
         locators: Dict of named locators to capture states for (optional)
     """
-    import server
+    from api_utils.server_state import state
 
     # Parse req_id from error_name if present (format: "error_name_req_id")
     name_parts = error_name.split("_")
@@ -726,12 +730,12 @@ async def save_error_snapshot_enhanced(
     )
     base_error_name = error_name if req_id == "unknown" else "_".join(name_parts[:-1])
 
-    page_to_snapshot = server.page_instance
+    page_to_snapshot = state.page_instance
 
     if (
-        not hasattr(server, "browser_instance")
-        or not server.browser_instance
-        or not server.browser_instance.is_connected()
+        not hasattr(state, "browser_instance")
+        or not state.browser_instance
+        or not state.browser_instance.is_connected()
         or not page_to_snapshot
         or page_to_snapshot.is_closed()
     ):

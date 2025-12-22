@@ -5,31 +5,41 @@ Contains core request processing logic
 
 import asyncio
 import json
-import logging
 import os
 import shutil
 from asyncio import Event, Future
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-
 from playwright.async_api import (
-    Page as AsyncPage,
-    Locator,
     Error as PlaywrightAsyncError,
 )
+from playwright.async_api import (
+    Locator,
+)
+from playwright.async_api import (
+    Page as AsyncPage,
+)
+
+# --- browser_utils Module Imports ---
+from browser_utils import (
+    save_error_snapshot,
+)
+from browser_utils.page_controller import PageController
 
 # --- Configuration Module Imports ---
 from config import (
     MODEL_NAME,
-    ONLY_COLLECT_CURRENT_USER_ATTACHMENTS,
+    RESPONSE_COMPLETION_TIMEOUT,
     SUBMIT_BUTTON_SELECTOR,
     UPLOAD_FILES_DIR,
-    RESPONSE_COMPLETION_TIMEOUT,
     get_environment_variable,
 )
 from config.global_state import GlobalState
+
+# --- logging_utils Module Imports ---
+from logging_utils import log_context
 
 # --- models Module Imports ---
 from models import (
@@ -39,53 +49,48 @@ from models import (
     QuotaExceededRetry,
 )
 
-# --- browser_utils Module Imports ---
-from browser_utils import (
-    switch_ai_studio_model,
-    save_error_snapshot,
-)
-from browser_utils.page_controller import PageController
-
-# --- logging_utils Module Imports ---
-from logging_utils import log_context
-
-# --- api_utils Module Imports ---
-from .utils import (
-    prepare_combined_prompt,
-    maybe_execute_tools,
-    extract_data_url_to_local,
-)
-from .utils_ext.files import collect_and_validate_attachments
-from .utils_ext.usage_tracker import increment_profile_usage
-from .context_types import RequestContext
-from .response_generators import (
-    gen_sse_from_aux_stream,
-    gen_sse_from_playwright,
-    resilient_stream_generator,
-)
-from .response_payloads import build_chat_completion_response_json
-from .model_switching import (
-    analyze_model_requirements as ms_analyze,
-    handle_model_switching as ms_switch,
-    handle_parameter_cache as ms_param_cache,
-)
-from .page_response import locate_response_elements
-
-from .common_utils import random_id as _random_id
 from .client_connection import (
     check_client_connection as _check_client_connection,
+)
+from .client_connection import (
     setup_disconnect_monitoring as _setup_disconnect_monitoring,
 )
+from .common_utils import random_id as _random_id
 from .context_init import initialize_request_context as _init_request_context
-from .utils_ext.stream import use_stream_response
-from .utils_ext.tokens import calculate_usage_stats
-from .utils_ext.validation import validate_chat_request
+from .context_types import RequestContext
 from .error_utils import (
     bad_request,
     client_disconnected,
     server_error,
     upstream_error,
 )
+from .model_switching import (
+    analyze_model_requirements as ms_analyze,
+)
+from .model_switching import (
+    handle_model_switching as ms_switch,
+)
+from .model_switching import (
+    handle_parameter_cache as ms_param_cache,
+)
+from .page_response import locate_response_elements
+from .response_generators import (
+    gen_sse_from_aux_stream,
+    gen_sse_from_playwright,
+    resilient_stream_generator,
+)
+from .response_payloads import build_chat_completion_response_json
+
+# --- api_utils Module Imports ---
+from .utils import (
+    maybe_execute_tools,
+    prepare_combined_prompt,
+)
+from .utils_ext.files import collect_and_validate_attachments
+from .utils_ext.stream import use_stream_response
+from .utils_ext.tokens import calculate_usage_stats
+from .utils_ext.usage_tracker import increment_profile_usage
+from .utils_ext.validation import validate_chat_request
 
 _initialize_request_context = _init_request_context
 
@@ -255,7 +260,9 @@ async def _handle_auxiliary_stream_response(
     silence_threshold: float = 60.0,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
     """Auxiliary stream response processing path"""
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     is_streaming = request.stream
     current_ai_studio_model_id = context.get("current_ai_studio_model_id")
@@ -416,15 +423,13 @@ async def _handle_auxiliary_stream_response(
         total_tokens = usage_stats.get("total_tokens", 0)
         GlobalState.increment_token_count(total_tokens)
 
-        import server
+        from api_utils.server_state import state
 
         if (
-            hasattr(server, "current_auth_profile_path")
-            and server.current_auth_profile_path
+            hasattr(state, "current_auth_profile_path")
+            and state.current_auth_profile_path
         ):
-            await increment_profile_usage(
-                server.current_auth_profile_path, total_tokens
-            )
+            await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -480,7 +485,9 @@ async def _handle_playwright_response(
     timeout: float,
 ) -> Optional[Tuple[Event, Locator, Callable]]:
     """Handle response using Playwright - Enhanced version with integrity verification"""
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     is_streaming = request.stream
     current_ai_studio_model_id = context.get("current_ai_studio_model_id")
@@ -562,15 +569,13 @@ async def _handle_playwright_response(
         total_tokens = usage_stats.get("total_tokens", 0)
         GlobalState.increment_token_count(total_tokens)
 
-        import server
+        from api_utils.server_state import state
 
         if (
-            hasattr(server, "current_auth_profile_path")
-            and server.current_auth_profile_path
+            hasattr(state, "current_auth_profile_path")
+            and state.current_auth_profile_path
         ):
-            await increment_profile_usage(
-                server.current_auth_profile_path, total_tokens
-            )
+            await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
         message_payload = {"role": "assistant", "content": consolidated_content}
@@ -623,7 +628,9 @@ async def _cleanup_request_resources(
     is_streaming: bool,
 ) -> None:
     """Cleanup request resources"""
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     if disconnect_check_task and not disconnect_check_task.done():
         disconnect_check_task.cancel()
@@ -662,7 +669,9 @@ async def process_request_with_retry(
     result_future: Future,
 ) -> Optional[Tuple[Event, Locator, Callable[[str], bool]]]:
     """Wrapper around _process_request_refactored with retry mechanism for quota"""
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     max_retries = 3
     attempt = 0
@@ -702,7 +711,9 @@ async def _process_request_refactored(
     result_future: Future,
 ) -> Optional[Tuple[Event, Locator, Callable[[str], bool]]]:
     """Core Request Processing Function - Refactored Version"""
-    from server import logger
+    from api_utils.server_state import state
+
+    logger = state.logger
 
     # 0. Check Auth Rotation Lock
     if not GlobalState.AUTH_ROTATION_LOCK.is_set():
@@ -713,9 +724,9 @@ async def _process_request_refactored(
     # [GR-03] Pre-Flight Graceful Rotation Check
     if GlobalState.NEEDS_ROTATION:
         logger.info(f"[{req_id}] 🔄 Graceful Rotation Pending. Initiating rotation...")
-        import server
+        from api_utils.server_state import state
 
-        current_model_id = getattr(server, "current_ai_studio_model_id", None)
+        current_model_id = state.current_ai_studio_model_id
         from browser_utils.auth_rotation import perform_auth_rotation
 
         if await perform_auth_rotation(target_model_id=current_model_id):

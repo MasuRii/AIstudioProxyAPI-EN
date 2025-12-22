@@ -125,15 +125,16 @@ class TestGetStaticFilesApp:
     def test_get_static_files_app_exists(self):
         """
         Test scenario: Assets directory exists
-        Expected: Return StaticFiles instance (or None if directory doesn't actually exist)
+        Expected: Return StaticFiles instance
         """
         from api_utils.routers.static import get_static_files_app
 
-        with patch.object(Path, "exists", return_value=True):
+        with (
+            patch("api_utils.routers.static.Path.exists", return_value=True),
+            patch("os.path.isdir", return_value=True),
+        ):
             result = get_static_files_app()
-            # The result can be StaticFiles or None depending on actual directory
-            # existence (our mock only affects Path.exists, not str(directory))
-            assert result is not None or result is None  # Just verify it doesn't crash
+            assert result is not None
 
     def test_get_static_files_app_not_exists(self):
         """

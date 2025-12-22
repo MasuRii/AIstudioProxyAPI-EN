@@ -4,6 +4,7 @@ Contains all time-related configurations such as timeouts and polling intervals.
 """
 
 import os
+
 from dotenv import load_dotenv
 
 # Load .env file

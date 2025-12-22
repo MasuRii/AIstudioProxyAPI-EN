@@ -1,4 +1,3 @@
-import logging
 
 from playwright.async_api import Page as AsyncPage
 

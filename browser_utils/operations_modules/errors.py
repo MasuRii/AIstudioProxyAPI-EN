@@ -189,24 +189,24 @@ async def save_minimal_snapshot(
 
         # === 2. Capture application state ===
         try:
-            import server
+            from api_utils.server_state import state
 
             # Basic flags
             metadata["application_state"] = {
                 "flags": {
-                    "is_playwright_ready": getattr(server, "is_playwright_ready", None),
+                    "is_playwright_ready": getattr(state, "is_playwright_ready", None),
                     "is_browser_connected": getattr(
-                        server, "is_browser_connected", None
+                        state, "is_browser_connected", None
                     ),
-                    "is_page_ready": getattr(server, "is_page_ready", None),
-                    "is_initializing": getattr(server, "is_initializing", None),
+                    "is_page_ready": getattr(state, "is_page_ready", None),
+                    "is_initializing": getattr(state, "is_initializing", None),
                 },
-                "current_model": getattr(server, "current_ai_studio_model_id", None),
-                "excluded_models_count": len(getattr(server, "excluded_model_ids", [])),
+                "current_model": getattr(state, "current_ai_studio_model_id", None),
+                "excluded_models_count": len(getattr(state, "excluded_model_ids", [])),
             }
 
             # Queue status
-            rq = getattr(server, "request_queue", None)
+            rq = getattr(state, "request_queue", None)
             if rq:
                 try:
                     metadata["application_state"]["request_queue_size"] = rq.qsize()
@@ -214,8 +214,8 @@ async def save_minimal_snapshot(
                     metadata["application_state"]["request_queue_size"] = "N/A"
 
             # Lock status
-            pl = getattr(server, "processing_lock", None)
-            ml = getattr(server, "model_switching_lock", None)
+            pl = getattr(state, "processing_lock", None)
+            ml = getattr(state, "model_switching_lock", None)
             metadata["application_state"]["locks"] = {
                 "processing_lock": pl.locked()
                 if pl and hasattr(pl, "locked")
@@ -226,7 +226,7 @@ async def save_minimal_snapshot(
             }
 
             # Stream queue
-            sq = getattr(server, "STREAM_QUEUE", None)
+            sq = getattr(state, "STREAM_QUEUE", None)
             metadata["application_state"]["stream_queue_active"] = sq is not None
 
         except Exception as server_err:
