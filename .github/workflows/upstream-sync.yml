@@ -11,9 +11,10 @@
 name: Sync with Upstream
 
 on:
-  # Run daily at 00:00 UTC
+  # Run every 6 hours (at 00:00, 06:00, 12:00, 18:00 UTC)
+  # This ensures timely detection of upstream changes while avoiding excessive API calls
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 */6 * * *'
 
   # Allow manual trigger from GitHub Actions UI
   workflow_dispatch:

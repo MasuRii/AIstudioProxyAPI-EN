@@ -1,15 +1,19 @@
 # Automated Release Workflow for AI Studio Proxy API
-# Creates GitHub releases with source code archives when version tags are pushed
-# or manually triggered via workflow_dispatch.
+# Creates GitHub releases with source code archives when version tags are pushed,
+# on pushes to main (nightly builds), or manually triggered via workflow_dispatch.
 #
-# Usage:
-#   - Push a tag: git tag v4.0.5 && git push origin v4.0.5
+# Release Types:
+#   - Stable: Push a tag (git tag v4.0.5 && git push origin v4.0.5)
+#   - Nightly: Automatic on every push to main branch (rolling release)
 #   - Manual: Actions -> Release -> Run workflow -> Enter version (e.g., v4.0.5)
 
 name: Release
 
 on:
+  # Trigger on pushes to main branch for nightly builds
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'  # Matches v1.0.0, v2.1.3, etc.
   workflow_dispatch:
@@ -28,9 +32,16 @@ permissions:
   contents: write  # Required for creating releases
 
 jobs:
+  # ===========================================================================
+  # Stable Release Job
+  # ===========================================================================
+  # Runs on tag pushes (v*.*.*) or manual workflow_dispatch
+  # Creates versioned, stable releases
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    # Only run on tag pushes or manual triggers (not on main branch pushes)
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Validate version format (manual trigger)
@@ -199,3 +210,127 @@ jobs:
           echo "### Included Assets" >> $GITHUB_STEP_SUMMARY
           echo "- Source code (zip)" >> $GITHUB_STEP_SUMMARY
           echo "- Source code (tar.gz)" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Nightly Release Job
+  # ===========================================================================
+  # Runs on every push to main branch (not on tags)
+  # Creates/updates a rolling "nightly" release with the latest development code
+  nightly:
+    name: Create Nightly Release
+    runs-on: ubuntu-latest
+    # Only run on pushes to main branch, NOT on tag pushes
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - name: Get build info
+        id: build_info
+        run: |
+          # Get short commit SHA and date for versioning
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date +'%Y-%m-%d')
+          BUILD_TIME=$(date +'%H:%M:%S UTC')
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "build_time=$BUILD_TIME" >> $GITHUB_OUTPUT
+          echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          
+          echo "Build info: $SHORT_SHA @ $BUILD_DATE $BUILD_TIME"
+
+      - name: Generate recent changes
+        id: changes
+        run: |
+          # Get recent commits (last 10) for the release notes
+          echo "## Recent Changes" > NIGHTLY_CHANGES.md
+          echo "" >> NIGHTLY_CHANGES.md
+          git log --oneline -10 --pretty=format:"- %s (%h)" >> NIGHTLY_CHANGES.md
+          echo "" >> NIGHTLY_CHANGES.md
+          
+          echo "Recent changes generated"
+
+      - name: Build nightly release body
+        run: |
+          cat > NIGHTLY_BODY.md << 'EOF'
+          ## ⚠️ Nightly Build (Development Version)
+          
+          **This is an automated nightly build from the `main` branch.**
+          
+          > **Warning**: This release may contain untested features, breaking changes, or bugs.
+          > For stable releases, please use a [versioned release](https://github.com/${{ github.repository }}/releases?q=v&expanded=true).
+          
+          ### Build Information
+          - **Commit**: `${{ steps.build_info.outputs.short_sha }}`
+          - **Date**: ${{ steps.build_info.outputs.build_date }} ${{ steps.build_info.outputs.build_time }}
+          - **Latest Change**: ${{ steps.build_info.outputs.commit_msg }}
+          
+          EOF
+          
+          cat NIGHTLY_CHANGES.md >> NIGHTLY_BODY.md
+          
+          cat >> NIGHTLY_BODY.md << 'EOF'
+          
+          ---
+          
+          ## Quick Start
+          
+          ```bash
+          # Clone the repository
+          git clone https://github.com/${{ github.repository }}.git
+          cd AIstudioProxyAPI-EN
+          
+          # Install dependencies
+          poetry install
+          
+          # Run the server
+          poetry run python server.py
+          ```
+          
+          ---
+          
+          *This nightly release is automatically updated on every push to the main branch.*
+          EOF
+          
+          echo "Nightly release body generated"
+
+      - name: Delete existing nightly release
+        run: |
+          # Delete existing nightly release if it exists (to avoid accumulation)
+          echo "Checking for existing nightly release..."
+          if gh release view nightly &>/dev/null; then
+            echo "Deleting existing nightly release..."
+            gh release delete nightly --yes --cleanup-tag
+            echo "Existing nightly release deleted"
+          else
+            echo "No existing nightly release found"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Nightly Build (Latest)"
+          tag_name: nightly
+          body_path: NIGHTLY_BODY.md
+          draft: false
+          prerelease: true  # Mark as prerelease since it's development code
+          generate_release_notes: false
+          make_latest: false  # Don't mark nightly as "latest" - reserve that for stable releases
+          target_commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Nightly release summary
+        run: |
+          echo "## Nightly Release Updated!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ steps.build_info.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Date:** ${{ steps.build_info.outputs.build_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Release URL:** https://github.com/${{ github.repository }}/releases/tag/nightly" >> $GITHUB_STEP_SUMMARY
