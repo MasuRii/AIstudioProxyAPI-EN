@@ -62,7 +62,7 @@ async def use_stream_response(
     max_empty_retries = max(silence_wait_limit, initial_wait_limit)
     hard_timeout_limit = int(timeout * 10 * 3)
 
-    data_received = False
+    _data_received = False
     has_content = False
     received_items_count = 0
     stale_done_ignored = False
@@ -172,7 +172,7 @@ async def use_stream_response(
                     break
 
                 empty_count = 0
-                data_received = True
+                _data_received = True
                 received_items_count += 1
                 last_packet_time = time.time()
 

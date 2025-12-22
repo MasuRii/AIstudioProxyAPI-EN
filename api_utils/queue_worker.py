@@ -361,7 +361,7 @@ async def queue_worker() -> None:
                                 )
                             except ClientDisconnectedError:
                                 pass
-                            except Exception as e:
+                            except Exception:
                                 await save_error_snapshot(f"button_timeout_{req_id}")
 
                     except QuotaExceededError:

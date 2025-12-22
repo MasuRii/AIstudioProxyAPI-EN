@@ -4,8 +4,11 @@ import os
 import threading
 from datetime import datetime
 
-COOLDOWN_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'cooldown_status.json')
+COOLDOWN_FILE = os.path.join(
+    os.path.dirname(__file__), "..", "..", "config", "cooldown_status.json"
+)
 _lock = threading.Lock()
+
 
 def load_cooldown_profiles():
     """
@@ -18,9 +21,9 @@ def load_cooldown_profiles():
         if not os.path.exists(COOLDOWN_FILE):
             return {}
         try:
-            with open(COOLDOWN_FILE, 'r') as f:
+            with open(COOLDOWN_FILE, "r") as f:
                 data = json.load(f)
-            
+
             profiles = {}
             for profile, val in data.items():
                 if isinstance(val, dict):
@@ -33,10 +36,14 @@ def load_cooldown_profiles():
                             continue
                     if model_cooldowns:
                         # Clean up redundant "default" entries when specific models exist
-                        has_specific_models = any(model_id != "default" for model_id in model_cooldowns.keys())
+                        has_specific_models = any(
+                            model_id != "default" for model_id in model_cooldowns.keys()
+                        )
                         if has_specific_models and "default" in model_cooldowns:
                             logger = logging.getLogger("CooldownManager")
-                            logger.info(f"🧹 Cleaning up redundant 'default' entry for profile {os.path.basename(profile)}")
+                            logger.info(
+                                f"🧹 Cleaning up redundant 'default' entry for profile {os.path.basename(profile)}"
+                            )
                             del model_cooldowns["default"]
                         profiles[profile] = model_cooldowns
                 else:
@@ -48,6 +55,7 @@ def load_cooldown_profiles():
             return profiles
         except (json.JSONDecodeError, IOError):
             return {}
+
 
 def save_cooldown_profiles(profiles):
     """
@@ -68,20 +76,24 @@ def save_cooldown_profiles(profiles):
                             model_cooldowns[model_id] = ts.isoformat()
                         elif isinstance(ts, (int, float)):
                             try:
-                                model_cooldowns[model_id] = datetime.fromtimestamp(ts).isoformat()
+                                model_cooldowns[model_id] = datetime.fromtimestamp(
+                                    ts
+                                ).isoformat()
                             except (ValueError, OSError):
                                 pass
                     serializable_profiles[profile] = model_cooldowns
-                
+
                 elif isinstance(data, datetime):
                     serializable_profiles[profile] = data.isoformat()
                 elif isinstance(data, (int, float)):
                     try:
-                        serializable_profiles[profile] = datetime.fromtimestamp(data).isoformat()
+                        serializable_profiles[profile] = datetime.fromtimestamp(
+                            data
+                        ).isoformat()
                     except (ValueError, OSError):
                         pass
 
-            with open(COOLDOWN_FILE, 'w') as f:
+            with open(COOLDOWN_FILE, "w") as f:
                 json.dump(serializable_profiles, f, indent=4)
         except IOError:
             pass

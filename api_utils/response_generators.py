@@ -89,7 +89,7 @@ async def resilient_stream_generator(
                     logger.info(
                         f"[{req_id}] Auth rotation successful. Retrying stream generation..."
                     )
-                    yield f": auth rotation complete, retrying...\n\n"
+                    yield ": auth rotation complete, retrying...\n\n"
                     continue
                 else:
                     logger.error(f"[{req_id}] Auth rotation failed.")
