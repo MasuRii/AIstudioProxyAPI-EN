@@ -100,7 +100,7 @@ async def test_init_storage_state_explicit_missing(temp_auth_file_missing):
 
     with patch.dict("sys.modules", {"server": MagicMock()}):
         # 预期: 抛出 RuntimeError，因为文件不存在
-        with pytest.raises(RuntimeError, match="指定的认证文件不存在"):
+        with pytest.raises(RuntimeError, match="Specified auth file does not exist"):
             await initialize_page_logic(
                 mock_browser, storage_state_path=str(temp_auth_file_missing)
             )
@@ -142,7 +142,11 @@ async def test_init_headless_auth_exists(temp_auth_file):
     with (
         patch.dict(
             "os.environ",
-            {"LAUNCH_MODE": "headless", "ACTIVE_AUTH_JSON_PATH": str(temp_auth_file)},
+            {
+                "LAUNCH_MODE": "headless",
+                "ACTIVE_AUTH_JSON_PATH": str(temp_auth_file),
+                "AUTO_AUTH_ROTATION_ON_STARTUP": "false",
+            },
         ),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
         patch("playwright.async_api.expect", mock_expect),
@@ -327,9 +331,8 @@ async def test_init_proxy_settings_applied():
 
     proxy_config = {"server": "http://127.0.0.1:8080"}
 
-    # Create mock server with proper proxy settings
-    mock_server = MagicMock()
-    mock_server.PLAYWRIGHT_PROXY_SETTINGS = proxy_config
+    # Create mock server state with proper proxy settings
+    from api_utils.server_state import state as real_state
 
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
@@ -344,8 +347,9 @@ async def test_init_proxy_settings_applied():
             "browser_utils.initialization.auth.wait_for_model_list_and_handle_auth_save",
             new_callable=AsyncMock,
         ),
-        patch.dict("sys.modules", {"server": mock_server}),
+        patch("api_utils.server_state.state") as mock_state,
     ):
+        mock_state.PLAYWRIGHT_PROXY_SETTINGS = proxy_config
         await initialize_page_logic(mock_browser)
 
         # 验证: proxy 参数被正确传递

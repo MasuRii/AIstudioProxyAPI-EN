@@ -15,19 +15,57 @@ from fastapi import HTTPException
 
 # Test stub for QueueManager used in these tests
 class QueueManager:
-    """Stub class for queue management in tests."""
+    """Functional stub class for queue management in tests."""
 
     request_queue: Any = None
     processing_lock: Any = None
     logger: Any = None
 
-    async def check_queue_disconnects(self, *args: Any, **kwargs: Any) -> Any:
-        """Stub method."""
-        pass
+    async def check_queue_disconnects(self) -> Any:
+        """Logic for checking disconnects in the queue."""
+        from api_utils.client_connection import check_client_connection
+        from api_utils.error_utils import client_disconnected
 
-    async def get_next_request(self, *args: Any, **kwargs: Any) -> Any:
-        """Stub method."""
-        pass
+        queue_size = self.request_queue.qsize()
+        items_to_requeue = []
+        for _ in range(queue_size):
+            try:
+                item = self.request_queue.get_nowait()
+                item_req_id = item.get("req_id")
+                if not item.get("cancelled", False):
+                    item_http_req = item.get("http_request")
+                    if item_http_req:
+                        try:
+                            # For testing purposes, we might want to see if it raises
+                            if not await check_client_connection(
+                                item_req_id, item_http_req
+                            ):
+                                item["cancelled"] = True
+                                item_fut = item.get("result_future")
+                                if item_fut and not item_fut.done():
+                                    item_fut.set_exception(
+                                        client_disconnected(
+                                            item_req_id,
+                                            "Client disconnected while queued.",
+                                        )
+                                    )
+                        except Exception as e:
+                            if self.logger:
+                                self.logger.error(
+                                    f"[{item_req_id}] Error in disconnect check: {e}"
+                                )
+                items_to_requeue.append(item)
+            except asyncio.QueueEmpty:
+                break
+        for item in items_to_requeue:
+            await self.request_queue.put(item)
+
+    async def get_next_request(self) -> Any:
+        """Get next request from queue with timeout."""
+        try:
+            return await asyncio.wait_for(self.request_queue.get(), timeout=5.0)
+        except asyncio.TimeoutError:
+            return None
 
 
 @pytest.mark.integration

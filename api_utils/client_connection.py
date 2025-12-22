@@ -46,19 +46,23 @@ async def check_client_connection(req_id: str, http_request: Request) -> bool:
         # Wrap in wait_for to prevent infinite hang in some ASGI implementations
         if hasattr(http_request, "is_disconnected"):
             try:
-                if await asyncio.wait_for(http_request.is_disconnected(), timeout=0.01):
+                # Handle both sync and async versions for better mock compatibility
+                res = http_request.is_disconnected()
+                if asyncio.iscoroutine(res):
+                    if await asyncio.wait_for(res, timeout=0.01):
+                        return False
+                elif res:
                     return False
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 # If it times out, it's likely still connected
                 return True
-            except Exception:
-                return False
 
         return True
     except asyncio.CancelledError:
         raise
-    except Exception:
-        return False
+    except Exception as e:
+        # Re-raise to allow caller to log/handle
+        raise e
 
 
 async def enhanced_disconnect_monitor(

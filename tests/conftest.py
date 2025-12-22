@@ -153,6 +153,11 @@ def mock_page():
     page.locator = MagicMock(return_value=default_locator)
     # page.get_by_role() is also SYNC
     page.get_by_role = MagicMock(return_value=default_locator)
+    # page.is_closed() is SYNC in Playwright
+    page.is_closed = MagicMock(return_value=False)
+    # page.on() and page.remove_listener() are SYNC
+    page.on = MagicMock()
+    page.remove_listener = MagicMock()
 
     return page
 

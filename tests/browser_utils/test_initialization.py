@@ -35,42 +35,7 @@ async def test_initialize_page_logic_success(
     ):
         # Mock page finding logic
         mock_page.url = "https://aistudio.google.com/prompts/new_chat"
-        mock_page.is_closed.return_value = False
-        mock_browser_context.pages = [mock_page]
-
-        # Mock locators for verification
-        mock_page.locator.return_value.first.inner_text = AsyncMock(
-            return_value="Gemini 1.5 Pro"
-        )
-
-        page, ready = await _initialize_page_logic(mock_browser)
-
-        assert page == mock_page
-        assert ready is True
-        mock_browser.new_context.assert_called()
-
-
-@pytest.mark.asyncio
-async def test_initialize_page_logic_success(
-    mock_browser,
-    mock_browser_context,
-    mock_page,
-    mock_env,
-    mock_expect,
-    mock_server_state,
-):
-    # Mock state
-    mock_server_state.PLAYWRIGHT_PROXY_SETTINGS = None
-    with (
-        patch(
-            "browser_utils.initialization.core.setup_network_interception_and_scripts",
-            new_callable=AsyncMock,
-        ),
-        patch("browser_utils.initialization.core.setup_debug_listeners"),
-    ):
-        # Mock page finding logic
-        mock_page.url = "https://aistudio.google.com/prompts/new_chat"
-        mock_page.is_closed.return_value = False
+        mock_page.is_closed = MagicMock(return_value=False)
         mock_browser_context.pages = [mock_page]
 
         # Mock locators for verification
@@ -149,7 +114,7 @@ async def test_close_page_logic_already_closed():
 
     try:
         mock_page = AsyncMock()
-        mock_page.is_closed.return_value = True
+        mock_page.is_closed = MagicMock(return_value=True)
         state.page_instance = mock_page
 
         await _close_page_logic()
@@ -429,12 +394,15 @@ async def test_init_page_discovery_errors(
         # 4. Valid page (to ensure loop continues or finishes)
 
         page1 = AsyncMock()
+        page1.is_closed = MagicMock(return_value=False)
         type(page1).url = PropertyMock(side_effect=PlaywrightAsyncError("PW Error"))
 
         page2 = AsyncMock()
+        page2.is_closed = MagicMock(return_value=False)
         type(page2).url = PropertyMock(side_effect=AttributeError("Attr Error"))
 
         page3 = AsyncMock()
+        page3.is_closed = MagicMock(return_value=False)
         type(page3).url = PropertyMock(side_effect=Exception("Generic Error"))
 
         # We need to mock the pages property to return these
