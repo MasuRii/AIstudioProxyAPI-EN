@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from browser_utils.page_controller_modules.thinking import ThinkingController
+from browser_utils.page_controller_modules.thinking import (
+    ThinkingCategory,
+    ThinkingController,
+)
 
 
 @pytest.fixture
@@ -16,22 +19,62 @@ def mock_controller(mock_page):
 # --- Helper Logic Tests ---
 
 
-def test_uses_thinking_level(mock_controller):
-    """Test detection of models that use thinking level parameter."""
-    assert mock_controller._uses_thinking_level("gemini-3-pro") is True
-    assert mock_controller._uses_thinking_level("gemini-3-pro-something") is True
-    assert mock_controller._uses_thinking_level("gemini-2.0-flash") is False
-    assert mock_controller._uses_thinking_level(None) is False
-    assert mock_controller._uses_thinking_level(123) is False  # Exception handling
+def test_get_thinking_category(mock_controller):
+    """Test model category detection via _get_thinking_category."""
+    # THINKING_LEVEL_FLASH: gemini-3-flash models (4-level thinking)
+    assert (
+        mock_controller._get_thinking_category("gemini-3-flash-preview")
+        == ThinkingCategory.THINKING_LEVEL_FLASH
+    )
+    assert (
+        mock_controller._get_thinking_category("gemini-3-flash")
+        == ThinkingCategory.THINKING_LEVEL_FLASH
+    )
 
+    # THINKING_LEVEL: gemini-3-pro models (2-level thinking)
+    assert (
+        mock_controller._get_thinking_category("gemini-3-pro")
+        == ThinkingCategory.THINKING_LEVEL
+    )
+    assert (
+        mock_controller._get_thinking_category("gemini-3-pro-preview")
+        == ThinkingCategory.THINKING_LEVEL
+    )
 
-def test_model_has_main_thinking_toggle(mock_controller):
-    """Test detection of models with main thinking toggle control."""
-    assert mock_controller._model_has_main_thinking_toggle("gemini-2.0-flash") is True
-    assert mock_controller._model_has_main_thinking_toggle("flash-lite") is True
-    assert mock_controller._model_has_main_thinking_toggle("gemini-1.5-pro") is False
-    assert mock_controller._model_has_main_thinking_toggle(None) is False
-    assert mock_controller._model_has_main_thinking_toggle(123) is False
+    # THINKING_PRO: gemini-2.5-pro models
+    assert (
+        mock_controller._get_thinking_category("gemini-2.5-pro")
+        == ThinkingCategory.THINKING_PRO
+    )
+    assert (
+        mock_controller._get_thinking_category("gemini-2.5-pro-preview")
+        == ThinkingCategory.THINKING_PRO
+    )
+
+    # THINKING_FLASH: gemini-2.5-flash models (including lite)
+    assert (
+        mock_controller._get_thinking_category("gemini-2.5-flash")
+        == ThinkingCategory.THINKING_FLASH
+    )
+    assert (
+        mock_controller._get_thinking_category("gemini-2.5-flash-lite")
+        == ThinkingCategory.THINKING_FLASH
+    )
+
+    # NON_THINKING: gemini-2.0-*, gemini-1.5-*, None
+    assert (
+        mock_controller._get_thinking_category("gemini-2.0-flash")
+        == ThinkingCategory.NON_THINKING
+    )
+    assert (
+        mock_controller._get_thinking_category("gemini-2.0-flash-lite")
+        == ThinkingCategory.NON_THINKING
+    )
+    assert (
+        mock_controller._get_thinking_category("gemini-1.5-pro")
+        == ThinkingCategory.NON_THINKING
+    )
+    assert mock_controller._get_thinking_category(None) == ThinkingCategory.NON_THINKING
 
 
 @pytest.mark.asyncio
@@ -70,9 +113,10 @@ async def test_has_thinking_dropdown(mock_controller, mock_page):
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_disabled(mock_controller):
-    # Mock helpers
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    # Mock helpers - THINKING_FLASH category
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
@@ -89,17 +133,19 @@ async def test_handle_thinking_budget_disabled(mock_controller):
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_disabled_non_flash(mock_controller):
-    # Non-flash model (no main toggle), disable thinking
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=False)
+    # Non-flash model (gemini-2.5-pro), disable thinking - but toggle is always on
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_PRO
+    )
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 0}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": 0}, "gemini-2.5-pro", MagicMock(return_value=False)
     )
 
-    mock_controller._control_thinking_mode_toggle.assert_not_called()  # No main toggle
+    # THINKING_PRO has no main toggle (always on), so budget toggle is called
+    mock_controller._control_thinking_mode_toggle.assert_not_called()
     mock_controller._control_thinking_budget_toggle.assert_called_with(
         should_be_checked=False, check_client_disconnected=unittest.mock.ANY
     )
@@ -108,9 +154,11 @@ async def test_handle_thinking_budget_disabled_non_flash(mock_controller):
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_enabled_level(mock_controller):
     # Gemini 3 Pro with level
-    mock_controller._uses_thinking_level = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
     mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._set_thinking_level = AsyncMock()
 
@@ -147,10 +195,99 @@ async def test_handle_thinking_budget_enabled_level(mock_controller):
 
 
 @pytest.mark.asyncio
+async def test_handle_thinking_budget_flash_4_levels(mock_controller):
+    """Test Gemini 3 Flash 4-level thinking (minimal, low, medium, high).
+
+    This tests the THINKING_LEVEL_FLASH category which maps reasoning_effort
+    to 4 distinct levels based on thresholds:
+    - high: >= 16000 or -1 (unlimited)
+    - medium: >= 8000
+    - low: >= 1024
+    - minimal: < 1024
+    """
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL_FLASH
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Test string levels (direct mapping)
+    test_cases = [
+        ("minimal", "minimal"),
+        ("low", "low"),
+        ("medium", "medium"),
+        ("high", "high"),
+        ("MINIMAL", "minimal"),  # Case insensitive
+        ("HIGH", "high"),
+    ]
+
+    for input_level, expected_level in test_cases:
+        mock_controller._set_thinking_level.reset_mock()
+        await mock_controller._handle_thinking_budget(
+            {"reasoning_effort": input_level},
+            "gemini-3-flash-preview",
+            MagicMock(return_value=False),
+        )
+        (
+            mock_controller._set_thinking_level.assert_called_with(
+                expected_level, unittest.mock.ANY
+            ),
+            f"Failed for input '{input_level}': expected '{expected_level}'",
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_flash_numeric_thresholds(mock_controller):
+    """Test Gemini 3 Flash numeric threshold mapping.
+
+    Thresholds:
+    - >= 16000: high
+    - >= 8000: medium
+    - >= 1024: low
+    - < 1024: minimal
+    """
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL_FLASH
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Test numeric thresholds (boundary cases)
+    test_cases = [
+        (16000, "high"),  # Exactly at high threshold
+        (20000, "high"),  # Above high threshold
+        (-1, "high"),  # Unlimited
+        (8000, "medium"),  # Exactly at medium threshold
+        (15999, "medium"),  # Just below high
+        (1024, "low"),  # Exactly at low threshold
+        (7999, "low"),  # Just below medium
+        (1023, "minimal"),  # Just below low
+        (1, "minimal"),  # Minimum positive value (0 disables thinking)
+        (500, "minimal"),  # Well below low
+    ]
+
+    for input_value, expected_level in test_cases:
+        mock_controller._set_thinking_level.reset_mock()
+        await mock_controller._handle_thinking_budget(
+            {"reasoning_effort": input_value},
+            "gemini-3-flash-preview",
+            MagicMock(return_value=False),
+        )
+        (
+            mock_controller._set_thinking_level.assert_called_with(
+                expected_level, unittest.mock.ANY
+            ),
+            f"Failed for input {input_value}: expected '{expected_level}'",
+        )
+
+
+@pytest.mark.asyncio
 async def test_handle_thinking_budget_enabled_budget_caps(mock_controller):
     # Flash models with budget caps
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
@@ -169,8 +306,10 @@ async def test_handle_thinking_budget_enabled_budget_caps(mock_controller):
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_no_limit(mock_controller):
     # Budget enabled but set to 0/None -> disable manual budget
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
@@ -314,20 +453,23 @@ async def test_set_thinking_budget_value_max_fallback(mock_controller, mock_page
 async def test_control_thinking_mode_toggle_click_failure_fallback(
     mock_controller, mock_page
 ):
-    # Test fallback to label click if toggle click fails
+    # Test fallback to aria-label based toggle click if main toggle click fails
     toggle = AsyncMock()
     toggle.click.side_effect = Exception("Not clickable")
 
-    label = AsyncMock()
+    alt_toggle = AsyncMock()
+    alt_toggle.count = AsyncMock(return_value=1)
 
     def locator_side_effect(selector):
         if "button" in selector and "switch" in selector:
             return toggle
-        if "mat-slide-toggle" in selector:  # Root for fallback
+        if 'aria-label="Toggle thinking mode"' in selector:
+            return alt_toggle
+        if "mat-slide-toggle" in selector:  # Old fallback
             root = MagicMock()
-            root.locator.return_value = label
+            root.locator.return_value = AsyncMock()
             return root
-        return toggle  # Default for first locator call
+        return toggle
 
     mock_page.locator.side_effect = locator_side_effect
     toggle.get_attribute.return_value = "false"
@@ -344,14 +486,16 @@ async def test_control_thinking_mode_toggle_click_failure_fallback(
             True, MagicMock(return_value=False)
         )
 
-        label.click.assert_called()
+        alt_toggle.click.assert_called()
 
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_various_inputs(mock_controller):
     # Test various inputs for reasoning_effort triggering enable/disable
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
@@ -399,22 +543,21 @@ async def test_handle_thinking_budget_various_inputs(mock_controller):
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_disabled_uses_level(mock_controller):
-    # If uses_level is True and desired_enabled is False, should just return after disabling main toggle
-    mock_controller._uses_thinking_level = MagicMock(return_value=True)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    # THINKING_LEVEL models with disabled thinking should skip toggle and just return
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
     await mock_controller._handle_thinking_budget(
-        {"reasoning_effort": 0}, "model", MagicMock(return_value=False)
+        {"reasoning_effort": 0}, "gemini-3-pro", MagicMock(return_value=False)
     )
 
-    # Should disable main toggle
-    mock_controller._control_thinking_mode_toggle.assert_called_with(
-        should_be_enabled=False, check_client_disconnected=unittest.mock.ANY
-    )
-
-    # Then returns at line 73 (skipping budget toggle logic)
+    # THINKING_LEVEL has no main toggle (has_main_toggle=False), so no toggle call
+    mock_controller._control_thinking_mode_toggle.assert_not_called()
+    # Level models skip budget toggle logic entirely when disabled
     mock_controller._control_thinking_budget_toggle.assert_not_called()
 
 
@@ -430,8 +573,9 @@ async def test_handle_thinking_budget_downgrade_logic(mock_controller):
         "browser_utils.page_controller_modules.thinking.normalize_reasoning_effort",
         return_value=mock_directive,
     ):
-        mock_controller._uses_thinking_level = MagicMock(return_value=False)
-        mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+        mock_controller._get_thinking_category = MagicMock(
+            return_value=ThinkingCategory.THINKING_FLASH
+        )
 
         # _control_thinking_mode_toggle fails (returns False)
         mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=False)
@@ -460,8 +604,10 @@ async def test_handle_thinking_budget_downgrade_logic(mock_controller):
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_cap_gemini_2_5(mock_controller):
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
@@ -478,8 +624,10 @@ async def test_handle_thinking_budget_cap_gemini_2_5(mock_controller):
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     # Test _should_enable_from_raw logic via _handle_thinking_budget
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
@@ -487,7 +635,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     check_disconnect_mock = MagicMock(return_value=False)
 
     # "high" -> Enable
-    print("DEBUG: Testing high")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "high"}, "model", check_disconnect_mock
     )
@@ -497,7 +644,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "low" -> Enable
-    print("DEBUG: Testing low")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "low"}, "model", check_disconnect_mock
     )
@@ -507,7 +653,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "-1" -> Enable
-    print("DEBUG: Testing -1 string")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "-1"}, "model", check_disconnect_mock
     )
@@ -517,7 +662,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # -1 (int) -> Enable
-    print("DEBUG: Testing -1 int")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": -1}, "model", check_disconnect_mock
     )
@@ -528,7 +672,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
     # "none" -> Enable (unlimited budget)
     # normalize_reasoning_effort("none") -> thinking_enabled=True
-    print("DEBUG: Testing none")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "none"}, "model", check_disconnect_mock
     )
@@ -538,7 +681,6 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
     mock_controller._control_thinking_mode_toggle.reset_mock()
 
     # "invalid" -> Disable
-    print("DEBUG: Testing invalid")
     await mock_controller._handle_thinking_budget(
         {"reasoning_effort": "invalid"}, "model", check_disconnect_mock
     )
@@ -550,10 +692,12 @@ async def test_handle_thinking_budget_should_enable_variations(mock_controller):
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_skip_level_disabled(mock_controller):
-    # Skip logic: uses_level=True, desired_enabled=False
-    mock_controller._uses_thinking_level = MagicMock(return_value=True)
+    # Skip logic: THINKING_LEVEL with disabled thinking should skip toggle
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
     mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
@@ -563,16 +707,17 @@ async def test_handle_thinking_budget_skip_level_disabled(mock_controller):
         {"reasoning_effort": 0}, "gemini-3-pro", check_disconnect_mock
     )
 
-    mock_controller._control_thinking_mode_toggle.assert_called_with(
-        should_be_enabled=False, check_client_disconnected=unittest.mock.ANY
-    )
+    # THINKING_LEVEL has no main toggle
+    mock_controller._control_thinking_mode_toggle.assert_not_called()
     mock_controller._control_thinking_budget_toggle.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_caps(mock_controller):
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
@@ -623,20 +768,24 @@ async def test_set_thinking_level_errors(mock_controller):
 
 @pytest.mark.asyncio
 async def test_control_thinking_mode_toggle_fallback(mock_controller):
-    # Test fallback to label click
+    # Test fallback to aria-label based toggle click
     toggle = MagicMock()
+    toggle.count = AsyncMock(return_value=1)  # Element exists
     toggle.get_attribute = AsyncMock(return_value="false")
     toggle.click = AsyncMock(side_effect=Exception("Click failed"))
 
-    label = MagicMock()
-    label.click = AsyncMock()
-    root = MagicMock()
-    root.locator.return_value = label
+    alt_toggle = MagicMock()
+    alt_toggle.count = AsyncMock(return_value=1)
+    alt_toggle.click = AsyncMock()
 
     def locator_side_effect(selector):
-        if "button" in selector and 'data-test-toggle="enable-thinking"' in selector:
+        if "button" in selector and "switch" in selector:
             return toggle
+        if 'aria-label="Toggle thinking mode"' in selector:
+            return alt_toggle
         if 'data-test-toggle="enable-thinking"' in selector:
+            root = MagicMock()
+            root.locator.return_value = MagicMock()
             return root
         return toggle
 
@@ -653,25 +802,29 @@ async def test_control_thinking_mode_toggle_fallback(mock_controller):
     ):
         await mock_controller._control_thinking_mode_toggle(True, check_disconnect_mock)
 
-    label.click.assert_called()
+    alt_toggle.click.assert_called()
 
 
 @pytest.mark.asyncio
 async def test_control_thinking_budget_toggle_fallback(mock_controller):
-    # Test fallback to label click
+    # Test fallback to aria-label based toggle click
     toggle = MagicMock()
+    toggle.count = AsyncMock(return_value=1)  # Element exists
     toggle.get_attribute = AsyncMock(return_value="false")
     toggle.click = AsyncMock(side_effect=Exception("Click failed"))
 
-    label = MagicMock()
-    label.click = AsyncMock()
-    root = MagicMock()
-    root.locator.return_value = label
+    alt_toggle = MagicMock()
+    alt_toggle.count = AsyncMock(return_value=1)
+    alt_toggle.click = AsyncMock()
 
     def locator_side_effect(selector):
-        if "button" in selector and 'data-test-toggle="manual-budget"' in selector:
+        if "button" in selector and "switch" in selector:
             return toggle
+        if 'aria-label="Toggle thinking budget between auto and manual"' in selector:
+            return alt_toggle
         if 'data-test-toggle="manual-budget"' in selector:
+            root = MagicMock()
+            root.locator.return_value = MagicMock()
             return root
         return toggle
 
@@ -690,7 +843,7 @@ async def test_control_thinking_budget_toggle_fallback(mock_controller):
             True, check_disconnect_mock
         )
 
-    label.click.assert_called()
+    alt_toggle.click.assert_called()
 
 
 @pytest.mark.asyncio
@@ -729,8 +882,10 @@ async def test_set_thinking_budget_value_fallback(mock_controller):
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_invalid_string(mock_controller):
     """Test handling invalid string value for reasoning_effort"""
-    mock_controller._uses_thinking_level = MagicMock(return_value=True)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=False)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
+
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_level = AsyncMock()
 
@@ -741,7 +896,7 @@ async def test_handle_thinking_budget_invalid_string(mock_controller):
     )
 
     # The exception handling path should be taken, leading to level_to_set = None
-    # which logs "无法解析等级" and returns without calling _set_thinking_level
+    # which logs "Cannot parse level" and returns without calling _set_thinking_level
     # Note: This test mainly ensures the exception path is covered
 
 
@@ -751,8 +906,10 @@ async def test_handle_thinking_budget_invalid_string(mock_controller):
 @pytest.mark.asyncio
 async def test_should_enable_from_raw_edge_cases(mock_controller):
     """Test _should_enable_from_raw with various edge cases to cover lines 59, 66."""
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
 
@@ -780,9 +937,11 @@ async def test_should_enable_from_raw_edge_cases(mock_controller):
 @pytest.mark.asyncio
 async def test_set_thinking_level_string_conversion_paths(mock_controller):
     """Test _set_thinking_level with string conversion paths (lines 113-117)."""
-    mock_controller._uses_thinking_level = MagicMock(return_value=True)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
     mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=True)
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._set_thinking_level = AsyncMock()
 
@@ -818,8 +977,10 @@ async def test_set_thinking_level_string_conversion_paths(mock_controller):
 @pytest.mark.asyncio
 async def test_handle_thinking_budget_no_main_toggle_enabled(mock_controller):
     """Test enabled path when model has no main toggle (lines 147-152)."""
-    mock_controller._uses_thinking_level = MagicMock(return_value=False)
-    mock_controller._model_has_main_thinking_toggle = MagicMock(return_value=False)
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_FLASH
+    )
+
     mock_controller._control_thinking_mode_toggle = AsyncMock(return_value=True)
     mock_controller._control_thinking_budget_toggle = AsyncMock()
     mock_controller._set_thinking_budget_value = AsyncMock()
@@ -1122,7 +1283,7 @@ async def test_set_thinking_budget_value_top_level_errors(mock_controller, mock_
 async def test_control_thinking_mode_toggle_scroll_exception(
     mock_controller, mock_page
 ):
-    """Test scroll_into_view_if_needed exception handling (lines 438)."""
+    """Test scroll exception in _control_thinking_mode_toggle (lines 438)."""
 
     toggle = AsyncMock()
     toggle.scroll_into_view_if_needed = AsyncMock(
@@ -1185,26 +1346,28 @@ async def test_control_thinking_mode_toggle_click_cancelled_error(
 async def test_control_thinking_mode_toggle_fallback_success(
     mock_controller, mock_page
 ):
-    """Test successful fallback to label click (lines 459-468)."""
+    """Test successful fallback to aria-label based toggle click."""
     toggle = AsyncMock()
     toggle.get_attribute = AsyncMock(side_effect=["false", "true"])  # Before and after
     toggle.click = AsyncMock(side_effect=Exception("Click failed"))
     toggle.scroll_into_view_if_needed = AsyncMock()
 
-    label = AsyncMock()
-    label.click = AsyncMock()  # Success on fallback
-
-    root = MagicMock()
-    root.locator.return_value = label
+    alt_toggle = AsyncMock()
+    alt_toggle.count = AsyncMock(return_value=1)
+    alt_toggle.click = AsyncMock()  # Success on fallback
 
     locator_call_count = [0]
 
     def locator_side_effect(selector):
         locator_call_count[0] += 1
-        if locator_call_count[0] == 1:  # First call for toggle button
+        if "button" in selector and "switch" in selector:
             return toggle
-        else:  # Second call for mat-slide-toggle root
-            return root
+        if 'aria-label="Toggle thinking mode"' in selector:
+            return alt_toggle
+        # Old fallback path
+        root = MagicMock()
+        root.locator.return_value = MagicMock()
+        return root
 
     mock_page.locator.side_effect = locator_side_effect
 
@@ -1218,13 +1381,13 @@ async def test_control_thinking_mode_toggle_fallback_success(
     ):
         mock_controller._check_disconnect = AsyncMock()
 
-        # Should succeed via fallback (lines 459-468)
+        # Should succeed via fallback
         result = await mock_controller._control_thinking_mode_toggle(
             True, check_disconnect_mock
         )
 
-        # Verify label click was called (fallback)
-        label.click.assert_called()
+        # Verify alt_toggle click was called (fallback)
+        alt_toggle.click.assert_called()
         assert result is True
 
 
@@ -1429,26 +1592,25 @@ async def test_control_thinking_budget_toggle_click_cancelled_error(
 async def test_control_thinking_budget_toggle_fallback_success(
     mock_controller, mock_page
 ):
-    """Test successful fallback to label click (lines 545-554)."""
+    """Test successful fallback to aria-label based toggle click."""
     toggle = AsyncMock()
     toggle.get_attribute = AsyncMock(side_effect=["false", "true"])  # Before and after
     toggle.click = AsyncMock(side_effect=Exception("Click failed"))
     toggle.scroll_into_view_if_needed = AsyncMock()
 
-    label = AsyncMock()
-    label.click = AsyncMock()  # Success on fallback
-
-    root = MagicMock()
-    root.locator.return_value = label
-
-    locator_call_count = [0]
+    alt_toggle = AsyncMock()
+    alt_toggle.count = AsyncMock(return_value=1)
+    alt_toggle.click = AsyncMock()  # Success on fallback
 
     def locator_side_effect(selector):
-        locator_call_count[0] += 1
-        if locator_call_count[0] == 1:  # First call for toggle button
+        if "button" in selector and "switch" in selector:
             return toggle
-        else:  # Second call for mat-slide-toggle root
-            return root
+        if 'aria-label="Toggle thinking budget between auto and manual"' in selector:
+            return alt_toggle
+        # Old fallback path
+        root = MagicMock()
+        root.locator.return_value = MagicMock()
+        return root
 
     mock_page.locator.side_effect = locator_side_effect
 
@@ -1462,13 +1624,13 @@ async def test_control_thinking_budget_toggle_fallback_success(
     ):
         mock_controller._check_disconnect = AsyncMock()
 
-        # Should succeed via fallback (lines 545-554)
+        # Should succeed via fallback
         await mock_controller._control_thinking_budget_toggle(
             True, check_disconnect_mock
         )
 
-        # Verify label click was called (fallback)
-        label.click.assert_called()
+        # Verify alt_toggle click was called (fallback)
+        alt_toggle.click.assert_called()
 
 
 @pytest.mark.asyncio
@@ -1548,3 +1710,154 @@ async def test_control_thinking_budget_toggle_top_level_errors(
             await mock_controller._control_thinking_budget_toggle(
                 True, check_disconnect_mock
             )
+
+
+# --- Additional Coverage Tests for Uncovered Lines ---
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_non_thinking_category(mock_controller):
+    """Test early return for NON_THINKING category (lines 66-67)."""
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.NON_THINKING
+    )
+    mock_controller._control_thinking_mode_toggle = AsyncMock()
+    mock_controller._control_thinking_budget_toggle = AsyncMock()
+
+    # Should return early without calling any toggles
+    await mock_controller._handle_thinking_budget(
+        {"reasoning_effort": "high"}, "gemini-2.0-flash", MagicMock(return_value=False)
+    )
+
+    mock_controller._control_thinking_mode_toggle.assert_not_called()
+    mock_controller._control_thinking_budget_toggle.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_flash_string_numeric_parsing(mock_controller):
+    """Test Flash 4-level string numeric parsing (lines 149-163)."""
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL_FLASH
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Test string numeric values for Flash 4-level model
+    test_cases = [
+        ("16000", "high"),  # String >= 16000 -> high
+        ("20000", "high"),  # String > 16000 -> high
+        ("8000", "medium"),  # String >= 8000 -> medium
+        ("10000", "medium"),  # String between 8000-16000 -> medium
+        ("1024", "low"),  # String >= 1024 -> low
+        ("2000", "low"),  # String between 1024-8000 -> low
+        ("500", "minimal"),  # String < 1024 -> minimal
+        ("100", "minimal"),  # String well below 1024 -> minimal
+        ("none", "high"),  # "none" maps to "high" for Flash (lines 149-150)
+        ("-1", "high"),  # "-1" maps to "high" (lines 149-150)
+    ]
+
+    for input_value, expected_level in test_cases:
+        mock_controller._set_thinking_level.reset_mock()
+        await mock_controller._handle_thinking_budget(
+            {"reasoning_effort": input_value},
+            "gemini-3-flash-preview",
+            MagicMock(return_value=False),
+        )
+        (
+            mock_controller._set_thinking_level.assert_called_with(
+                expected_level, unittest.mock.ANY
+            ),
+            f"Failed for input '{input_value}': expected '{expected_level}'",
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_pro_string_exception(mock_controller):
+    """Test Pro level string parsing exception path (lines 174-175)."""
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Test string that can't be parsed as int
+    await mock_controller._handle_thinking_budget(
+        {"reasoning_effort": "invalid_string"},
+        "gemini-3-pro",
+        MagicMock(return_value=False),
+    )
+
+    # Should not call _set_thinking_level (level_to_set is None)
+    mock_controller._set_thinking_level.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_pro_string_numeric(mock_controller):
+    """Test Pro level string numeric parsing (lines 171-175)."""
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Test string numeric values for Pro 2-level model
+    test_cases = [
+        ("8000", "high"),  # String >= 8000 -> high
+        ("10000", "high"),  # String > 8000 -> high
+        ("7999", "low"),  # String < 8000 -> low
+        ("100", "low"),  # String well below 8000 -> low
+    ]
+
+    for input_value, expected_level in test_cases:
+        mock_controller._set_thinking_level.reset_mock()
+        await mock_controller._handle_thinking_budget(
+            {"reasoning_effort": input_value},
+            "gemini-3-pro",
+            MagicMock(return_value=False),
+        )
+        (
+            mock_controller._set_thinking_level.assert_called_with(
+                expected_level, unittest.mock.ANY
+            ),
+            f"Failed for input '{input_value}': expected '{expected_level}'",
+        )
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_default_level_none(mock_controller):
+    """Test default level assignment when reasoning_effort is None (lines 193-200)."""
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Pass None reasoning_effort to trigger default level logic (line 101, 191-200)
+    await mock_controller._handle_thinking_budget(
+        {"reasoning_effort": None},
+        "gemini-3-pro",
+        MagicMock(return_value=False),
+    )
+
+    # Should use DEFAULT_THINKING_LEVEL_PRO
+    mock_controller._set_thinking_level.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_thinking_budget_default_level_flash(mock_controller):
+    """Test default level assignment for Flash model (lines 193-196)."""
+    mock_controller._get_thinking_category = MagicMock(
+        return_value=ThinkingCategory.THINKING_LEVEL_FLASH
+    )
+    mock_controller._has_thinking_dropdown = AsyncMock(return_value=True)
+    mock_controller._set_thinking_level = AsyncMock()
+
+    # Pass None reasoning_effort to trigger default level logic
+    await mock_controller._handle_thinking_budget(
+        {"reasoning_effort": None},
+        "gemini-3-flash",
+        MagicMock(return_value=False),
+    )
+
+    # Should use DEFAULT_THINKING_LEVEL_FLASH
+    mock_controller._set_thinking_level.assert_called()

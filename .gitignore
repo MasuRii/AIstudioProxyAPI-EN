@@ -269,3 +269,16 @@ browser_utils/generated_*.js
 # Docker 环境的实际配置文件（保留示例文件）
 docker/.env
 docker/my_*.json
+
+monkeytype.sqlite3
+
+# Temporary debug/output files
+pyright_output.txt
+pyright_utils_full.txt
+temp_*.txt
+temp_*.md
+utils_errors.txt
+# React frontend build artifacts and dependencies
+static/frontend/node_modules/
+static/frontend/coverage/
+static/frontend/dist/

@@ -16,30 +16,23 @@ from launcher.utils import (
 # --- Test launcher.config ---
 
 
-def test_parse_args_defaults():
+def test_parse_args_defaults(clean_launcher_env):
     """Test argument parsing with default values."""
-    # Mock environment variables to ensure defaults are tested correctly
-    # independent of pytest.ini settings
     with (
-        patch.dict(os.environ, {"STREAM_PORT": "3120"}, clear=True),
+        patch.dict(os.environ, {"STREAM_PORT": "3120"}),
         patch.object(sys, "argv", ["launcher"]),
     ):
-        # We need to reload config to pick up the mocked env var if it was imported at module level
-        # However, DEFAULT_STREAM_PORT is a constant in config.py.
-        # Since we can't easily reload the module constant without affecting other tests,
-        # we should check if the arg parser uses the constant as default.
-        # The parser is created inside parse_args, but the default value for the argument
-        # is likely the constant value at import time.
-
-        # Actually, let's just adjust the expectation to match the test environment
-        # or better, we can patch the constant in launcher.config
-        with patch("launcher.config.DEFAULT_STREAM_PORT", 3120):
+        # Patch constants to ensure we test against known defaults
+        with (
+            patch("launcher.config.DEFAULT_STREAM_PORT", 3120),
+            patch("launcher.config.DEFAULT_CAMOUFOX_PORT", 9222),
+        ):
             args = parse_args()
             assert args.server_port == 2048
             assert args.stream_port == 3120
             assert args.camoufox_debug_port == 9222
             assert args.debug is False
-        assert args.headless is False
+            assert args.headless is False
 
 
 def test_parse_args_custom():
@@ -70,7 +63,7 @@ def test_determine_proxy_configuration_arg():
     assert result["camoufox_proxy"] == "http://proxy:8080"
     assert result["stream_proxy"] == "http://proxy:8080"
     assert result["source"] is not None
-    assert "命令行参数" in result["source"]
+    assert "CLI argument" in result["source"]
 
 
 def test_determine_proxy_configuration_env():
@@ -79,7 +72,7 @@ def test_determine_proxy_configuration_env():
         result = determine_proxy_configuration()
         assert result["camoufox_proxy"] == "http://env:8080"
         assert result["source"] is not None
-        assert "环境变量 UNIFIED_PROXY_CONFIG" in result["source"]
+        assert "Environment variable UNIFIED_PROXY_CONFIG" in result["source"]
 
 
 # --- Test launcher.utils ---

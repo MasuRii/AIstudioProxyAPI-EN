@@ -153,8 +153,8 @@ Strategy: Mock result_future to raise exceptions when awaited.
 @pytest.mark.asyncio
 async def test_chat_completions_http_exception_499():
     """
-    测试场景: result_future.wait 抛出 HTTPException (status_code=499)
-    预期: 记录客户端断开日志,重新抛出异常 (lines 71-76, 72-73)
+    Test scenario: result_future.wait throws HTTPException (status_code=499)
+    Expected: Log client disconnect and re-throw exception (lines 71-76, 72-73)
     """
     request = ChatCompletionRequest(
         messages=[Message(role="user", content="hello")], model="gpt-4"
@@ -180,7 +180,7 @@ async def test_chat_completions_http_exception_499():
 
     asyncio.create_task(process_queue())
 
-    # 执行
+    # Execute
     with pytest.raises(HTTPException) as excinfo:
         await chat_completions(
             request=request,
@@ -191,21 +191,21 @@ async def test_chat_completions_http_exception_499():
             worker_task=worker_task,
         )
 
-    # 验证: status_code=499 (lines 71-76)
+    # Verify: status_code=499 (lines 71-76)
     assert excinfo.value.status_code == 499
     assert "Client disconnected" in str(excinfo.value.detail)
 
-    # 验证: logger.info 被调用两次 (line 31 和 line 73)
+    # Verify: logger.info called twice (line 31 and line 73)
     assert logger.info.call_count == 2
-    # 第二次调用包含断开连接消息 (line 73)
-    assert "客户端断开连接" in logger.info.call_args[0][0]
+    # Second call contains disconnect message (line 73)
+    assert "Client disconnected" in logger.info.call_args[0][0]
 
 
 @pytest.mark.asyncio
 async def test_chat_completions_http_exception_non_499():
     """
-    测试场景: result_future.wait 抛出 HTTPException (status_code != 499)
-    预期: 记录 HTTP 异常警告,重新抛出异常 (lines 71-76, 74-75)
+    Test scenario: result_future.wait throws HTTPException (status_code != 499)
+    Expected: Log HTTP exception warning and re-throw exception (lines 71-76, 74-75)
     """
     request = ChatCompletionRequest(
         messages=[Message(role="user", content="hello")], model="gpt-4"
@@ -231,7 +231,7 @@ async def test_chat_completions_http_exception_non_499():
 
     asyncio.create_task(process_queue())
 
-    # 执行
+    # Execute
     with pytest.raises(HTTPException) as excinfo:
         await chat_completions(
             request=request,
@@ -242,22 +242,22 @@ async def test_chat_completions_http_exception_non_499():
             worker_task=worker_task,
         )
 
-    # 验证: status_code=400 (lines 71-76)
+    # Verify: status_code=400 (lines 71-76)
     assert excinfo.value.status_code == 400
     assert "Bad request" in str(excinfo.value.detail)
 
-    # 验证: logger.warning 被调用 (line 75)
-    # logger.info 也会被调用一次 (line 31), 但我们只关注 warning
+    # Verify: logger.warning called (line 75)
+    # logger.info will also be called once (line 31), but we only care about warning
     assert logger.warning.call_count >= 1
-    # 最后一次 warning 调用包含 HTTP 异常消息 (line 75)
-    assert "HTTP异常" in logger.warning.call_args[0][0]
+    # Last warning call contains HTTP exception message (line 75)
+    assert "HTTP exception" in logger.warning.call_args[0][0]
 
 
 @pytest.mark.asyncio
 async def test_chat_completions_generic_exception():
     """
-    测试场景: result_future.wait 抛出 非 HTTPException 的异常
-    预期: 记录异常,转换为 500 错误 (lines 77-79)
+    Test scenario: result_future.wait throws non-HTTPException
+    Expected: Log exception and convert to 500 error (lines 77-79)
     """
     request = ChatCompletionRequest(
         messages=[Message(role="user", content="hello")], model="gpt-4"
@@ -281,7 +281,7 @@ async def test_chat_completions_generic_exception():
 
     asyncio.create_task(process_queue())
 
-    # 执行
+    # Execute
     with pytest.raises(HTTPException) as excinfo:
         await chat_completions(
             request=request,
@@ -292,12 +292,12 @@ async def test_chat_completions_generic_exception():
             worker_task=worker_task,
         )
 
-    # 验证: 转换为 500 错误 (line 79)
+    # Verify: Convert to 500 error (line 79)
     assert excinfo.value.status_code == 500
-    assert "服务器内部错误" in str(excinfo.value.detail)
+    assert "Internal server error" in str(excinfo.value.detail)
     assert "Unexpected error" in str(excinfo.value.detail)
 
-    # 验证: logger.exception 被调用 (line 78)
+    # Verify: logger.exception called (line 78)
     assert logger.exception.call_count >= 1
-    # 最后一次 exception 调用包含等待响应错误消息 (line 78)
-    assert "等待Worker响应时出错" in logger.exception.call_args[0][0]
+    # Last exception call contains error message while waiting for response (line 78)
+    assert "Error waiting for Worker response" in logger.exception.call_args[0][0]

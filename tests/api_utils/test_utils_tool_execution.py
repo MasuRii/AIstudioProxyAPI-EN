@@ -17,9 +17,9 @@ from models import Message, MessageContentItem
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_cancelled_error_reraised():
     """
-    测试场景: 函数被取消时正确重新抛出 CancelledError
-    预期: CancelledError 不会被吞掉，必须重新抛出
-    这是 CRITICAL 测试 - 防止请求挂起
+    Test scenario: Correctly re-throw CancelledError when function is cancelled
+    Expected: CancelledError not swallowed, must be re-thrown
+    This is a CRITICAL test - prevents request hang
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -27,13 +27,13 @@ async def test_maybe_execute_tools_cancelled_error_reraised():
     tools = [{"function": {"name": "test_tool"}}]
     tool_choice = {"type": "function", "function": {"name": "test_tool"}}
 
-    # Mock execute_tool_call to raise CancelledError
+    # Mock execute_tool_call to raise CancelledError - patch where it's imported/used
     with patch(
-        "api_utils.utils.execute_tool_call", new_callable=AsyncMock
+        "api_utils.utils_ext.tools_execution.execute_tool_call", new_callable=AsyncMock
     ) as mock_exec:
         mock_exec.side_effect = asyncio.CancelledError()
-        with patch("api_utils.utils.register_runtime_tools"):
-            # 预期: CancelledError 被重新抛出
+        with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
+            # Expected: CancelledError re-thrown
             with pytest.raises(asyncio.CancelledError):
                 await maybe_execute_tools(messages, tools, tool_choice)
 
@@ -41,8 +41,8 @@ async def test_maybe_execute_tools_cancelled_error_reraised():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_tool_choice_dict_format():
     """
-    测试场景: tool_choice 为字典格式 {"type": "function", "function": {"name": "foo"}}
-    预期: 提取函数名并执行
+    Test scenario: tool_choice as dictionary format {"type": "function", "function": {"name": "foo"}}
+    Expected: Extract function name and execute
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -51,14 +51,17 @@ async def test_maybe_execute_tools_tool_choice_dict_format():
     tool_choice = {"type": "function", "function": {"name": "my_function"}}
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = '{"result": "success"}'
 
         result = await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: execute_tool_call 被调用，参数正确
+        # Verify: execute_tool_call called with correct parameters
         mock_exec.assert_called_once_with("my_function", '{"arg": "value"}')
         assert result is not None
         assert len(result) == 1
@@ -70,15 +73,15 @@ async def test_maybe_execute_tools_tool_choice_dict_format():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_tool_choice_string_none():
     """
-    测试场景: tool_choice 为字符串 "none" (大小写不敏感)
-    预期: 返回 None，不执行任何工具
+    Test scenario: tool_choice as string "none" (case-insensitive)
+    Expected: Return None, no tool executed
     """
     from api_utils.utils import maybe_execute_tools
 
     messages = [Message(role="user", content="test")]
     tools = [{"function": {"name": "test_tool"}}]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         for choice in ["none", "None", "NONE", "no", "NO", "off", "OFF"]:
             result = await maybe_execute_tools(messages, tools, choice)
             assert result is None
@@ -87,8 +90,8 @@ async def test_maybe_execute_tools_tool_choice_string_none():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_tool_choice_auto_single_tool():
     """
-    测试场景: tool_choice 为 "auto" 且只有一个工具
-    预期: 自动执行该工具
+    Test scenario: tool_choice as "auto" and only one tool
+    Expected: Automatically execute that tool
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -96,8 +99,11 @@ async def test_maybe_execute_tools_tool_choice_auto_single_tool():
     tools = [{"function": {"name": "only_tool"}}]
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = '{"done": true}'
 
@@ -113,8 +119,8 @@ async def test_maybe_execute_tools_tool_choice_auto_single_tool():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_tool_choice_auto_multiple_tools():
     """
-    测试场景: tool_choice 为 "auto" 但有多个工具
-    预期: 不执行任何工具（因为无法自动选择）
+    Test scenario: tool_choice as "auto" but multiple tools
+    Expected: No tool executed (as automatic choice is not possible)
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -124,7 +130,7 @@ async def test_maybe_execute_tools_tool_choice_auto_multiple_tools():
         {"function": {"name": "tool2"}},
     ]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         result = await maybe_execute_tools(messages, tools, "auto")
         assert result is None
 
@@ -132,8 +138,8 @@ async def test_maybe_execute_tools_tool_choice_auto_multiple_tools():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_tool_choice_direct_name():
     """
-    测试场景: tool_choice 为函数名字符串（直接指定）
-    预期: 执行该函数
+    Test scenario: tool_choice as function name string (direct specification)
+    Expected: Execute that function
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -141,8 +147,11 @@ async def test_maybe_execute_tools_tool_choice_direct_name():
     tools = [{"function": {"name": "direct_call"}}]
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = '{"status": "ok"}'
 
@@ -156,15 +165,15 @@ async def test_maybe_execute_tools_tool_choice_direct_name():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_tool_choice_none():
     """
-    测试场景: tool_choice 为 None
-    预期: 不主动执行工具，返回 None
+    Test scenario: tool_choice is None
+    Expected: Do not actively execute tool, return None
     """
     from api_utils.utils import maybe_execute_tools
 
     messages = [Message(role="user", content="test")]
     tools = [{"function": {"name": "test_tool"}}]
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         result = await maybe_execute_tools(messages, tools, None)
         assert result is None
 
@@ -172,8 +181,8 @@ async def test_maybe_execute_tools_tool_choice_none():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_arguments_from_user_text():
     """
-    测试场景: 从最近的用户消息中提取 JSON 作为参数
-    预期: 使用 _extract_json_from_text 提取 JSON
+    Test scenario: Extract JSON from the latest user message as parameters
+    Expected: Use _extract_json_from_text to extract JSON
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -190,14 +199,17 @@ async def test_maybe_execute_tools_arguments_from_user_text():
     tool_choice = "test_func"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "ok"
 
         result = await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 参数是从最后一条用户消息中提取的 JSON
+        # Verify: Parameters extracted as JSON from the last user message
         mock_exec.assert_called_once_with("test_func", '{"key": "value", "num": 42}')
         assert result is not None
         assert result[0]["arguments"] == '{"key": "value", "num": 42}'
@@ -206,8 +218,8 @@ async def test_maybe_execute_tools_arguments_from_user_text():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_arguments_fallback_empty():
     """
-    测试场景: 用户消息中没有有效 JSON
-    预期: 使用空参数 "{}"
+    Test scenario: No valid JSON in user message
+    Expected: Use empty parameters "{}"
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -216,14 +228,17 @@ async def test_maybe_execute_tools_arguments_fallback_empty():
     tool_choice = "my_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "done"
 
         result = await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 参数回退到空 JSON
+        # Verify: Parameters fall back to empty JSON
         mock_exec.assert_called_once_with("my_tool", "{}")
         assert result is not None
         assert result[0]["arguments"] == "{}"
@@ -232,32 +247,32 @@ async def test_maybe_execute_tools_arguments_fallback_empty():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_existing_tool_result_skip():
     """
-    测试场景: 消息列表中已有 role='tool' 的消息
-    预期: 不再执行工具，返回 None（遵循对话式调用循环）
+    Test scenario: Message with role='tool' already in message list
+    Expected: No further tool execution, return None (follows conversational call loop)
     """
     from api_utils.utils import maybe_execute_tools
 
     messages = [
         Message(role="user", content='{"x": 1}'),
         Message(role="assistant", content="Let me call the tool"),
-        # 已有工具结果消息
+        # Already have tool result message
         Message(role="tool", content='{"result": "previous call"}'),
     ]
     tools = [{"function": {"name": "my_tool"}}]
     tool_choice = "my_tool"
 
-    with patch("api_utils.utils.register_runtime_tools"):
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
         result = await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 不执行，因为已有工具结果
+        # Verify: No execution because tool result already exists
         assert result is None
 
 
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_base_exception_returns_none():
     """
-    测试场景: execute_tool_call 抛出普通异常（非 CancelledError）
-    预期: 捕获异常，返回 None
+    Test scenario: execute_tool_call throws common exception (non-CancelledError)
+    Expected: Catch exception, return None
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -266,23 +281,26 @@ async def test_maybe_execute_tools_base_exception_returns_none():
     tool_choice = "failing_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
-        # Mock 抛出普通异常
+        # Mock common exception
         mock_exec.side_effect = ValueError("Something went wrong")
 
         result = await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 异常被捕获，返回 None
+        # Verify: Exception caught, return None
         assert result is None
 
 
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_register_runtime_tools_called():
     """
-    测试场景: 验证 register_runtime_tools 被正确调用
-    预期: 每次调用 maybe_execute_tools 时注册工具
+    Test scenario: Verify register_runtime_tools called correctly
+    Expected: Register tools on each maybe_execute_tools call
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -291,22 +309,27 @@ async def test_maybe_execute_tools_register_runtime_tools_called():
     tool_choice = "tool1"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools") as mock_register,
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch(
+            "api_utils.utils_ext.tools_execution.register_runtime_tools"
+        ) as mock_register,
     ):
         mock_exec.return_value = "ok"
 
         await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: register_runtime_tools 被调用，传入 tools 和 None（默认 MCP 端点）
+        # Verify: register_runtime_tools called with tools and None (default MCP endpoint)
         mock_register.assert_called_once_with(tools, None)
 
 
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_empty_messages():
     """
-    测试场景: 消息列表为空
-    预期: 无用户文本，参数回退到 "{}"
+    Test scenario: Message list is empty
+    Expected: No user text, parameters fall back to "{}"
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -315,34 +338,37 @@ async def test_maybe_execute_tools_empty_messages():
     tool_choice = "test_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "done"
 
         await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 参数为空 JSON
+        # Verify: Parameters are empty JSON
         mock_exec.assert_called_once_with("test_tool", "{}")
 
 
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_no_chosen_name():
     """
-    测试场景: tool_choice 解析后没有得到函数名
-    预期: 返回 None
+    Test scenario: No function name obtained after tool_choice parsing
+    Expected: Return None
     """
     from api_utils.utils import maybe_execute_tools
 
     messages = [Message(role="user", content="test")]
     tools = [{"function": {"name": "test_tool"}}]
 
-    with patch("api_utils.utils.register_runtime_tools"):
-        # tool_choice 为空字典，无 function.name
+    with patch("api_utils.utils_ext.tools_execution.register_runtime_tools"):
+        # tool_choice is empty dict, no function.name
         result1 = await maybe_execute_tools(messages, tools, {})
         assert result1 is None
 
-        # tool_choice 为字典但 function.name 缺失
+        # tool_choice is dict but function.name missing
         result2 = await maybe_execute_tools(
             messages, tools, {"type": "function", "function": {}}
         )
@@ -352,8 +378,8 @@ async def test_maybe_execute_tools_no_chosen_name():
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_multiline_json_extraction():
     """
-    测试场景: 用户消息包含多行 JSON
-    预期: 正确提取跨行的 JSON
+    Test scenario: User message contains multiline JSON
+    Expected: Correctly extract multiline JSON
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -375,14 +401,17 @@ Thank you!""",
     tool_choice = "multi_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "ok"
 
         await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 提取了完整的多行 JSON
+        # Verify: Full multiline JSON extracted
         called_args = mock_exec.call_args[0][1]
         import json
 
@@ -394,8 +423,8 @@ Thank you!""",
 @pytest.mark.asyncio
 async def test_maybe_execute_tools_list_content_extraction():
     """
-    测试场景: 用户消息内容为列表（包含文本和图片）
-    预期: 从文本部分提取 JSON
+    Test scenario: User message content as list (containing text and images)
+    Expected: Extract JSON from text parts
     """
     from api_utils.utils import maybe_execute_tools
 
@@ -419,14 +448,17 @@ async def test_maybe_execute_tools_list_content_extraction():
     tool_choice = "image_tool"
 
     with (
-        patch("api_utils.utils.execute_tool_call", new_callable=AsyncMock) as mock_exec,
-        patch("api_utils.utils.register_runtime_tools"),
+        patch(
+            "api_utils.utils_ext.tools_execution.execute_tool_call",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+        patch("api_utils.utils_ext.tools_execution.register_runtime_tools"),
     ):
         mock_exec.return_value = "processed"
 
         await maybe_execute_tools(messages, tools, tool_choice)
 
-        # 验证: 从拼接的文本中提取了 JSON
-        # _get_latest_user_text 会拼接: "Before image\n{\"action\": \"process_image\"}"
-        # _extract_json_from_text 会提取: {"action": "process_image"}
+        # Verify: JSON extracted from concatenated text
+        # _get_latest_user_text concatenates: "Before image\n{\"action\": \"process_image\"}"
+        # _extract_json_from_text extracts: {"action": "process_image"}
         mock_exec.assert_called_once_with("image_tool", '{"action": "process_image"}')

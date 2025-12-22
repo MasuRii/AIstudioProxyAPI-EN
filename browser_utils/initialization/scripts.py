@@ -9,36 +9,38 @@ logger = logging.getLogger("AIStudioProxyServer")
 
 
 async def add_init_scripts_to_context(context: AsyncBrowserContext):
-    """在浏览器上下文中添加初始化脚本（备用方案）"""
+    """Add initialization scripts to browser context (fallback option)"""
     try:
         from config.settings import USERSCRIPT_PATH
 
-        # 检查脚本文件是否存在
+        # Check if script file exists
         if not os.path.exists(USERSCRIPT_PATH):
-            logger.info(f"脚本文件不存在，跳过脚本注入: {USERSCRIPT_PATH}")
+            logger.info(
+                f"Script file does not exist, skipping script injection: {USERSCRIPT_PATH}"
+            )
             return
 
-        # 读取脚本内容
+        # Read script content
         with open(USERSCRIPT_PATH, "r", encoding="utf-8") as f:
             script_content = f.read()
 
-        # 清理UserScript头部
+        # Clean UserScript headers
         cleaned_script = _clean_userscript_headers(script_content)
 
-        # 添加到上下文的初始化脚本
+        # Add to context initialization scripts
         await context.add_init_script(cleaned_script)
         logger.info(
-            f"已将脚本添加到浏览器上下文初始化脚本: {os.path.basename(USERSCRIPT_PATH)}"
+            f"Added script to browser context initialization scripts: {os.path.basename(USERSCRIPT_PATH)}"
         )
 
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"添加初始化脚本到上下文时发生错误: {e}")
+        logger.error(f"Error adding initialization script to context: {e}")
 
 
 def _clean_userscript_headers(script_content: str) -> str:
-    """清理UserScript头部信息"""
+    """Clean UserScript header information"""
     lines = script_content.split("\n")
     cleaned_lines = []
     in_userscript_block = False

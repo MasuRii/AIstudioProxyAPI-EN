@@ -5,14 +5,15 @@ Normalizes the reasoning_effort parameter into a standardized thinking directive
 This module is responsible for converting various formats of the reasoning_effort parameter into a unified internal directive structure.
 """
 
-from typing import Optional, Any
 from dataclasses import dataclass
-from config import ENABLE_THINKING_BUDGET, DEFAULT_THINKING_BUDGET
+from typing import Any, Optional
+
+from config import DEFAULT_THINKING_BUDGET, ENABLE_THINKING_BUDGET
 from config.settings import (
     DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE,
+    THINKING_BUDGET_HIGH,
     THINKING_BUDGET_LOW,
     THINKING_BUDGET_MEDIUM,
-    THINKING_BUDGET_HIGH
 )
 
 
@@ -33,7 +34,9 @@ class ThinkingDirective:
     original_value: Any
 
 
-def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bool = True) -> ThinkingDirective:
+def normalize_reasoning_effort(
+    reasoning_effort: Optional[Any], is_streaming: bool = True
+) -> ThinkingDirective:
     """Normalize reasoning_effort parameter into a standardized thinking directive
 
     Args:
@@ -72,7 +75,9 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
         )
 
     # Scenario 2: Disable thinking mode (reasoning_effort = 0 or "0")
-    if reasoning_effort == 0 or (isinstance(reasoning_effort, str) and reasoning_effort.strip() == "0"):
+    if reasoning_effort == 0 or (
+        isinstance(reasoning_effort, str) and reasoning_effort.strip() == "0"
+    ):
         return ThinkingDirective(
             thinking_enabled=False,
             budget_enabled=False,
@@ -83,7 +88,7 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
     # Scenario 3: Enable thinking but unlimited budget (reasoning_effort = "none" / "-1" / -1)
     if isinstance(reasoning_effort, str):
         reasoning_str = reasoning_effort.strip().lower()
-        # "none"/"-1" → 开启思考，不限预算
+        # "none"/"-1" → enable thinking, unlimited budget
         if reasoning_str in ["none", "-1"]:
             return ThinkingDirective(
                 thinking_enabled=True,
@@ -91,13 +96,13 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
                 budget_value=None,
                 original_value=reasoning_effort,
             )
-        # "high"/"low"/"medium" → 开启思考，使用 _should_enable_from_raw 逻辑
-        # 注意：这些值由 _handle_thinking_budget 中的 _should_enable_from_raw 处理
-        # 这里需要返回 thinking_enabled=True 避免与 desired_enabled 冲突
+        # "high"/"low"/"medium" → enable thinking, use _should_enable_from_raw logic
+        # Note: these values are handled by _should_enable_from_raw in _handle_thinking_budget
+        # Returning thinking_enabled=True here to avoid conflict with desired_enabled
         if reasoning_str in ["high", "low", "medium"]:
             return ThinkingDirective(
                 thinking_enabled=True,
-                budget_enabled=False,  # 具体值由 _should_enable_from_raw 确定
+                budget_enabled=False,  # Actual value determined by _should_enable_from_raw
                 budget_value=None,
                 original_value=reasoning_effort,
             )
@@ -129,30 +134,32 @@ def normalize_reasoning_effort(reasoning_effort: Optional[Any], is_streaming: bo
     )
 
 
-def normalize_reasoning_effort_with_stream_check(reasoning_effort: Optional[Any], is_streaming: bool = True) -> ThinkingDirective:
+def normalize_reasoning_effort_with_stream_check(
+    reasoning_effort: Optional[Any], is_streaming: bool = True
+) -> ThinkingDirective:
     """Normalize thinking directive with stream check
-    
+
     Decides whether to disable thinking budget in non-streaming mode based on DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE configuration.
-    
+
     Args:
         reasoning_effort: reasoning_effort parameter from API request
         is_streaming: Whether it is a streaming request
-        
+
     Returns:
         ThinkingDirective: Standardized thinking directive
     """
     # First get the basic thinking directive
     directive = normalize_reasoning_effort(reasoning_effort, is_streaming)
-    
+
     # If not streaming and configured to disable budget on streaming disable, then disable
     if not is_streaming and DISABLE_THINKING_BUDGET_ON_STREAMING_DISABLE:
         return ThinkingDirective(
             thinking_enabled=False,
             budget_enabled=False,
             budget_value=None,
-            original_value=reasoning_effort
+            original_value=reasoning_effort,
         )
-    
+
     # Otherwise return original directive (allowing thinking budget to remain enabled in non-streaming mode)
     return directive
 
@@ -210,4 +217,6 @@ def format_directive_log(directive: ThinkingDirective) -> str:
     elif directive.budget_enabled and directive.budget_value is not None:
         return f"Thinking enabled with budget: {directive.budget_value} tokens (Original: {directive.original_value})"
     else:
-        return f"Thinking enabled, unlimited budget (Original: {directive.original_value})"
+        return (
+            f"Thinking enabled, unlimited budget (Original: {directive.original_value})"
+        )

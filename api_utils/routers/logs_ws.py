@@ -29,7 +29,8 @@ async def websocket_log_endpoint(
         raise
     except Exception as e:
         logger.error(
-            f"日志 WebSocket (客户端 {client_id}) 发生异常: {e}", exc_info=True
+            f"Log WebSocket (client {client_id}) encountered an exception: {e}",
+            exc_info=True,
         )
     finally:
         log_ws_manager.disconnect(client_id)

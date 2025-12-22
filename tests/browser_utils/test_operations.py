@@ -5,15 +5,23 @@ from playwright.async_api import Error as PlaywrightAsyncError
 
 from browser_utils.operations import (
     _get_final_response_content,
-    _get_injected_models,
     _handle_model_list_response,
-    _parse_userscript_models,
     _wait_for_response_completion,
     detect_and_extract_page_error,
     get_raw_text_content,
     get_response_via_copy_button,
     get_response_via_edit_button,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_async_sleep():
+    """Mock asyncio.sleep in interactions module to skip real delays (0.3-0.5s waits)."""
+    with patch(
+        "browser_utils.operations_modules.interactions.asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
+        yield
 
 
 def make_mock_page():
@@ -91,58 +99,6 @@ async def test_get_raw_text_content_fallback():
     assert result == "element content"
 
 
-def test_parse_userscript_models():
-    """Test parsing models from userscript."""
-    script = """
-    const SCRIPT_VERSION = 'v1.0';
-    const MODELS_TO_INJECT = [
-        {
-            name: 'models/test-model',
-            displayName: 'Test Model',
-            description: 'A test model'
-        }
-    ];
-    """
-    models = _parse_userscript_models(script)
-    assert len(models) == 1
-    assert models[0]["name"] == "models/test-model"
-
-
-def test_parse_userscript_models_empty():
-    """Test parsing empty or invalid userscript."""
-    script = "const SCRIPT_VERSION = 'v1.0';"
-    models = _parse_userscript_models(script)
-    assert models == []
-
-
-@patch("os.environ.get")
-@patch("os.path.exists")
-@patch("builtins.open")
-def test_get_injected_models(
-    mock_open: MagicMock, mock_exists: MagicMock, mock_env: MagicMock
-):
-    """Test getting injected models."""
-    mock_env.return_value = "true"
-    mock_exists.return_value = True
-
-    script_content = """
-    const SCRIPT_VERSION = 'v1.0';
-    const MODELS_TO_INJECT = [
-        {
-            name: 'models/test-model',
-            displayName: 'Test Model',
-            description: 'A test model'
-        }
-    ];
-    """
-    mock_open.return_value.__enter__.return_value.read.return_value = script_content
-
-    models = _get_injected_models()
-    assert len(models) == 1
-    assert models[0]["id"] == "test-model"
-    assert models[0]["injected"] is True
-
-
 @pytest.mark.asyncio
 async def test_handle_model_list_response_success():
     """Test handling successful model list response."""
@@ -161,12 +117,12 @@ async def test_handle_model_list_response_success():
         }
     )
 
-    mock_server = MagicMock()
-    mock_server.parsed_model_list = []
-    mock_server.global_model_list_raw_json = None
-    mock_server.model_list_fetch_event = None
+    mock_state = MagicMock()
+    mock_state.parsed_model_list = []
+    mock_state.global_model_list_raw_json = None
+    mock_state.model_list_fetch_event = MagicMock()
 
-    with patch.dict("sys.modules", {"server": mock_server}):
+    with patch("api_utils.server_state.state", mock_state):
         await _handle_model_list_response(response)
 
 
@@ -211,6 +167,7 @@ async def test_get_response_via_edit_button_success(mock_page: MagicMock):
     last_msg.get_by_label = MagicMock(return_value=edit_btn)
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)  # Add count() for defensive checks
 
     # Setup async actions
     last_msg.hover = AsyncMock()
@@ -282,8 +239,9 @@ async def test_wait_for_response_completion_success(mock_page: MagicMock):
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=1000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=1.0,
         initial_wait_ms=0,
     )
     assert result is True
@@ -439,6 +397,7 @@ async def test_get_response_via_edit_button_hover_failure():
     )
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)
 
     # Hover fails but we continue
     last_msg.hover = AsyncMock(side_effect=RuntimeError("Hover failed"))
@@ -539,20 +498,28 @@ async def test_get_response_via_edit_button_data_value_error():
     last_msg = MagicMock()
     edit_btn = MagicMock()
     finish_btn = MagicMock()
-    textarea = MagicMock()
+    autosize_textarea = MagicMock()
     actual_textarea = MagicMock()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label = MagicMock(
         side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
     )
-    last_msg.locator.return_value = textarea
-    textarea.locator.return_value = actual_textarea
+
+    # Set up locator to return different objects based on selector
+    def locator_side_effect(selector):
+        if "ms-autosize-textarea" in selector:
+            return autosize_textarea
+        return actual_textarea
+
+    last_msg.locator = MagicMock(side_effect=locator_side_effect)
+    autosize_textarea.count = AsyncMock(return_value=1)
+    actual_textarea.count = AsyncMock(return_value=1)
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
 
     # data-value fails, input_value succeeds
-    textarea.get_attribute = AsyncMock(
+    autosize_textarea.get_attribute = AsyncMock(
         side_effect=PlaywrightAsyncError("Attribute error")
     )
     actual_textarea.input_value = AsyncMock(return_value="Input value content")
@@ -586,6 +553,7 @@ async def test_get_response_via_edit_button_cancelled_during_data_value():
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)  # Element exists
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
     textarea.get_attribute = AsyncMock(side_effect=asyncio.CancelledError)
@@ -608,20 +576,28 @@ async def test_get_response_via_edit_button_input_value_fallback():
     last_msg = MagicMock()
     edit_btn = MagicMock()
     finish_btn = MagicMock()
-    textarea = MagicMock()
+    autosize_textarea = MagicMock()
     actual_textarea = MagicMock()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label = MagicMock(
         side_effect=lambda label: edit_btn if label == "Edit" else finish_btn
     )
-    last_msg.locator.return_value = textarea
-    textarea.locator.return_value = actual_textarea
+
+    # Set up locator to return different objects based on selector
+    def locator_side_effect(selector):
+        if "ms-autosize-textarea" in selector:
+            return autosize_textarea
+        return actual_textarea
+
+    last_msg.locator = MagicMock(side_effect=locator_side_effect)
+    autosize_textarea.count = AsyncMock(return_value=1)
+    actual_textarea.count = AsyncMock(return_value=1)
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
 
     # data-value returns None, fallback to input_value
-    textarea.get_attribute = AsyncMock(return_value=None)
+    autosize_textarea.get_attribute = AsyncMock(return_value=None)
     actual_textarea.input_value = AsyncMock(return_value="Fallback content")
     finish_btn.click = AsyncMock()
 
@@ -683,16 +659,24 @@ async def test_get_response_via_edit_button_cancelled_during_input_value():
 
     last_msg = MagicMock()
     edit_btn = MagicMock()
-    textarea = MagicMock()
+    autosize_textarea = MagicMock()
     actual_textarea = MagicMock()
 
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
-    last_msg.locator.return_value = textarea
-    textarea.locator.return_value = actual_textarea
+
+    # Set up locator to return different objects based on selector
+    def locator_side_effect(selector):
+        if "ms-autosize-textarea" in selector:
+            return autosize_textarea
+        return actual_textarea
+
+    last_msg.locator = MagicMock(side_effect=locator_side_effect)
+    autosize_textarea.count = AsyncMock(return_value=1)  # Element exists
+    actual_textarea.count = AsyncMock(return_value=1)  # Element exists
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
-    textarea.get_attribute = AsyncMock(return_value=None)
+    autosize_textarea.get_attribute = AsyncMock(return_value=None)
     actual_textarea.input_value = AsyncMock(side_effect=asyncio.CancelledError)
 
     with patch("playwright.async_api.expect") as mock_expect:
@@ -717,6 +701,7 @@ async def test_get_response_via_edit_button_textarea_error():
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)  # Element exists
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
 
@@ -749,6 +734,7 @@ async def test_get_response_via_edit_button_cancelled_during_textarea():
     mock_page.locator.return_value.last = last_msg
     last_msg.get_by_label.return_value = edit_btn
     last_msg.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)  # Element exists
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
 
@@ -781,6 +767,7 @@ async def test_get_response_via_edit_button_finish_button_failure():
     )
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)  # Element exists
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
     textarea.get_attribute = AsyncMock(return_value="Content")
@@ -825,6 +812,7 @@ async def test_get_response_via_edit_button_cancelled_during_finish():
     )
     last_msg.locator.return_value = textarea
     textarea.locator.return_value = textarea
+    textarea.count = AsyncMock(return_value=1)  # Element exists
     last_msg.hover = AsyncMock()
     edit_btn.click = AsyncMock()
     textarea.get_attribute = AsyncMock(return_value="Content")
@@ -1283,8 +1271,9 @@ async def test_wait_for_response_completion_client_disconnect_early():
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=1000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=1.0,
         initial_wait_ms=0,
     )
 
@@ -1315,8 +1304,9 @@ async def test_wait_for_response_completion_timeout():
             edit_btn,
             "req_id",
             check_disconnect,
-            "chat_id",
-            timeout_ms=100,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=0.1,
             initial_wait_ms=0,
         )
 
@@ -1353,8 +1343,9 @@ async def test_wait_for_response_completion_client_disconnect_after_timeout_chec
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1392,8 +1383,9 @@ async def test_wait_for_response_completion_submit_button_timeout():
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1429,8 +1421,9 @@ async def test_wait_for_response_completion_client_disconnect_after_button_check
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1464,8 +1457,9 @@ async def test_wait_for_response_completion_debug_logging():
             edit_btn,
             "req_id",
             check_disconnect,
-            "chat_id",
-            timeout_ms=5000,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=5.0,
             initial_wait_ms=0,
         )
 
@@ -1504,8 +1498,9 @@ async def test_wait_for_response_completion_edit_button_timeout():
             edit_btn,
             "req_id",
             check_disconnect,
-            "chat_id",
-            timeout_ms=5000,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=5.0,
             initial_wait_ms=0,
         )
 
@@ -1542,8 +1537,9 @@ async def test_wait_for_response_completion_client_disconnect_after_edit_check()
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1570,8 +1566,9 @@ async def test_wait_for_response_completion_heuristic_completion():
         edit_btn,
         "req_id",
         check_disconnect,
-        "chat_id",
-        timeout_ms=5000,
+        None,  # current_chat_id
+        0,  # prompt_length
+        timeout=5.0,
         initial_wait_ms=0,
     )
 
@@ -1607,8 +1604,9 @@ async def test_wait_for_response_completion_conditions_not_met_with_debug():
             edit_btn,
             "req_id",
             check_disconnect,
-            "chat_id",
-            timeout_ms=5000,
+            None,  # current_chat_id
+            0,  # prompt_length
+            timeout=5.0,
             initial_wait_ms=0,
         )
 

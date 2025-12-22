@@ -14,7 +14,7 @@ class BaseController:
         self.req_id = req_id
 
     async def _check_disconnect(self, check_client_disconnected: Callable, stage: str):
-        """检查客户端是否断开连接。"""
+        """Check if the client has disconnected."""
         if check_client_disconnected(stage):
             raise ClientDisconnectedError(
                 f"[{self.req_id}] Client disconnected at stage: {stage}"

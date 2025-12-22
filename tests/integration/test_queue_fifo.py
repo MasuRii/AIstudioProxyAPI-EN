@@ -18,8 +18,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from api_utils.queue_worker import QueueManager
-
 
 @pytest.mark.integration
 class TestQueueFIFOOrdering:

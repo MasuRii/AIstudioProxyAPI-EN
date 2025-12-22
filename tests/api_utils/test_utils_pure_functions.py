@@ -9,8 +9,8 @@ import json
 
 def test_extract_json_from_text_valid_json():
     """
-    测试场景: 从文本中提取有效的 JSON
-    策略: 纯函数测试，无需模拟
+    Test scenario: Extract valid JSON from text
+    Strategy: Pure function test, no mocking needed
     """
     from api_utils.utils import _extract_json_from_text
 
@@ -25,8 +25,8 @@ def test_extract_json_from_text_valid_json():
 
 def test_extract_json_from_text_nested_json():
     """
-    测试场景: 提取嵌套的 JSON 对象
-    验证: 能正确处理复杂结构
+    Test scenario: Extract nested JSON object
+    Verify: Able to handle complex structures
     """
     from api_utils.utils import _extract_json_from_text
 
@@ -41,8 +41,8 @@ def test_extract_json_from_text_nested_json():
 
 def test_extract_json_from_text_invalid_json():
     """
-    测试场景: 无效的 JSON 字符串
-    预期: 返回 None
+    Test scenario: Invalid JSON string
+    Expected: Return None
     """
     from api_utils.utils import _extract_json_from_text
 
@@ -54,8 +54,8 @@ def test_extract_json_from_text_invalid_json():
 
 def test_extract_json_from_text_empty_string():
     """
-    测试场景: 空字符串
-    预期: 返回 None
+    Test scenario: Empty string
+    Expected: Return None
     """
     from api_utils.utils import _extract_json_from_text
 
@@ -65,8 +65,8 @@ def test_extract_json_from_text_empty_string():
 
 def test_extract_json_from_text_no_braces():
     """
-    测试场景: 没有大括号的文本
-    预期: 返回 None
+    Test scenario: Text without braces
+    Expected: Return None
     """
     from api_utils.utils import _extract_json_from_text
 
@@ -78,42 +78,42 @@ def test_extract_json_from_text_no_braces():
 
 def test_extract_json_from_text_multiple_json_objects():
     """
-    测试场景: 包含多个 JSON 对象的文本（无效情况）
-    验证: 函数处理无效的多对象文本
+    Test scenario: Text containing multiple JSON objects (invalid case)
+    Verify: Function handles invalid multi-object text
 
-    说明: 函数从第一个 '{' 到最后一个 '}' 提取，
-    对于 '{"first": "obj"} text {"second": "obj"}' 会得到整个字符串，
-    这不是有效的 JSON，所以返回 None
+    Description: Function extracts from the first '{' to the last '}',
+    so for '{"first": "obj"} text {"second": "obj"}' it gets the whole string,
+    which is not valid JSON, thus returns None.
     """
     from api_utils.utils import _extract_json_from_text
 
     text = '{"first": "obj"} some text {"second": "obj"}'
     result = _extract_json_from_text(text)
 
-    # 预期返回 None，因为提取的字符串不是有效JSON
+    # Expected to return None because extracted string is not valid JSON
     assert result is None
 
 
 def test_extract_json_from_text_json_with_unicode():
     """
-    测试场景: 包含 Unicode 字符的 JSON
-    验证: 正确处理非 ASCII 字符
+    Test scenario: JSON with Unicode characters
+    Verify: Correctly handle non-ASCII characters
     """
     from api_utils.utils import _extract_json_from_text
 
-    text = '{"message": "你好世界", "emoji": "😀"}'
+    text = '{"message": "hello world", "emoji": "smile"}'
     result = _extract_json_from_text(text)
 
     assert result is not None
     parsed = json.loads(result)
-    assert parsed["message"] == "你好世界"
-    assert parsed["emoji"] == "😀"
+    assert parsed["message"] == "hello world"
+    assert parsed["emoji"] == "smile"
 
 
 def test_extract_json_from_text_json_with_escaped_quotes():
     """
-    测试场景: 包含转义引号的 JSON
-    验证: 正确处理转义字符
+    Test scenario: JSON with escaped quotes
+    Verify: Correctly handle escape characters
     """
     from api_utils.utils import _extract_json_from_text
 
@@ -127,8 +127,8 @@ def test_extract_json_from_text_json_with_escaped_quotes():
 
 def test_generate_sse_stop_chunk_with_usage_basic():
     """
-    测试场景: 生成基本的 SSE 停止块
-    策略: 纯函数测试，验证输出格式
+    Test scenario: Generate basic SSE stop chunk
+    Strategy: Pure function test, verify output format
     """
     from api_utils.utils import generate_sse_stop_chunk_with_usage
 
@@ -138,17 +138,17 @@ def test_generate_sse_stop_chunk_with_usage_basic():
         req_id="test123", model="gemini-1.5-pro", usage_stats=usage_stats, reason="stop"
     )
 
-    # 验证输出是 SSE 格式
+    # Verify output is in SSE format
     assert isinstance(result, str)
     assert "data:" in result
 
-    # 提取 JSON 部分验证
-    # SSE格式: data: {json}\n\n
+    # Extract JSON part to verify
+    # SSE format: data: {json}\n\n
     lines = result.strip().split("\n")
     data_line = None
     for line in lines:
         if line.startswith("data:"):
-            data_line = line[5:].strip()  # 移除 "data:" 前缀
+            data_line = line[5:].strip()  # Remove "data:" prefix
             break
 
     if data_line and data_line != "[DONE]":
@@ -156,14 +156,14 @@ def test_generate_sse_stop_chunk_with_usage_basic():
             chunk_data = json.loads(data_line)
             assert "choices" in chunk_data or "usage" in chunk_data
         except json.JSONDecodeError:
-            # 某些 SSE 块可能不是 JSON
+            # Some SSE chunks might not be JSON
             pass
 
 
 def test_generate_sse_stop_chunk_with_usage_custom_reason():
     """
-    测试场景: 使用自定义停止原因
-    验证: reason 参数被正确传递
+    Test scenario: Use custom stop reason
+    Verify: reason parameter passed correctly
     """
     from api_utils.utils import generate_sse_stop_chunk_with_usage
 
@@ -173,19 +173,19 @@ def test_generate_sse_stop_chunk_with_usage_custom_reason():
         req_id="test456",
         model="gemini-2.0-flash-exp",
         usage_stats=usage_stats,
-        reason="length",  # 自定义原因
+        reason="length",  # Custom reason
     )
 
     assert isinstance(result, str)
     assert "data:" in result
-    # 验证包含停止信息
-    assert result  # 非空
+    # Verify contains stop info
+    assert result  # non-empty
 
 
-def test_generate_sse_stop_chunk_with_empty_usage():
+def test_generate_sse_stop_chunk_with_usage_empty_usage():
     """
-    测试场景: 空的 usage 统计
-    验证: 能处理空字典
+    Test scenario: Empty usage statistics
+    Verify: Able to handle empty dict
     """
     from api_utils.utils import generate_sse_stop_chunk_with_usage
 

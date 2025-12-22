@@ -18,17 +18,15 @@ Test scenarios:
 Run with: python tests/test_reasoning_consolidation.py
 """
 
-import asyncio
 import json
-import unittest
-import sys
 import os
-from unittest.mock import Mock, patch, AsyncMock
+import sys
+import unittest
+from unittest.mock import Mock
 
 # Add project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from api_utils.request_processor import _handle_auxiliary_stream_response, _handle_playwright_response
 
 
 class TestReasoningConsolidation(unittest.TestCase):

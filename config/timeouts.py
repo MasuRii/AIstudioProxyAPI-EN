@@ -4,6 +4,7 @@ Contains all time-related configurations such as timeouts and polling intervals.
 """
 
 import os
+
 from dotenv import load_dotenv
 
 # Load .env file
@@ -47,3 +48,15 @@ QUOTA_EXCEEDED_COOLDOWN_SECONDS = int(os.environ.get('QUOTA_EXCEEDED_COOLDOWN_SE
 
 # --- Stream Related Configuration ---
 PSEUDO_STREAM_DELAY = float(os.environ.get('PSEUDO_STREAM_DELAY', '0.01'))
+
+# --- Fast-Fail Configuration ---
+# Submit button enable timeout - Lowered for fast-fail detection
+SUBMIT_BUTTON_ENABLE_TIMEOUT_MS = int(os.environ.get("SUBMIT_BUTTON_ENABLE_TIMEOUT_MS", "5000"))
+
+# --- Selector Timeout Configuration ---
+# Quick existence check timeout (for rapid detection of elements in DOM)
+SELECTOR_EXISTENCE_CHECK_TIMEOUT_MS = int(os.environ.get("SELECTOR_EXISTENCE_CHECK_TIMEOUT_MS", "500"))
+# Element visibility wait timeout (general UI operations)
+SELECTOR_VISIBILITY_TIMEOUT_MS = int(os.environ.get("SELECTOR_VISIBILITY_TIMEOUT_MS", "5000"))
+# Startup selector visibility timeout (longer for page load)
+STARTUP_SELECTOR_VISIBILITY_TIMEOUT_MS = int(os.environ.get("STARTUP_SELECTOR_VISIBILITY_TIMEOUT_MS", "30000"))

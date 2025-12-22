@@ -41,10 +41,13 @@ async def test_init_storage_state_explicit_exists(temp_auth_file):
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(
-        return_value="Gemini 1.5 Pro"
-    )
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Gemini 1.5 Pro")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     # Mock expect_async
     mock_expect = MagicMock()
@@ -52,6 +55,7 @@ async def test_init_storage_state_explicit_exists(temp_auth_file):
 
     with (
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -124,10 +128,13 @@ async def test_init_headless_auth_exists(temp_auth_file):
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(
-        return_value="Gemini 2.0 Flash"
-    )
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Gemini 2.0 Flash")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     mock_expect = MagicMock()
     mock_expect.return_value.to_be_visible = AsyncMock()
@@ -138,6 +145,7 @@ async def test_init_headless_auth_exists(temp_auth_file):
             {"LAUNCH_MODE": "headless", "ACTIVE_AUTH_JSON_PATH": str(temp_auth_file)},
         ),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -182,8 +190,13 @@ async def test_init_debug_auth_exists(temp_auth_file):
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(return_value="Model")
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Model")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     mock_expect = MagicMock()
     mock_expect.return_value.to_be_visible = AsyncMock()
@@ -194,6 +207,7 @@ async def test_init_debug_auth_exists(temp_auth_file):
             {"LAUNCH_MODE": "debug", "ACTIVE_AUTH_JSON_PATH": str(temp_auth_file)},
         ),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -237,8 +251,13 @@ async def test_init_debug_auth_missing_falls_back(temp_auth_file_missing):
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(return_value="Model")
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Model")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     mock_expect = MagicMock()
     mock_expect.return_value.to_be_visible = AsyncMock()
@@ -252,6 +271,7 @@ async def test_init_debug_auth_missing_falls_back(temp_auth_file_missing):
             },
         ),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -294,8 +314,13 @@ async def test_init_proxy_settings_applied():
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(return_value="Model")
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Model")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     mock_expect = MagicMock()
     mock_expect.return_value.to_be_visible = AsyncMock()
@@ -309,6 +334,7 @@ async def test_init_proxy_settings_applied():
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -346,8 +372,13 @@ async def test_init_page_discovery_existing_page():
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(return_value="Model")
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Model")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     mock_context.pages = [mock_page]
 
@@ -357,6 +388,7 @@ async def test_init_page_discovery_existing_page():
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -412,8 +444,13 @@ async def test_init_login_url_transition():
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
     mock_page.wait_for_url = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(return_value="Model")
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Model")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     mock_expect = MagicMock()
     mock_expect.return_value.to_be_visible = AsyncMock()
@@ -421,13 +458,14 @@ async def test_init_login_url_transition():
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug", "SUPPRESS_LOGIN_WAIT": "0"}),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
         ),
         patch("browser_utils.initialization.core.setup_debug_listeners"),
         patch(
-            "browser_utils.initialization.auth.wait_for_model_list_and_handle_auth_save",
+            "browser_utils.initialization.core.wait_for_model_list_and_handle_auth_save",
             new_callable=AsyncMock,
         ),
         patch("builtins.input", return_value=""),
@@ -468,6 +506,8 @@ async def test_init_model_name_extraction():
     # Mock 模型名选择器
     model_name = "Gemini 1.5 Pro Experimental"
     mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
     mock_locator.first.inner_text = AsyncMock(return_value=model_name)
     mock_page.locator = MagicMock(return_value=mock_locator)
 
@@ -477,6 +517,7 @@ async def test_init_model_name_extraction():
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,
@@ -521,8 +562,13 @@ async def test_init_page_readiness_verification():
     mock_page.url = "https://aistudio.google.com/prompts/new_chat"
     mock_page.is_closed = MagicMock(return_value=False)
     mock_page.goto = AsyncMock()
-    mock_page.locator = MagicMock()
-    mock_page.locator.return_value.first.inner_text = AsyncMock(return_value="Model")
+
+    # Create locator mock with count() support
+    mock_locator = MagicMock()
+    mock_locator.count = AsyncMock(return_value=1)  # Element exists
+    mock_locator.first = MagicMock()
+    mock_locator.first.inner_text = AsyncMock(return_value="Model")
+    mock_page.locator = MagicMock(return_value=mock_locator)
 
     # Mock expect_async 来验证页面就绪检查
     mock_expect = MagicMock()
@@ -533,6 +579,7 @@ async def test_init_page_readiness_verification():
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),
         patch("browser_utils.initialization.core.expect_async", mock_expect),
+        patch("playwright.async_api.expect", mock_expect),
         patch(
             "browser_utils.initialization.core.setup_network_interception_and_scripts",
             new_callable=AsyncMock,

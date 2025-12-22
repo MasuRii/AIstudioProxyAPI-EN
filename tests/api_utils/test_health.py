@@ -31,7 +31,7 @@ async def test_health_check_ok():
 
     content = bytes(response.body).decode()
     assert "OK" in content
-    assert "服务运行中" in content
+    assert "Service running" in content
     assert "queueLength" in content
 
 
@@ -53,7 +53,7 @@ async def test_health_check_initializing():
     assert response.status_code == 503
     content = bytes(response.body).decode()
     assert "Error" in content
-    assert "初始化进行中" in content
+    assert "Initialization in progress" in content
 
 
 @pytest.mark.asyncio
@@ -76,7 +76,7 @@ async def test_health_check_worker_stopped():
 
     assert response.status_code == 503
     content = bytes(response.body).decode()
-    assert "Worker 未运行" in content
+    assert "Worker not running" in content
 
 
 @pytest.mark.asyncio
@@ -99,5 +99,5 @@ async def test_health_check_no_browser():
 
     assert response.status_code == 503
     content = bytes(response.body).decode()
-    assert "浏览器未连接" in content
-    assert "页面未就绪" in content
+    assert "Browser not connected" in content
+    assert "Page not ready" in content

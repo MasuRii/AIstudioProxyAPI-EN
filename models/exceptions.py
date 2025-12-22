@@ -1,6 +1,8 @@
 import time
-from typing import Any, Dict, Optional, List
+from typing import Any, List, Optional
+
 from fastapi import HTTPException
+
 
 class AIStudioProxyError(Exception):
     """Base exception for AIStudio Proxy errors."""

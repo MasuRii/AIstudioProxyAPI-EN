@@ -23,9 +23,13 @@ from playwright.async_api import (
 from config import (
     AI_STUDIO_URL_PATTERN,
     INPUT_SELECTOR,
+    MODEL_NAME_SELECTOR,
     USER_INPUT_END_MARKER_SERVER,
     USER_INPUT_START_MARKER_SERVER,
     GlobalState,
+)
+from config.selector_utils import (
+    INPUT_WRAPPER_SELECTORS,
 )
 
 from .auth import wait_for_model_list_and_handle_auth_save
@@ -41,133 +45,162 @@ async def _wait_for_shutdown():
     await loop.run_in_executor(None, GlobalState.IS_SHUTTING_DOWN.wait)
 
 
-async def initialize_page_logic(
+async def initialize_page_logic(  # pragma: no cover
     browser: AsyncBrowser, storage_state_path: Optional[str] = None
 ) -> Tuple[AsyncPage, bool]:
     """
-    初始化页面逻辑，连接到现有浏览器
+    Initialize page logic, connecting to existing browser
 
     Args:
-        browser: Playwright 浏览器实例
-        storage_state_path: 可选的认证文件路径。如果提供，将优先使用此路径。
+        browser: Playwright browser instance
+        storage_state_path: Optional authentication file path. If provided, it will be prioritized.
     """
-    logger.info("--- 初始化页面逻辑 (连接到现有浏览器) ---")
+    logger.debug("[Init] Initializing page logic")
     temp_context: Optional[AsyncBrowserContext] = None
     storage_state_path_to_use: Optional[str] = None
     launch_mode = os.environ.get("LAUNCH_MODE", "debug")
-    logger.info(f"   检测到启动模式: {launch_mode}")
     loop = asyncio.get_running_loop()
 
-    # 优先使用传入的 storage_state_path
+    # Prioritize the passed storage_state_path
     if storage_state_path:
         if os.path.exists(storage_state_path):
             storage_state_path_to_use = storage_state_path
-            logger.info(f"   使用指定的认证文件: {storage_state_path_to_use}")
+            logger.debug(f"Using specified auth file: {storage_state_path_to_use}")
         else:
-            logger.error(f"指定的认证文件不存在: {storage_state_path}")
-            # 如果是明确指定的路径但不存在，这应该是一个错误
-            raise RuntimeError(f"指定的认证文件不存在: {storage_state_path}")
+            logger.error(f"Specified auth file does not exist: {storage_state_path}")
+            # If it's a clearly specified path but does not exist, it should be an error
+            raise RuntimeError(
+                f"Specified auth file does not exist: {storage_state_path}"
+            )
     else:
-        # 回退到原有的环境变量逻辑
+        # Fall back to existing environment variable logic
         if launch_mode == "headless" or launch_mode == "virtual_headless":
             # Check for Auto-Auth Rotation on Startup
-            if os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP', 'false').lower() == 'true':
-                logger.info("   🤖 Auto-Auth Rotation on Startup is ENABLED. Selecting profile...")
+            if (
+                os.environ.get("AUTO_AUTH_ROTATION_ON_STARTUP", "false").lower()
+                == "true"
+            ):
+                logger.info(
+                    "   🤖 Auto-Auth Rotation on Startup is ENABLED. Selecting profile..."
+                )
                 try:
                     # Local import to avoid circular dependencies
                     from browser_utils.auth_rotation import _get_next_profile
+
                     next_profile = _get_next_profile()
                     if next_profile:
-                        os.environ['ACTIVE_AUTH_JSON_PATH'] = next_profile
+                        os.environ["ACTIVE_AUTH_JSON_PATH"] = next_profile
                         logger.info(f"   ✅ Auto-selected profile: {next_profile}")
                     else:
-                        logger.warning("   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults.")
+                        logger.warning(
+                            "   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults."
+                        )
                 except ImportError:
-                    logger.error("   ❌ Auto-Auth Rotation failed: Could not import auth_rotation module.")
+                    logger.error(
+                        "   ❌ Auto-Auth Rotation failed: Could not import auth_rotation module."
+                    )
                 except Exception as e:
-                    logger.error(f"   ❌ Error during Auto-Auth Rotation on Startup: {e}", exc_info=True)
+                    logger.error(
+                        f"   ❌ Error during Auto-Auth Rotation on Startup: {e}",
+                        exc_info=True,
+                    )
 
             auth_filename = os.environ.get("ACTIVE_AUTH_JSON_PATH")
-            logger.info(f"[DEBUG] Headless Init: ACTIVE_AUTH_JSON_PATH='{auth_filename}'")
+            logger.info(
+                f"[DEBUG] Headless Init: ACTIVE_AUTH_JSON_PATH='{auth_filename}'"
+            )
 
             if auth_filename:
                 constructed_path = auth_filename
                 if os.path.exists(constructed_path):
                     storage_state_path_to_use = constructed_path
-                    logger.info(f"   无头模式将使用的认证文件: {constructed_path}")
                 else:
                     logger.error(
-                        f"{launch_mode} 模式认证文件无效或不存在: '{constructed_path}'"
+                        f"{launch_mode} mode auth file invalid or does not exist: '{constructed_path}'"
                     )
                     # DIAGNOSTIC: Check if we should have rotated
-                    logger.info(f"[DEBUG] Auth file missing. Auto-Rotation Flag: {os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP')}")
+                    logger.info(
+                        f"[DEBUG] Auth file missing. Auto-Rotation Flag: {os.environ.get('AUTO_AUTH_ROTATION_ON_STARTUP')}"
+                    )
                     raise RuntimeError(
-                        f"{launch_mode} 模式认证文件无效: '{constructed_path}'"
+                        f"{launch_mode} mode auth file invalid: '{constructed_path}'"
                     )
             else:
                 logger.error(
-                    f"{launch_mode} 模式需要 ACTIVE_AUTH_JSON_PATH 环境变量，但未设置或为空。"
+                    f"{launch_mode} mode requires ACTIVE_AUTH_JSON_PATH environment variable, but it's not set or is empty."
                 )
-                raise RuntimeError(f"{launch_mode} 模式需要 ACTIVE_AUTH_JSON_PATH。")
+                raise RuntimeError(
+                    f"{launch_mode} mode requires ACTIVE_AUTH_JSON_PATH."
+                )
         elif launch_mode == "debug":
             logger.info(
-                "   调试模式: 尝试从环境变量 ACTIVE_AUTH_JSON_PATH 加载认证文件..."
+                "Debug mode: Attempting to load auth file from environment variable ACTIVE_AUTH_JSON_PATH..."
             )
             auth_filepath_from_env = os.environ.get("ACTIVE_AUTH_JSON_PATH")
             if auth_filepath_from_env and os.path.exists(auth_filepath_from_env):
                 storage_state_path_to_use = auth_filepath_from_env
-                logger.info(
-                    f"   调试模式将使用的认证文件 (来自环境变量): {storage_state_path_to_use}"
+                logger.debug(
+                    f"Auth file to be used in debug mode (from environment variable): {storage_state_path_to_use}"
                 )
             elif auth_filepath_from_env:
                 logger.warning(
-                    f"   调试模式下环境变量 ACTIVE_AUTH_JSON_PATH 指向的文件不存在: '{auth_filepath_from_env}'。不加载认证文件。"
+                    f"The file pointed to by ACTIVE_AUTH_JSON_PATH in debug mode does not exist: '{auth_filepath_from_env}'. Auth file not loaded."
                 )
             else:
                 logger.info(
-                    "   调试模式下未通过环境变量提供认证文件。将使用浏览器当前状态。"
+                    "Auth file not provided via environment variable in debug mode. Current browser state will be used."
                 )
         elif launch_mode == "direct_debug_no_browser":
             logger.info(
-                "   direct_debug_no_browser 模式：不加载 storage_state，不进行浏览器操作。"
+                "direct_debug_no_browser mode: storage_state not loaded, no browser operations performed."
             )
         else:
             logger.warning(
-                f"   警告: 未知的启动模式 '{launch_mode}'。不加载 storage_state。"
+                f"Warning: Unknown launch mode '{launch_mode}'. storage_state not loaded."
             )
 
     try:
-        logger.info("创建新的浏览器上下文...")
+        # Consolidate into one log message
+        auth_file = (
+            os.path.basename(storage_state_path_to_use)
+            if storage_state_path_to_use
+            else None
+        )
         context_options: Dict[str, Any] = {"viewport": {"width": 460, "height": 800}}
         if storage_state_path_to_use:
             context_options["storage_state"] = storage_state_path_to_use
-            import server
-            server.current_auth_profile_path = storage_state_path_to_use
+            from api_utils.server_state import state
+
+            state.current_auth_profile_path = storage_state_path_to_use
             logger.info(
-                f"   (使用 storage_state='{os.path.basename(storage_state_path_to_use)}')"
+                f"   (Using storage_state='{os.path.basename(storage_state_path_to_use)}')"
             )
         else:
-            import server
-            server.current_auth_profile_path = None
-            logger.info("   (不使用 storage_state)")
+            from api_utils.server_state import state
 
-        # 代理设置需要从server模块中获取
-        import server
+            state.current_auth_profile_path = None
+            logger.info("   (Not using storage_state)")
 
-        if server.PLAYWRIGHT_PROXY_SETTINGS:
-            context_options["proxy"] = server.PLAYWRIGHT_PROXY_SETTINGS
-            logger.info(
-                f"   (浏览器上下文将使用代理: {server.PLAYWRIGHT_PROXY_SETTINGS['server']})"
+        # Proxy settings need to be retrieved from the server module
+        from api_utils.server_state import state
+
+        if state.PLAYWRIGHT_PROXY_SETTINGS:
+            context_options["proxy"] = state.PLAYWRIGHT_PROXY_SETTINGS
+            logger.debug(
+                f"[Browser] Context configured with proxy: {state.PLAYWRIGHT_PROXY_SETTINGS['server']}"
             )
-        else:
-            logger.info("   (浏览器上下文不使用显式代理配置)")
 
         context_options["ignore_https_errors"] = True
-        logger.info("   (浏览器上下文将忽略 HTTPS 错误)")
+
+        # Single consolidated log
+        if auth_file:
+            logger.info(f"[Browser] Context created (Auth: {auth_file})")
+        else:
+            logger.debug("[Browser] Context created (No Auth)")
 
         temp_context = await browser.new_context(**context_options)
 
-        # 设置网络拦截和脚本注入
+        # Set up network interception and script injection
         await setup_network_interception_and_scripts(temp_context)
 
         found_page: Optional[AsyncPage] = None
@@ -177,7 +210,7 @@ async def initialize_page_logic(
         login_url_pattern = "accounts.google.com"
         current_url = ""
 
-        # 导入_handle_model_list_response - 需要延迟导入避免循环引用
+        # Import _handle_model_list_response - delayed import to avoid circular dependency
         from browser_utils.operations import _handle_model_list_response
 
         for p_iter in pages:
@@ -190,33 +223,33 @@ async def initialize_page_logic(
                 ):
                     found_page = p_iter
                     current_url = page_url_to_check
-                    logger.info(f"   找到已打开的 AI Studio 页面: {current_url}")
+                    logger.debug(f"Found opened AI Studio page: {current_url}")
                     if found_page:
-                        logger.info(
-                            f"   为已存在的页面 {found_page.url} 添加模型列表响应监听器。"
+                        logger.debug(
+                            f"Adding model list response listener to existing page {found_page.url}."
                         )
                         found_page.on("response", _handle_model_list_response)
                         # Setup debug listeners for error snapshots
                         setup_debug_listeners(found_page)
                     break
             except PlaywrightAsyncError as pw_err_url:
-                logger.warning(f"   检查页面 URL 时出现 Playwright 错误: {pw_err_url}")
+                logger.warning(f"Playwright error checking page URL: {pw_err_url}")
             except AttributeError as attr_err_url:
-                logger.warning(f"   检查页面 URL 时出现属性错误: {attr_err_url}")
+                logger.warning(f"Attribute error checking page URL: {attr_err_url}")
             except asyncio.CancelledError:
                 raise
             except Exception as e_url_check:
                 logger.warning(
-                    f"   检查页面 URL 时出现其他未预期错误: {e_url_check} (类型: {type(e_url_check).__name__})"
+                    f"   Other unexpected error checking page URL: {e_url_check} (Type: {type(e_url_check).__name__})"
                 )
 
         if not found_page:
-            logger.info(
-                f"-> 未找到合适的现有页面，正在打开新页面并导航到 {target_full_url}..."
-            )
+            logger.info(f"[Navigation] Opening new page: {target_full_url}")
             found_page = await temp_context.new_page()
             if found_page:
-                logger.info("   为新创建的页面添加模型列表响应监听器 (导航前)。")
+                logger.debug(
+                    "Adding model list response listener to new page (before navigation)."
+                )
                 found_page.on("response", _handle_model_list_response)
                 # Setup debug listeners for error snapshots
                 setup_debug_listeners(found_page)
@@ -225,74 +258,90 @@ async def initialize_page_logic(
                     target_full_url, wait_until="domcontentloaded", timeout=90000
                 )
                 current_url = found_page.url
-                logger.info(f"-> 新页面导航尝试完成。当前 URL: {current_url}")
+                logger.debug(
+                    f"New page navigation attempt complete. Current URL: {current_url}"
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as new_page_nav_err:
-                # 导入save_error_snapshot函数
+                # Import save_error_snapshot function
                 from browser_utils.operations import save_error_snapshot
 
                 await save_error_snapshot("init_new_page_nav_fail")
                 error_str = str(new_page_nav_err)
                 if "NS_ERROR_NET_INTERRUPT" in error_str:
-                    logger.error("\n" + "=" * 30 + " 网络导航错误提示 " + "=" * 30)
                     logger.error(
-                        f"导航到 '{target_full_url}' 失败，出现网络中断错误 (NS_ERROR_NET_INTERRUPT)。"
-                    )
-                    logger.error("   这通常表示浏览器在尝试加载页面时连接被意外断开。")
-                    logger.error("   可能的原因及排查建议:")
-                    logger.error(
-                        "     1. 网络连接: 请检查你的本地网络连接是否稳定，并尝试在普通浏览器中访问目标网址。"
+                        "\n" + "=" * 30 + " Network Navigation Error Tips " + "=" * 30
                     )
                     logger.error(
-                        "     2. AI Studio 服务: 确认 aistudio.google.com 服务本身是否可用。"
+                        f"Navigation to '{target_full_url}' failed with network interrupt error (NS_ERROR_NET_INTERRUPT)."
                     )
                     logger.error(
-                        "     3. 防火墙/代理/VPN: 检查本地防火墙、杀毒软件、代理或 VPN 设置。"
+                        "This usually means the connection was unexpectedly disconnected while the browser was trying to load the page."
+                    )
+                    logger.error("Possible causes and troubleshooting suggestions:")
+                    logger.error(
+                        "     1. Network connection: Please check if your local network connection is stable and try to access the target URL in a normal browser."
                     )
                     logger.error(
-                        "     4. Camoufox 服务: 确认 launch_camoufox.py 脚本是否正常运行。"
+                        "     2. AI Studio service: Confirm if the aistudio.google.com service itself is available."
                     )
                     logger.error(
-                        "     5. 系统资源问题: 确保系统有足够的内存和 CPU 资源。"
+                        "     3. Firewall/Proxy/VPN: Check local firewall, antivirus, proxy, or VPN settings."
+                    )
+                    logger.error(
+                        "     4. Camoufox service: Confirm if the launch_camoufox.py script is running normally."
+                    )
+                    logger.error(
+                        "     5. System resource issues: Ensure the system has enough memory and CPU resources."
                     )
                     logger.error("=" * 74 + "\n")
                 raise RuntimeError(
-                    f"导航新页面失败: {new_page_nav_err}"
+                    f"Failed to navigate to new page: {new_page_nav_err}"
                 ) from new_page_nav_err
 
         if login_url_pattern in current_url:
             if launch_mode == "headless":
                 logger.error(
-                    "无头模式下检测到重定向至登录页面，认证可能已失效。请更新认证文件。"
+                    "Detected redirect to login page in headless mode, authentication may have expired. Please update the auth file."
                 )
-                raise RuntimeError("无头模式认证失败，需要更新认证文件。")
+                raise RuntimeError(
+                    "Auth failed in headless mode, auth file update required."
+                )
             else:
-                print(f"\n{'=' * 20} 需要操作 {'=' * 20}", flush=True)
-                login_prompt = "   检测到可能需要登录。如果浏览器显示登录页面，请在浏览器窗口中完成 Google 登录，然后在此处按 Enter 键继续..."
+                print(f"\n{'=' * 20} Action Required {'=' * 20}", flush=True)
+                login_prompt = "   Detected login may be required. If the browser shows a login page, please complete the Google login in the browser window, then press Enter here to continue..."
                 # NEW: If SUPPRESS_LOGIN_WAIT is set, skip waiting for user input.
                 if os.environ.get("SUPPRESS_LOGIN_WAIT", "").lower() in (
                     "1",
                     "true",
                     "yes",
                 ):
-                    logger.info("检测到 SUPPRESS_LOGIN_WAIT 标志，跳过等待用户输入。")
+                    logger.info(
+                        "SUPPRESS_LOGIN_WAIT flag detected, skipping wait for user input."
+                    )
                 else:
                     print(USER_INPUT_START_MARKER_SERVER, flush=True)
                     await loop.run_in_executor(None, input, login_prompt)
                     print(USER_INPUT_END_MARKER_SERVER, flush=True)
-                logger.info("   正在检查登录状态...")
+                logger.info("Checking login status...")
                 try:
                     await found_page.wait_for_url(
                         f"**/{AI_STUDIO_URL_PATTERN}**", timeout=180000
                     )
                     current_url = found_page.url
                     if login_url_pattern in current_url:
-                        logger.error("手动登录尝试后，页面似乎仍停留在登录页面。")
-                        raise RuntimeError("手动登录尝试后仍在登录页面。")
-                    logger.info("   登录成功！请不要操作浏览器窗口，等待后续提示。")
+                        logger.error(
+                            "Page still seems to be on the login page after manual login attempt."
+                        )
+                        raise RuntimeError(
+                            "Still on login page after manual login attempt."
+                        )
+                    logger.info(
+                        "Login successful! Please do not operate the browser window and wait for further instructions."
+                    )
 
-                    # 登录成功后，调用认证保存逻辑
+                    # Call auth save logic after successful login
                     if os.environ.get("AUTO_SAVE_AUTH", "false").lower() == "true":
                         await wait_for_model_list_and_handle_auth_save(
                             temp_context, launch_mode, loop
@@ -305,11 +354,11 @@ async def initialize_page_logic(
 
                     await save_error_snapshot("init_login_wait_fail")
                     logger.error(
-                        f"登录提示后未能检测到 AI Studio URL 或保存状态时出错: {wait_login_err}",
+                        f"Failed to detect AI Studio URL after login prompt or error saving status: {wait_login_err}",
                         exc_info=True,
                     )
                     raise RuntimeError(
-                        f"登录提示后未能检测到 AI Studio URL: {wait_login_err}"
+                        f"Failed to detect AI Studio URL after login prompt: {wait_login_err}"
                     ) from wait_login_err
 
         elif target_url_base not in current_url or "/prompts/" not in current_url:
@@ -317,52 +366,75 @@ async def initialize_page_logic(
 
             await save_error_snapshot("init_unexpected_page")
             logger.error(
-                f"初始导航后页面 URL 意外: {current_url}。期望包含 '{target_url_base}' 和 '/prompts/'。"
+                f"Unexpected page URL after initial navigation: {current_url}. Expected it to contain '{target_url_base}' and '/prompts/'."
             )
-            raise RuntimeError(f"初始导航后出现意外页面: {current_url}。")
+            raise RuntimeError(
+                f"Unexpected page after initial navigation: {current_url}."
+            )
 
-        logger.info(f"-> 确认当前位于 AI Studio 对话页面: {current_url}")
         await found_page.bring_to_front()
 
         try:
-            input_wrapper_locator = found_page.locator("ms-prompt-input-wrapper")
-            
-            # Wait for either input visibility or shutdown signal
-            expect_task = asyncio.create_task(expect_async(input_wrapper_locator).to_be_visible(timeout=35000))
+            # Use centralized selector fallback logic to find input container
+            # Supports current and old UI structures (ms-prompt-input-wrapper / ms-chunk-editor / ms-prompt-box)
+            # Use find_first_visible_locator to wait for element visibility, solving timing issues in headless mode
+            from config.selector_utils import find_first_visible_locator
+
+            # Wrap in a way that respects the shutdown signal
+            async def find_locator_task():
+                return await find_first_visible_locator(
+                    found_page,
+                    INPUT_WRAPPER_SELECTORS,
+                    description="Input Container",
+                    timeout_per_selector=30000,
+                )
+
+            find_task = asyncio.create_task(find_locator_task())
             shutdown_task = asyncio.create_task(_wait_for_shutdown())
 
-            done, pending = await asyncio.wait([expect_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED)
+            done, pending = await asyncio.wait(
+                [find_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
+            )
 
             if shutdown_task in done:
-                logger.info("🛑 Shutdown signal received during initialization. Aborting.")
-                expect_task.cancel()
+                logger.info(
+                    "🛑 Shutdown signal received during initialization. Aborting."
+                )
+                find_task.cancel()
                 raise RuntimeError("Initialization aborted due to shutdown signal.")
 
-            # expect_task finished
             shutdown_task.cancel()
-            await expect_task # Propagate result/exception
+            input_wrapper_locator, matched_selector = await find_task
 
+            if not input_wrapper_locator:
+                raise RuntimeError(
+                    "Could not find input container element. Tried selectors: "
+                    + ", ".join(INPUT_WRAPPER_SELECTORS)
+                )
+
+            # Container confirmed visible by find_first_visible_locator, check input box directly
             await expect_async(found_page.locator(INPUT_SELECTOR)).to_be_visible(
                 timeout=10000
             )
-            logger.info("-> 核心输入区域可见。")
+            logger.debug(
+                f"[Selector] Input area located and visible ({matched_selector})"
+            )
 
-            model_name_locator = found_page.locator('[data-test-id="model-name"]')
+            model_name_locator = found_page.locator(MODEL_NAME_SELECTOR)
             try:
                 model_name_on_page = await model_name_locator.first.inner_text(
                     timeout=5000
                 )
-                logger.info(f"-> 页面检测到的当前模型: {model_name_on_page}")
             except PlaywrightAsyncError as e:
-                logger.error(f"获取模型名称时出错 (model_name_locator): {e}")
+                logger.error(f"Error getting model name (model_name_locator): {e}")
                 raise
 
             result_page_instance = found_page
             result_page_ready = True
 
-            # 脚本注入已在上下文创建时完成，无需在此处重复注入
-
-            logger.info("页面逻辑初始化成功。")
+            logger.info(
+                f"[Page] Logic initialization successful | Current Model: {model_name_on_page}"
+            )
             return result_page_instance, result_page_ready
         except asyncio.CancelledError:
             raise
@@ -371,14 +443,14 @@ async def initialize_page_logic(
 
             await save_error_snapshot("init_fail_input_timeout")
             logger.error(
-                f"页面初始化失败：核心输入区域未在预期时间内变为可见。最后的 URL 是 {found_page.url}",
+                f"Page initialization failed: core input area did not become visible within expected time. Last URL was {found_page.url}",
                 exc_info=True,
             )
             raise RuntimeError(
-                f"页面初始化失败：核心输入区域未在预期时间内变为可见。最后的 URL 是 {found_page.url}"
+                f"Page initialization failed: core input area did not become visible within expected time. Last URL was {found_page.url}"
             ) from input_visible_err
     except asyncio.CancelledError:
-        logger.warning("页面初始化被取消。")
+        logger.warning("Page initialization cancelled.")
         if temp_context:
             try:
                 await temp_context.close()
@@ -389,89 +461,100 @@ async def initialize_page_logic(
         raise
     except Exception as e_init_page:
         logger.critical(
-            f"页面逻辑初始化期间发生严重意外错误: {e_init_page}", exc_info=True
+            f"Serious unexpected error during page logic initialization: {e_init_page}",
+            exc_info=True,
         )
         if temp_context:
             try:
                 logger.info(
-                    "   尝试关闭临时的浏览器上下文 due to initialization error."
+                    "   Attempting to close temporary browser context due to initialization error."
                 )
                 # [ID-04] Optimize Browser Lifecycle Management: Add timeout to context close
                 await asyncio.wait_for(temp_context.close(), timeout=2.0)
-                logger.info("   临时浏览器上下文已关闭。")
+                logger.info("   Temporary browser context closed.")
             except asyncio.TimeoutError:
-                logger.warning("   🚨 [ID-04] 浏览器上下文关闭超时 (2s), 跳过强制关闭以加快关闭速度.")
+                logger.warning(
+                    "   🚨 [ID-04] Browser context close timeout (2s), skipping forced close to speed up shutdown."
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as close_err:
-                logger.warning(f"   关闭临时浏览器上下文时出错: {close_err}")
+                logger.warning(f"Error closing temporary browser context: {close_err}")
         from browser_utils.operations import save_error_snapshot
 
         await save_error_snapshot("init_unexpected_error")
-        raise RuntimeError(f"页面初始化意外错误: {e_init_page}") from e_init_page
+        raise RuntimeError(
+            f"Unexpected page initialization error: {e_init_page}"
+        ) from e_init_page
 
 
-async def close_page_logic() -> Tuple[None, bool]:
-    """关闭页面逻辑"""
-    # 需要访问全局变量
+async def close_page_logic() -> Tuple[None, bool]:  # pragma: no cover
+    """Close page logic"""
+    # Need to access global variables
     from api_utils.server_state import state
 
-    logger.info("--- 运行页面逻辑关闭 --- ")
+    logger.info("--- Running page logic shutdown --- ")
     if state.page_instance and not state.page_instance.is_closed():
         try:
             # [ID-04] Optimize Browser Lifecycle Management: 2-second timeout for graceful close
             await asyncio.wait_for(state.page_instance.close(), timeout=2.0)
-            logger.info("   页面已关闭")
+            logger.info("   Page closed")
         except asyncio.TimeoutError:
-            logger.warning("   🚨 [ID-04] 浏览器页面关闭超时 (2s), 跳过强制关闭以加快关闭速度.")
+            logger.warning(
+                "   🚨 [ID-04] Browser page close timeout (2s), skipping forced close to speed up shutdown."
+            )
         except PlaywrightAsyncError as pw_err:
-            logger.warning(f"   关闭页面时出现Playwright错误: {pw_err}")
-        except asyncio.TimeoutError as timeout_err:
-            logger.warning(f"   关闭页面时超时: {timeout_err}")
+            logger.warning(f"Playwright error closing page: {pw_err}")
         except asyncio.CancelledError:
             raise
         except Exception as other_err:
             logger.error(
-                f"   关闭页面时出现意外错误: {other_err} (类型: {type(other_err).__name__})",
+                f"   Unexpected error closing page: {other_err} (Type: {type(other_err).__name__})",
                 exc_info=True,
             )
     state.page_instance = None
     state.is_page_ready = False
-    logger.info("页面逻辑状态已重置。")
+    logger.info("Page logic state reset.")
     return None, False
 
 
-async def signal_camoufox_shutdown() -> None:
-    """发送关闭信号到Camoufox服务器"""
-    logger.info("   尝试发送关闭信号到 Camoufox 服务器 (此功能可能已由父进程处理)...")
+async def signal_camoufox_shutdown() -> None:  # pragma: no cover
+    """Send shutdown signal to Camoufox server"""
+    logger.info(
+        "Attempting to send shutdown signal to Camoufox server (this feature may have been handled by parent process)..."
+    )
     ws_endpoint = os.environ.get("CAMOUFOX_WS_ENDPOINT")
     if not ws_endpoint:
-        logger.warning("   无法发送关闭信号：未找到 CAMOUFOX_WS_ENDPOINT 环境变量。")
+        logger.warning(
+            "Could not send shutdown signal: CAMOUFOX_WS_ENDPOINT environment variable not found."
+        )
         return
 
-    # 需要访问全局浏览器实例
-    import server
+    # Need to access global browser instance
+    from api_utils.server_state import state
 
-    if not server.browser_instance or not server.browser_instance.is_connected():
-        logger.warning("   浏览器实例已断开或未初始化，跳过关闭信号发送。")
+    if not state.browser_instance or not state.browser_instance.is_connected():
+        logger.warning(
+            "Browser instance disconnected or not initialized, skipping shutdown signal send."
+        )
         return
     try:
         await asyncio.sleep(0.2)
-        logger.info("   (模拟) 关闭信号已处理。")
+        logger.info("(Simulated) Shutdown signal handled.")
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"   发送关闭信号过程中捕获异常: {e}", exc_info=True)
+        logger.error(
+            f"Captured exception while sending shutdown signal: {e}", exc_info=True
+        )
 
 
-async def enable_temporary_chat_mode(page: AsyncPage) -> None:
+async def enable_temporary_chat_mode(page: AsyncPage) -> None:  # pragma: no cover
     """
-    检查并启用 AI Studio 界面的“临时聊天”模式。
-    这是一个独立的UI操作，应该在页面完全稳定后调用。
+    Check and enable "Temporary chat" mode in the AI Studio interface.
+    This is an independent UI operation and should be called after the page is fully stable.
     """
     try:
-        logger.info("-> (UI Op) 正在检查并启用 '临时聊天' 模式...")
-
         incognito_button_locator = page.locator(
             'button[aria-label="Temporary chat toggle"]'
         )
@@ -481,19 +564,18 @@ async def enable_temporary_chat_mode(page: AsyncPage) -> None:
         button_classes = await incognito_button_locator.get_attribute("class")
 
         if button_classes and "ms-button-active" in button_classes:
-            logger.info("-> (UI Op) '临时聊天' 模式已激活。")
+            logger.debug("[UI] Temporary chat mode already active")
         else:
-            logger.info("-> (UI Op) '临时聊天' 模式未激活，正在点击...")
             await incognito_button_locator.click(timeout=5000, force=True)
             await asyncio.sleep(1)
 
             updated_classes = await incognito_button_locator.get_attribute("class")
             if updated_classes and "ms-button-active" in updated_classes:
-                logger.info("(UI Op) '临时聊天' 模式已成功启用。")
+                logger.debug("[UI] Temporary chat mode enabled")
             else:
-                logger.warning("(UI Op) 点击后 '临时聊天' 模式状态验证失败。")
+                logger.warning("[UI] Failed to enable temporary chat mode")
 
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.warning(f"(UI Op) 启用 '临时聊天' 模式时出错: {e}")
+        logger.warning(f"[UI] Error in temporary chat mode: {e}")

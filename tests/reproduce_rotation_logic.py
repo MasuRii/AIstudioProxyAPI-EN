@@ -1,7 +1,7 @@
-import os
-import sys
 import glob
 import logging
+import os
+import sys
 from unittest.mock import MagicMock
 
 # --- MOCKS ---
@@ -30,7 +30,8 @@ logging.basicConfig(level=logging.INFO)
 # --- IMPORT ---
 # We need to import the actual functions. 
 # Since we mocked dependencies, we can import the module.
-from browser_utils.auth_rotation import _get_next_profile, _find_best_profile_in_dirs
+from browser_utils.auth_rotation import _get_next_profile
+
 
 # --- TEST SETUP ---
 def setup_test_files():

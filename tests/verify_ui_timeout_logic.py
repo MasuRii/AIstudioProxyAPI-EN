@@ -15,10 +15,10 @@ Success Criteria:
 - Nested try-except catches is_disabled() timeout specifically
 """
 
-import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock, call
 import queue
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 
 @pytest.mark.asyncio

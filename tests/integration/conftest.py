@@ -6,11 +6,34 @@ rather than mocks, allowing tests to verify actual behavior and concurrency.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from api_utils.server_state import state
+
+
+@pytest.fixture
+def mock_expect():
+    """Create a mock for playwright's expect function.
+
+    This fixture patches both:
+    1. browser_utils.initialization.core.expect_async (used directly in core.py)
+    2. playwright.async_api.expect (used by find_first_visible_locator in selector_utils.py)
+
+    This is necessary because find_first_visible_locator imports expect directly
+    from playwright.async_api, while core.py imports it with an alias.
+    """
+    mock = MagicMock()
+    assertion_wrapper = MagicMock()
+    assertion_wrapper.to_be_visible = AsyncMock()
+    mock.return_value = assertion_wrapper
+
+    with (
+        patch("browser_utils.initialization.core.expect_async", mock),
+        patch("playwright.async_api.expect", mock),
+    ):
+        yield mock
 
 
 @pytest.fixture

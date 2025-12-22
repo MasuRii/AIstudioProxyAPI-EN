@@ -1,12 +1,13 @@
-import sys
 import os
+import sys
 
 # Add workspace root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from config.global_state import GlobalState
-from models.exceptions import QuotaExceededError
 from config.settings import QUOTA_HARD_LIMIT
+from models.exceptions import QuotaExceededError
+
 
 def test_quota_hard_limit_raises():
     print(f"Testing Quota Hard Limit Raise...")

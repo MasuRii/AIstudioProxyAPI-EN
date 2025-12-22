@@ -18,48 +18,48 @@ from stream.proxy_connector import ProxyConnector
 
 
 def test_proxy_connector_init_without_proxy():
-    """测试场景: 无代理 URL 初始化"""
+    """Test scenario: Initialization without proxy URL"""
     connector = ProxyConnector()
     assert connector.proxy_url is None
     assert connector.connector is None
 
 
 def test_proxy_connector_init_with_http_proxy():
-    """测试场景: HTTP 代理初始化"""
+    """Test scenario: HTTP proxy initialization"""
     connector = ProxyConnector("http://proxy.example.com:8080")
     assert connector.proxy_url == "http://proxy.example.com:8080"
     assert connector.connector == "SocksConnector"
 
 
 def test_proxy_connector_init_with_https_proxy():
-    """测试场景: HTTPS 代理初始化"""
+    """Test scenario: HTTPS proxy initialization"""
     connector = ProxyConnector("https://proxy.example.com:443")
     assert connector.proxy_url == "https://proxy.example.com:443"
     assert connector.connector == "SocksConnector"
 
 
 def test_proxy_connector_init_with_socks4_proxy():
-    """测试场景: SOCKS4 代理初始化"""
+    """Test scenario: SOCKS4 proxy initialization"""
     connector = ProxyConnector("socks4://proxy.example.com:1080")
     assert connector.proxy_url == "socks4://proxy.example.com:1080"
     assert connector.connector == "SocksConnector"
 
 
 def test_proxy_connector_init_with_socks5_proxy():
-    """测试场景: SOCKS5 代理初始化"""
+    """Test scenario: SOCKS5 proxy initialization"""
     connector = ProxyConnector("socks5://proxy.example.com:1080")
     assert connector.proxy_url == "socks5://proxy.example.com:1080"
     assert connector.connector == "SocksConnector"
 
 
 def test_proxy_connector_init_with_invalid_proxy_type():
-    """测试场景: 不支持的代理类型"""
+    """Test scenario: Unsupported proxy type"""
     with pytest.raises(ValueError, match="Unsupported proxy type: ftp"):
         ProxyConnector("ftp://proxy.example.com:21")
 
 
 def test_proxy_connector_init_with_mixed_case_proxy_type():
-    """测试场景: 大小写混合的代理类型（应忽略大小写）"""
+    """Test scenario: Mixed case proxy type (should be case-insensitive)"""
     connector = ProxyConnector("HTTP://proxy.example.com:8080")
     assert connector.connector == "SocksConnector"
 
@@ -73,7 +73,7 @@ def test_proxy_connector_init_with_mixed_case_proxy_type():
 
 
 def test_setup_connector_with_no_proxy_url():
-    """测试场景: proxy_url 为 None 时设置 TCPConnector"""
+    """Test scenario: set TCPConnector when proxy_url is None"""
     connector = ProxyConnector()
     # Manually call _setup_connector with proxy_url=None
     connector._setup_connector()
@@ -84,21 +84,21 @@ def test_setup_connector_with_no_proxy_url():
 
 
 def test_setup_connector_with_socks_proxy():
-    """测试场景: SOCKS 代理设置 SocksConnector"""
+    """Test scenario: set SocksConnector for SOCKS proxy"""
     connector = ProxyConnector("socks5://localhost:1080")
     # Already called in __init__
     assert connector.connector == "SocksConnector"
 
 
 def test_setup_connector_with_http_proxy():
-    """测试场景: HTTP 代理设置 SocksConnector"""
+    """Test scenario: set SocksConnector for HTTP proxy"""
     connector = ProxyConnector("http://localhost:8080")
     # Already called in __init__
     assert connector.connector == "SocksConnector"
 
 
 def test_setup_connector_with_invalid_scheme():
-    """测试场景: 无效 scheme 抛出 ValueError"""
+    """Test scenario: Invalid scheme raises ValueError"""
     with pytest.raises(ValueError, match="Unsupported proxy type"):
         ProxyConnector("rtsp://example.com:554")
 
@@ -110,7 +110,7 @@ def test_setup_connector_with_invalid_scheme():
 
 @pytest.mark.asyncio
 async def test_create_connection_direct_no_ssl():
-    """测试场景: 无代理，直接连接，无 SSL"""
+    """Test scenario: No proxy, direct connection, no SSL"""
     connector = ProxyConnector()
 
     mock_reader = AsyncMock()
@@ -121,7 +121,7 @@ async def test_create_connection_direct_no_ssl():
 
         reader, writer = await connector.create_connection("example.com", 80, ssl=None)
 
-        # 验证: asyncio.open_connection 被正确调用
+        # Verify: asyncio.open_connection called correctly
         mock_open.assert_called_once_with("example.com", 80, ssl=None)
         assert reader is mock_reader
         assert writer is mock_writer
@@ -129,7 +129,7 @@ async def test_create_connection_direct_no_ssl():
 
 @pytest.mark.asyncio
 async def test_create_connection_direct_with_ssl():
-    """测试场景: 无代理，直接连接，启用 SSL"""
+    """Test scenario: No proxy, direct connection, SSL enabled"""
     connector = ProxyConnector()
 
     mock_reader = AsyncMock()
@@ -143,7 +143,7 @@ async def test_create_connection_direct_with_ssl():
             "example.com", 443, ssl=mock_ssl_context
         )
 
-        # 验证: asyncio.open_connection 使用 SSL 上下文
+        # Verify: asyncio.open_connection uses SSL context
         mock_open.assert_called_once_with("example.com", 443, ssl=mock_ssl_context)
         assert reader is mock_reader
         assert writer is mock_writer
@@ -156,7 +156,7 @@ async def test_create_connection_direct_with_ssl():
 
 @pytest.mark.asyncio
 async def test_create_connection_socks_no_ssl():
-    """测试场景: SOCKS 代理，无 SSL"""
+    """Test scenario: SOCKS proxy, no SSL"""
     connector = ProxyConnector("socks5://localhost:1080")
 
     mock_reader = AsyncMock()
@@ -175,15 +175,15 @@ async def test_create_connection_socks_no_ssl():
 
         reader, writer = await connector.create_connection("example.com", 80, ssl=None)
 
-        # 验证: Proxy.from_url 被调用
+        # Verify: Proxy.from_url is called
         mock_from_url.assert_called_once_with("socks5://localhost:1080")
 
-        # 验证: proxy.connect 被调用
+        # Verify: proxy.connect is called
         mock_proxy.connect.assert_called_once_with(
             dest_host="example.com", dest_port=80
         )
 
-        # 验证: asyncio.open_connection 使用 sock，无 SSL
+        # Verify: asyncio.open_connection uses sock, no SSL
         mock_open.assert_called_once_with(
             host=None, port=None, sock=mock_sock, ssl=None
         )
@@ -194,7 +194,7 @@ async def test_create_connection_socks_no_ssl():
 
 @pytest.mark.asyncio
 async def test_create_connection_socks_with_ssl():
-    """测试场景: SOCKS 代理，启用 SSL"""
+    """Test scenario: SOCKS proxy, SSL enabled"""
     connector = ProxyConnector("socks5://localhost:1080")
 
     mock_reader = AsyncMock()
@@ -212,12 +212,12 @@ async def test_create_connection_socks_with_ssl():
         # 传入 ssl=True 来触发 SSL 上下文创建
         reader, writer = await connector.create_connection("example.com", 443, ssl=True)
 
-        # 验证: proxy.connect 被调用
+        # Verify: proxy.connect is called
         mock_proxy.connect.assert_called_once_with(
             dest_host="example.com", dest_port=443
         )
 
-        # 验证: asyncio.open_connection 使用 sock 和 SSL 上下文
+        # Verify: asyncio.open_connection uses sock and SSL context
         mock_open.assert_called_once()
         call_kwargs = mock_open.call_args[1]
         assert call_kwargs["host"] is None
@@ -226,7 +226,7 @@ async def test_create_connection_socks_with_ssl():
         assert isinstance(call_kwargs["ssl"], ssl_module.SSLContext)
         assert call_kwargs["server_hostname"] == "example.com"
 
-        # 验证: SSL 上下文配置
+        # Verify: SSL context configuration
         ssl_ctx = call_kwargs["ssl"]
         assert ssl_ctx.check_hostname is False
         assert ssl_ctx.verify_mode == ssl_module.CERT_NONE
@@ -237,7 +237,7 @@ async def test_create_connection_socks_with_ssl():
 
 @pytest.mark.asyncio
 async def test_create_connection_socks_with_custom_ssl_context():
-    """测试场景: SOCKS 代理，自定义 SSL 上下文"""
+    """Test scenario: SOCKS proxy, custom SSL context"""
     connector = ProxyConnector("socks5://localhost:1080")
 
     mock_reader = AsyncMock()
@@ -260,7 +260,7 @@ async def test_create_connection_socks_with_custom_ssl_context():
             "example.com", 443, ssl=custom_ssl
         )
 
-        # 验证: asyncio.open_connection 使用自定义 SSL 上下文
+        # Verify: asyncio.open_connection uses custom SSL context
         # 注意: 代码中 ssl != None 时会创建新的 SSL 上下文，而不是使用传入的
         mock_open.assert_called_once()
         call_kwargs = mock_open.call_args[1]
@@ -272,7 +272,7 @@ async def test_create_connection_socks_with_custom_ssl_context():
 
 @pytest.mark.asyncio
 async def test_create_connection_http_proxy():
-    """测试场景: HTTP 代理连接"""
+    """Test scenario: HTTP proxy connection"""
     connector = ProxyConnector("http://proxy.example.com:8080")
 
     mock_reader = AsyncMock()
@@ -291,16 +291,16 @@ async def test_create_connection_http_proxy():
 
         reader, writer = await connector.create_connection("target.com", 80)
 
-        # 验证: Proxy.from_url 使用 HTTP 代理 URL
+        # Verify: Proxy.from_url uses HTTP proxy URL
         mock_from_url.assert_called_once_with("http://proxy.example.com:8080")
 
-        # 验证: 连接到目标主机
+        # Verify: Connection to target host
         mock_proxy.connect.assert_called_once_with(dest_host="target.com", dest_port=80)
 
 
 @pytest.mark.asyncio
 async def test_create_connection_socks_proxy_with_auth():
-    """测试场景: 带认证的 SOCKS 代理"""
+    """Test scenario: SOCKS proxy with authentication"""
     proxy_url = "socks5://user:pass@localhost:1080"
     connector = ProxyConnector(proxy_url)
 
@@ -320,7 +320,7 @@ async def test_create_connection_socks_proxy_with_auth():
 
         reader, writer = await connector.create_connection("example.com", 80)
 
-        # 验证: Proxy.from_url 接收带认证的 URL
+        # Verify: Proxy.from_url receives URL with authentication
         mock_from_url.assert_called_once_with(proxy_url)
 
         mock_proxy.connect.assert_called_once_with(

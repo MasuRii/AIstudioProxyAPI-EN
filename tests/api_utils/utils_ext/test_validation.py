@@ -11,8 +11,8 @@ from models import Message
 
 def test_validate_chat_request_valid():
     """
-    测试场景: 有效的聊天请求（包含用户消息）
-    策略: 纯函数测试，无需模拟
+    Test scenario: Valid chat request (containing user message)
+    Strategy: Pure function test, no mocking needed
     """
     from api_utils.utils_ext.validation import validate_chat_request
 
@@ -26,8 +26,8 @@ def test_validate_chat_request_valid():
 
 def test_validate_chat_request_with_system_and_user():
     """
-    测试场景: 包含系统消息和用户消息的请求
-    验证: 有效请求
+    Test scenario: Request containing system and user messages
+    Verify: Valid request
     """
     from api_utils.utils_ext.validation import validate_chat_request
 
@@ -44,8 +44,8 @@ def test_validate_chat_request_with_system_and_user():
 
 def test_validate_chat_request_with_assistant_message():
     """
-    测试场景: 包含助手消息的历史对话
-    验证: 有效请求
+    Test scenario: Conversation history containing assistant message
+    Verify: Valid request
     """
     from api_utils.utils_ext.validation import validate_chat_request
 
@@ -63,19 +63,19 @@ def test_validate_chat_request_with_assistant_message():
 
 def test_validate_chat_request_empty_messages():
     """
-    测试场景: messages 数组为空
-    预期: 抛出 ValueError
+    Test scenario: messages array is empty
+    Expected: Throw ValueError
     """
     from api_utils.utils_ext.validation import validate_chat_request
 
-    with pytest.raises(ValueError, match="messages.*缺失或为空"):
+    with pytest.raises(ValueError, match="messages.*missing or empty"):
         validate_chat_request(messages=[], req_id="req101")
 
 
 def test_validate_chat_request_only_system_messages():
     """
-    测试场景: 仅包含系统消息，无用户或助手消息
-    预期: 抛出 ValueError
+    Test scenario: Only system messages, no user or assistant messages
+    Expected: Throw ValueError
     """
     from api_utils.utils_ext.validation import validate_chat_request
 
@@ -84,14 +84,14 @@ def test_validate_chat_request_only_system_messages():
         Message(role="system", content="System prompt 2"),
     ]
 
-    with pytest.raises(ValueError, match="所有消息都是系统消息"):
+    with pytest.raises(ValueError, match="All messages are system messages"):
         validate_chat_request(messages, req_id="req202")
 
 
 def test_validate_chat_request_req_id_in_error_message():
     """
-    测试场景: 验证错误消息包含 req_id
-    验证: 错误追踪
+    Test scenario: Verify error message contains req_id
+    Verify: Error tracking
     """
     from api_utils.utils_ext.validation import validate_chat_request
 
@@ -104,8 +104,8 @@ def test_validate_chat_request_req_id_in_error_message():
 
 def test_validate_chat_request_mixed_messages_valid():
     """
-    测试场景: 复杂的消息历史（系统、用户、助手混合）
-    验证: 有效请求
+    Test scenario: Complex message history (mixed system, user, assistant)
+    Verify: Valid request
     """
     from api_utils.utils_ext.validation import validate_chat_request
 

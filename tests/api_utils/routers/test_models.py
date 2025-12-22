@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -99,8 +99,8 @@ import asyncio
 @pytest.mark.asyncio
 async def test_list_models_event_not_set_reload_success(mock_env):
     """
-    测试场景: 模型列表事件未设置,页面重新加载成功
-    预期: 执行 reload 和 wait_for, 覆盖 lines 35-38
+    Test scenario: Model list event not set, page reload success
+    Expected: Execute reload and wait_for, cover lines 35-38
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
@@ -111,9 +111,9 @@ async def test_list_models_event_not_set_reload_success(mock_env):
     page_instance.is_closed.return_value = False
     page_instance.reload = AsyncMock()
 
-    # Mock wait() 在 wait_for 内部成功完成
+    # Mock wait() finishes successfully inside wait_for
     async def mock_wait():
-        # 模拟成功等待
+        # Simulate successful wait
         model_list_fetch_event.is_set.return_value = True
         return
 
@@ -130,10 +130,10 @@ async def test_list_models_event_not_set_reload_success(mock_env):
         excluded_model_ids=excluded_model_ids,
     )
 
-    # 验证: 页面被重新加载
+    # Verify: Page reloaded
     page_instance.reload.assert_called_once()
 
-    # 验证: 返回模型列表
+    # Verify: Return model list
     assert response["object"] == "list"
     assert len(response["data"]) == 1
 
@@ -141,8 +141,8 @@ async def test_list_models_event_not_set_reload_success(mock_env):
 @pytest.mark.asyncio
 async def test_list_models_reload_timeout(mock_env):
     """
-    测试场景: wait_for 超时,触发 except 和 finally
-    预期: 捕获异常,记录错误,设置事件 (lines 38-43)
+    Test scenario: wait_for timeout, triggers except and finally
+    Expected: Catch exception, log error, set event (lines 38-43)
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
@@ -153,32 +153,40 @@ async def test_list_models_reload_timeout(mock_env):
     page_instance.is_closed.return_value = False
     page_instance.reload = AsyncMock()
 
-    # Mock wait() 挂起足够长时间,导致 wait_for 超时 (wait_for timeout is 10s)
-    async def mock_wait_forever():
-        await asyncio.sleep(
-            15
-        )  # Longer than wait_for timeout (10s) but shorter than pytest timeout
+    # Mock wait() to sleep briefly, but longer than the mocked timeout
+    async def mock_wait_longer_than_timeout():
+        await asyncio.sleep(0.2)  # Longer than mocked 0.1s timeout
 
-    model_list_fetch_event.wait = mock_wait_forever
+    model_list_fetch_event.wait = mock_wait_longer_than_timeout
 
     parsed_model_list = [{"id": "gemini-1.5-pro", "object": "model"}]
     excluded_model_ids = set()
 
-    response = await list_models(
-        logger=logger,
-        model_list_fetch_event=model_list_fetch_event,
-        page_instance=page_instance,
-        parsed_model_list=parsed_model_list,
-        excluded_model_ids=excluded_model_ids,
-    )
+    # Patch the wait_for timeout to be very short for testing
+    with patch(
+        "api_utils.routers.models.asyncio.wait_for", wraps=asyncio.wait_for
+    ) as mock_wait_for:
+        # Override wait_for to use a short timeout
+        async def short_timeout_wait_for(coro, timeout):
+            return await asyncio.wait_for(coro, timeout=0.1)
 
-    # 验证: 错误被记录
+        mock_wait_for.side_effect = short_timeout_wait_for
+
+        response = await list_models(
+            logger=logger,
+            model_list_fetch_event=model_list_fetch_event,
+            page_instance=page_instance,
+            parsed_model_list=parsed_model_list,
+            excluded_model_ids=excluded_model_ids,
+        )
+
+    # Verify: Error logged
     assert logger.error.called
 
-    # 验证: 事件被设置 (finally block)
+    # Verify: Event set (finally block)
     model_list_fetch_event.set.assert_called()
 
-    # 验证: 返回模型列表 (因为 parsed_model_list 不为空)
+    # Verify: Return model list (because parsed_model_list is not empty)
     assert response["object"] == "list"
     assert len(response["data"]) == 1
 
@@ -186,8 +194,8 @@ async def test_list_models_reload_timeout(mock_env):
 @pytest.mark.asyncio
 async def test_list_models_reload_exception(mock_env):
     """
-    测试场景: page.reload() 抛出异常
-    预期: 捕获异常,记录错误,设置事件 (lines 37-43)
+    Test scenario: page.reload() throws exception
+    Expected: Catch exception, log error, set event (lines 37-43)
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
@@ -197,7 +205,7 @@ async def test_list_models_reload_exception(mock_env):
     page_instance = MagicMock()
     page_instance.is_closed.return_value = False
 
-    # Mock reload 抛出异常
+    # Mock reload throws exception
     page_instance.reload = AsyncMock(side_effect=Exception("Reload failed"))
 
     parsed_model_list = []
@@ -211,15 +219,15 @@ async def test_list_models_reload_exception(mock_env):
         excluded_model_ids=excluded_model_ids,
     )
 
-    # 验证: 错误被记录
+    # Verify: Error logged
     logger.error.assert_called_once()
     error_call_args = logger.error.call_args[0][0]
-    assert "出错" in error_call_args
+    assert "Error" in error_call_args
 
-    # 验证: 事件被设置 (finally block)
+    # Verify: Event set (finally block)
     model_list_fetch_event.set.assert_called()
 
-    # 验证: 返回后备模型 (因为 parsed_model_list 为空)
+    # Verify: Return fallback model (because parsed_model_list is empty)
     assert response["object"] == "list"
     assert len(response["data"]) == 1
     assert response["data"][0]["id"] == DEFAULT_FALLBACK_MODEL_ID
@@ -228,8 +236,8 @@ async def test_list_models_reload_exception(mock_env):
 @pytest.mark.asyncio
 async def test_list_models_page_closed(mock_env):
     """
-    测试场景: 页面已关闭,不执行重新加载
-    预期: 跳过 reload 逻辑,直接返回
+    Test scenario: Page closed, do not perform reload
+    Expected: Skip reload logic, return directly
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
@@ -237,7 +245,7 @@ async def test_list_models_page_closed(mock_env):
 
     # Use MagicMock for page, is_closed is synchronous
     page_instance = MagicMock()
-    page_instance.is_closed.return_value = True  # 页面已关闭
+    page_instance.is_closed.return_value = True  # Page closed
 
     parsed_model_list = [{"id": "gemini-1.5-pro", "object": "model"}]
     excluded_model_ids = set()
@@ -250,10 +258,10 @@ async def test_list_models_page_closed(mock_env):
         excluded_model_ids=excluded_model_ids,
     )
 
-    # 验证: reload 未被调用
+    # Verify: reload not called
     page_instance.reload.assert_not_called()
 
-    # 验证: 返回模型列表
+    # Verify: Return model list
     assert response["object"] == "list"
     assert len(response["data"]) == 1
 
@@ -261,14 +269,14 @@ async def test_list_models_page_closed(mock_env):
 @pytest.mark.asyncio
 async def test_list_models_page_none(mock_env):
     """
-    测试场景: page_instance 为 None
-    预期: 跳过 reload 逻辑,直接返回
+    Test scenario: page_instance is None
+    Expected: Skip reload logic, return directly
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
     model_list_fetch_event.is_set.return_value = False
 
-    page_instance = None  # 无页面实例
+    page_instance = None  # No page instance
 
     parsed_model_list = [{"id": "gemini-1.5-pro", "object": "model"}]
     excluded_model_ids = set()
@@ -281,7 +289,7 @@ async def test_list_models_page_none(mock_env):
         excluded_model_ids=excluded_model_ids,
     )
 
-    # 验证: 返回模型列表 (无需 reload)
+    # Verify: Return model list (no reload needed)
     assert response["object"] == "list"
     assert len(response["data"]) == 1
 
@@ -289,8 +297,8 @@ async def test_list_models_page_none(mock_env):
 @pytest.mark.asyncio
 async def test_list_models_filter_non_dict_entries(mock_env):
     """
-    测试场景: parsed_model_list 包含非字典项
-    预期: 过滤掉非字典项,只返回有效的字典
+    Test scenario: parsed_model_list contains non-dict entries
+    Expected: Filter non-dict entries, return only valid dicts
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
@@ -299,11 +307,11 @@ async def test_list_models_filter_non_dict_entries(mock_env):
     # Use MagicMock for page
     page_instance = MagicMock()
 
-    # 包含非字典项
+    # Contains non-dict entries
     parsed_model_list = [
         {"id": "gemini-1.5-pro", "object": "model"},
-        "invalid_string",  # 非字典
-        None,  # 非字典
+        "invalid_string",  # non-dict
+        None,  # non-dict
         {"id": "gemini-1.5-flash", "object": "model"},
     ]
     excluded_model_ids = set()
@@ -316,7 +324,7 @@ async def test_list_models_filter_non_dict_entries(mock_env):
         excluded_model_ids=excluded_model_ids,
     )
 
-    # 验证: 只返回字典项
+    # Verify: Return only dict entries
     assert response["object"] == "list"
     assert len(response["data"]) == 2
     assert all(isinstance(m, dict) for m in response["data"])
@@ -325,8 +333,8 @@ async def test_list_models_filter_non_dict_entries(mock_env):
 @pytest.mark.asyncio
 async def test_list_models_empty_after_filtering(mock_env):
     """
-    测试场景: 所有模型都被排除
-    预期: 返回空列表,不是后备模型 (因为 parsed_model_list 不为 None)
+    Test scenario: All models excluded
+    Expected: Return empty list, not fallback model (because parsed_model_list is not None)
     """
     logger = MagicMock()
     model_list_fetch_event = MagicMock(spec=asyncio.Event)
@@ -339,7 +347,7 @@ async def test_list_models_empty_after_filtering(mock_env):
         {"id": "gemini-1.5-pro", "object": "model"},
         {"id": "gemini-1.5-flash", "object": "model"},
     ]
-    excluded_model_ids = {"gemini-1.5-pro", "gemini-1.5-flash"}  # 排除所有
+    excluded_model_ids = {"gemini-1.5-pro", "gemini-1.5-flash"}  # Exclude all
 
     response = await list_models(
         logger=logger,
@@ -349,6 +357,6 @@ async def test_list_models_empty_after_filtering(mock_env):
         excluded_model_ids=excluded_model_ids,
     )
 
-    # 验证: 返回空列表 (不是后备)
+    # Verify: Return empty list (not fallback)
     assert response["object"] == "list"
     assert len(response["data"]) == 0

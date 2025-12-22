@@ -8,6 +8,7 @@ Strategy: Mock server module globals, verify each function returns correct objec
 from asyncio import Event, Lock, Queue
 from unittest.mock import MagicMock, patch
 
+from api_utils.server_state import state
 from api_utils.dependencies import (
     get_current_ai_studio_model_id,
     get_excluded_model_ids,
@@ -25,88 +26,88 @@ from api_utils.dependencies import (
 
 def test_get_logger():
     """
-    测试场景: 获取 logger 依赖
-    预期: 返回 server.logger 对象 (lines 10-13)
+    Test scenario: Get logger dependency
+    Expected: Return state.logger object
     """
     mock_logger = MagicMock()
 
-    with patch("server.logger", mock_logger):
+    with patch.object(state, "logger", mock_logger):
         result = get_logger()
 
-        # 验证: 返回 server.logger
+        # Verify: Return state.logger
         assert result is mock_logger
 
 
 def test_get_log_ws_manager():
     """
-    测试场景: 获取 WebSocket 管理器依赖
-    预期: 返回 server.log_ws_manager 对象 (lines 16-19)
+    Test scenario: Get WebSocket manager dependency
+    Expected: Return state.log_ws_manager object
     """
     mock_ws_manager = MagicMock()
 
-    with patch("server.log_ws_manager", mock_ws_manager):
+    with patch.object(state, "log_ws_manager", mock_ws_manager):
         result = get_log_ws_manager()
 
-        # 验证: 返回 server.log_ws_manager
+        # Verify: Return state.log_ws_manager
         assert result is mock_ws_manager
 
 
 def test_get_request_queue():
     """
-    测试场景: 获取请求队列依赖
-    预期: 返回 server.request_queue 对象 (lines 22-25)
+    Test scenario: Get request queue dependency
+    Expected: Return state.request_queue object
     """
     mock_queue = MagicMock(spec=Queue)
 
-    with patch("server.request_queue", mock_queue):
+    with patch.object(state, "request_queue", mock_queue):
         result = get_request_queue()
 
-        # 验证: 返回 server.request_queue
+        # Verify: Return state.request_queue
         assert result is mock_queue
 
 
 def test_get_processing_lock():
     """
-    测试场景: 获取处理锁依赖
-    预期: 返回 server.processing_lock 对象 (lines 28-31)
+    Test scenario: Get processing lock dependency
+    Expected: Return state.processing_lock object
     """
     mock_lock = MagicMock(spec=Lock)
 
-    with patch("server.processing_lock", mock_lock):
+    with patch.object(state, "processing_lock", mock_lock):
         result = get_processing_lock()
 
-        # 验证: 返回 server.processing_lock
+        # Verify: Return state.processing_lock
         assert result is mock_lock
 
 
 def test_get_worker_task():
     """
-    测试场景: 获取工作任务依赖
-    预期: 返回 server.worker_task 对象 (lines 34-37)
+    Test scenario: Get worker task dependency
+    Expected: Return state.worker_task object
     """
     mock_task = MagicMock()
 
-    with patch("server.worker_task", mock_task):
+    with patch.object(state, "worker_task", mock_task):
         result = get_worker_task()
 
-        # 验证: 返回 server.worker_task
+        # Verify: Return state.worker_task
         assert result is mock_task
 
 
 def test_get_server_state():
     """
-    测试场景: 获取服务器状态依赖
-    预期: 返回包含4个布尔标志的字典 (lines 40-54)
+    Test scenario: Get server state dependency
+    Expected: Return dict containing 4 boolean flags
     """
     with (
-        patch("server.is_initializing", True, create=True),
-        patch("server.is_playwright_ready", False, create=True),
-        patch("server.is_browser_connected", True, create=True),
-        patch("server.is_page_ready", False, create=True),
+        patch.object(state, "is_initializing", True),
+        patch.object(state, "is_playwright_ready", False),
+        patch.object(state, "is_browser_connected", True),
+        patch.object(state, "is_page_ready", False),
     ):
         result = get_server_state()
 
-        # 验证: 返回字典包含所有4个标志 (lines 49-54)
+        # Verify: Return dict contains all 4 flags
         assert isinstance(result, dict)
         assert result["is_initializing"] is True
         assert result["is_playwright_ready"] is False
@@ -116,106 +117,106 @@ def test_get_server_state():
 
 def test_get_server_state_immutable_snapshot():
     """
-    测试场景: 验证 get_server_state 返回不可变快照
-    预期: 返回新字典,不是原始引用 (line 49 dict())
+    Test scenario: Verify get_server_state returns immutable snapshot
+    Expected: Return new dict, not original reference
     """
     with (
-        patch("server.is_initializing", False, create=True),
-        patch("server.is_playwright_ready", True, create=True),
-        patch("server.is_browser_connected", False, create=True),
-        patch("server.is_page_ready", True, create=True),
+        patch.object(state, "is_initializing", False),
+        patch.object(state, "is_playwright_ready", True),
+        patch.object(state, "is_browser_connected", False),
+        patch.object(state, "is_page_ready", True),
     ):
         result1 = get_server_state()
         result2 = get_server_state()
 
-        # 验证: 每次调用返回新字典
+        # Verify: Each call returns a new dict
         assert result1 is not result2
-        # 验证: 值相同
+        # Verify: Values are the same
         assert result1 == result2
 
 
 def test_get_page_instance():
     """
-    测试场景: 获取页面实例依赖
-    预期: 返回 server.page_instance 对象 (lines 57-60)
+    Test scenario: Get page instance dependency
+    Expected: Return state.page_instance object
     """
     mock_page = MagicMock()
 
-    with patch("server.page_instance", mock_page):
+    with patch.object(state, "page_instance", mock_page):
         result = get_page_instance()
 
-        # 验证: 返回 server.page_instance
+        # Verify: Return state.page_instance
         assert result is mock_page
 
 
 def test_get_model_list_fetch_event():
     """
-    测试场景: 获取模型列表获取事件依赖
-    预期: 返回 server.model_list_fetch_event 对象 (lines 63-66)
+    Test scenario: Get model list fetch event dependency
+    Expected: Return state.model_list_fetch_event object
     """
     mock_event = MagicMock(spec=Event)
 
-    with patch("server.model_list_fetch_event", mock_event):
+    with patch.object(state, "model_list_fetch_event", mock_event):
         result = get_model_list_fetch_event()
 
-        # 验证: 返回 server.model_list_fetch_event
+        # Verify: Return state.model_list_fetch_event
         assert result is mock_event
 
 
 def test_get_parsed_model_list():
     """
-    测试场景: 获取解析的模型列表依赖
-    预期: 返回 server.parsed_model_list 对象 (lines 69-72)
+    Test scenario: Get parsed model list dependency
+    Expected: Return state.parsed_model_list object
     """
     mock_model_list = [
         {"id": "gemini-1.5-pro", "object": "model"},
         {"id": "gemini-2.0-flash", "object": "model"},
     ]
 
-    with patch("server.parsed_model_list", mock_model_list):
+    with patch.object(state, "parsed_model_list", mock_model_list):
         result = get_parsed_model_list()
 
-        # 验证: 返回 server.parsed_model_list
+        # Verify: Return state.parsed_model_list
         assert result is mock_model_list
         assert len(result) == 2
 
 
 def test_get_excluded_model_ids():
     """
-    测试场景: 获取排除的模型ID集合依赖
-    预期: 返回 server.excluded_model_ids 对象 (lines 75-78)
+    Test scenario: Get excluded model IDs set dependency
+    Expected: Return state.excluded_model_ids object
     """
     mock_excluded_ids = {"model-1", "model-2", "model-3"}
 
-    with patch("server.excluded_model_ids", mock_excluded_ids, create=True):
+    with patch.object(state, "excluded_model_ids", mock_excluded_ids):
         result = get_excluded_model_ids()
 
-        # 验证: 返回 server.excluded_model_ids
+        # Verify: Return state.excluded_model_ids
         assert result is mock_excluded_ids
         assert len(result) == 3
 
 
 def test_get_current_ai_studio_model_id():
     """
-    测试场景: 获取当前AI Studio模型ID依赖
-    预期: 返回 server.current_ai_studio_model_id 对象 (lines 81-84)
+    Test scenario: Get current AI Studio model ID dependency
+    Expected: Return state.current_ai_studio_model_id object
     """
     mock_model_id = "gemini-1.5-pro"
 
-    with patch("server.current_ai_studio_model_id", mock_model_id):
+    with patch.object(state, "current_ai_studio_model_id", mock_model_id):
         result = get_current_ai_studio_model_id()
 
-        # 验证: 返回 server.current_ai_studio_model_id
+        # Verify: Return state.current_ai_studio_model_id
         assert result == "gemini-1.5-pro"
 
 
 def test_get_current_ai_studio_model_id_none():
     """
-    测试场景: 当前模型ID为None (初始状态)
-    预期: 返回None
+    Test scenario: Current model ID is None (initial state)
+    Expected: Return None
     """
-    with patch("server.current_ai_studio_model_id", None):
+    with patch.object(state, "current_ai_studio_model_id", None):
         result = get_current_ai_studio_model_id()
 
-        # 验证: 返回None
+        # Verify: Return None
         assert result is None

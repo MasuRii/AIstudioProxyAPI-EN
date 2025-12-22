@@ -7,7 +7,6 @@ This module provides enhanced debugging capabilities with:
 - Human-readable Texas timestamps
 - Complete metadata capture
 
-Created: 2025-11-21
 Purpose: Fix headless mode debugging and client disconnect issues
 """
 
@@ -17,7 +16,7 @@ import logging
 import os
 import traceback
 from asyncio import Lock, Queue
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Tuple, Union
 
@@ -44,32 +43,32 @@ class SupportsLockQuery(Protocol):
 logger = logging.getLogger("AIStudioProxyServer")
 
 
-def get_texas_timestamp() -> Tuple[str, str]:
+def get_local_timestamp() -> Tuple[str, str]:
     """
-    Get current timestamp in both ISO format and human-readable Texas time.
+    Get current timestamp in both ISO format and human-readable local time.
 
-    Texas is in Central Time Zone (UTC-6 in standard time, UTC-5 in daylight time).
+    Uses the system's local timezone automatically.
 
     Returns:
         Tuple[str, str]: (iso_format, human_readable_format)
-        Example: ("2025-11-21T18:37:32.440", "2025-11-21 18:37:32.440 CST")
+        Example: ("2025-12-20T00:53:35.440", "2025-12-20 00:53:35.440 JST")
     """
-    # Get current UTC time
-    utc_now = datetime.now(timezone.utc)
+    # Get current local time
+    local_now = datetime.now().astimezone()
 
-    # Convert to Central Time (approximation using fixed offset)
-    # Note: For production, use pytz for accurate DST handling
-    central_offset = timedelta(hours=-6)  # CST (standard time)
-    # TODO: Add DST detection if needed
-    central_time = utc_now + central_offset
+    # ISO format (without timezone suffix for directory naming)
+    iso_format = local_now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
 
-    # ISO format
-    iso_format = central_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
-
-    # Human-readable format
-    human_format = central_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " CST"
+    # Human-readable format with timezone abbreviation
+    human_format = (
+        local_now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " " + local_now.strftime("%Z")
+    )
 
     return iso_format, human_format
+
+
+# Keep alias for backwards compatibility
+get_texas_timestamp = get_local_timestamp
 
 
 async def capture_dom_structure(page: AsyncPage) -> str:
@@ -176,7 +175,7 @@ async def capture_system_context(
     import platform
     import sys
 
-    import server
+    from api_utils.server_state import state
 
     iso_time, texas_time = get_texas_timestamp()
 
@@ -225,32 +224,32 @@ async def capture_system_context(
         },
         "application_state": {
             "flags": {
-                "is_playwright_ready": server.is_playwright_ready,
-                "is_browser_connected": server.is_browser_connected,
-                "is_page_ready": server.is_page_ready,
-                "is_initializing": server.is_initializing,
+                "is_playwright_ready": state.is_playwright_ready,
+                "is_browser_connected": state.is_browser_connected,
+                "is_page_ready": state.is_page_ready,
+                "is_initializing": state.is_initializing,
             },
             "queues": {
-                "request_queue_size": get_qsize(server.request_queue),
-                "stream_queue_active": server.STREAM_QUEUE is not None,
+                "request_queue_size": get_qsize(state.request_queue),
+                "stream_queue_active": state.STREAM_QUEUE is not None,
             },
             "locks": {
-                "processing_lock_locked": is_locked(server.processing_lock),
-                "model_switching_lock_locked": is_locked(server.model_switching_lock),
+                "processing_lock_locked": is_locked(state.processing_lock),
+                "model_switching_lock_locked": is_locked(state.model_switching_lock),
             },
             "active_model": {
-                "current_id": server.current_ai_studio_model_id,
-                "excluded_count": len(server.excluded_model_ids),
+                "current_id": state.current_ai_studio_model_id,
+                "excluded_count": len(state.excluded_model_ids),
             },
         },
         "browser_state": {
             "connected": (
-                server.browser_instance.is_connected()
-                if server.browser_instance
+                state.browser_instance.is_connected()
+                if state.browser_instance
                 else False
             ),
             "page_available": (
-                not server.page_instance.is_closed() if server.page_instance else False
+                not state.page_instance.is_closed() if state.page_instance else False
             ),
         },
         "configuration": {
@@ -258,32 +257,32 @@ async def capture_system_context(
                 "headless": os.environ.get("HEADLESS", "unknown"),
                 "debug_logs": os.environ.get("DEBUG_LOGS_ENABLED", "unknown"),
             },
-            "proxy_settings": _sanitize_proxy(server.PLAYWRIGHT_PROXY_SETTINGS),
+            "proxy_settings": _sanitize_proxy(state.PLAYWRIGHT_PROXY_SETTINGS),
         },
         "recent_activity": {
-            "console_logs_count": len(server.console_logs),
-            "network_requests_count": len(server.network_log.get("requests", [])),
+            "console_logs_count": len(state.console_logs),
+            "network_requests_count": len(state.network_log.get("requests", [])),
         },
     }
 
     # Add snippets of recent logs (last 5)
-    if server.console_logs:
-        context["recent_activity"]["last_console_logs"] = server.console_logs[-5:]
+    if state.console_logs:
+        context["recent_activity"]["last_console_logs"] = state.console_logs[-5:]
 
         # Filter for errors/warnings
         console_errors = [
             log
-            for log in server.console_logs
+            for log in state.console_logs
             if str(log.get("type", "")).lower() in ("error", "warning")
         ]
         if console_errors:
             context["recent_activity"]["recent_console_errors"] = console_errors[-5:]
 
     # Add failed network requests summary
-    if server.network_log and "responses" in server.network_log:
+    if state.network_log and "responses" in state.network_log:
         failed_responses = [
             resp
-            for resp in server.network_log["responses"]
+            for resp in state.network_log["responses"]
             if isinstance(resp.get("status"), int) and resp.get("status") >= 400
         ]
         if failed_responses:
@@ -292,9 +291,9 @@ async def capture_system_context(
             ]
 
     # Add current page details if available
-    if server.page_instance and not server.page_instance.is_closed():
+    if state.page_instance and not state.page_instance.is_closed():
         try:
-            context["browser_state"]["current_url"] = server.page_instance.url
+            context["browser_state"]["current_url"] = state.page_instance.url
         except Exception:
             context["browser_state"]["current_url"] = "error_getting_url"
 
@@ -435,7 +434,7 @@ async def save_comprehensive_snapshot(
         page: Playwright page instance
         error_name: Base error name (e.g., "stream_post_button_check_disconnect")
         req_id: Request ID
-        error_stage: Description of error stage (e.g., "流式响应后按钮状态检查")
+        error_stage: Description of error stage (e.g., "Post-stream response button state check")
         additional_context: Extra context to include in metadata
         locators: Dict of named locators to capture states for
         error_exception: Exception object (if available)
@@ -469,7 +468,7 @@ async def save_comprehensive_snapshot(
     try:
         # Create directory structure
         snapshot_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"   Created snapshot directory: {snapshot_dir}")
+        logger.info(f"Created snapshot directory: {snapshot_dir}")
 
         # === 1. Screenshot ===
         screenshot_path = snapshot_dir / "screenshot.png"
@@ -477,11 +476,11 @@ async def save_comprehensive_snapshot(
             await page.screenshot(
                 path=str(screenshot_path), full_page=True, timeout=15000
             )
-            logger.info("   Screenshot saved")
+            logger.info("Screenshot saved")
         except asyncio.CancelledError:
             raise
         except Exception as ss_err:
-            logger.error(f"   Screenshot failed: {ss_err}")
+            logger.error(f"Screenshot failed: {ss_err}")
 
         # === 2. HTML Dump ===
         html_path = snapshot_dir / "dom_dump.html"
@@ -489,11 +488,11 @@ async def save_comprehensive_snapshot(
             content = await page.content()
             with open(html_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            logger.info("   HTML dump saved")
+            logger.info("HTML dump saved")
         except asyncio.CancelledError:
             raise
         except Exception as html_err:
-            logger.error(f"   HTML dump failed: {html_err}")
+            logger.error(f"HTML dump failed: {html_err}")
 
         # === 3. DOM Structure (Human-Readable) ===
         dom_structure_path = snapshot_dir / "dom_structure.txt"
@@ -501,17 +500,19 @@ async def save_comprehensive_snapshot(
             dom_tree = await capture_dom_structure(page)
             with open(dom_structure_path, "w", encoding="utf-8") as f:
                 f.write(dom_tree)
-            logger.info("   DOM structure saved")
+            logger.info("DOM structure saved")
         except asyncio.CancelledError:
             raise
         except Exception as dom_err:
-            logger.error(f"   DOM structure failed: {dom_err}")
+            logger.error(f"DOM structure failed: {dom_err}")
 
         # === 4. Console Logs ===
         console_logs_path = snapshot_dir / "console_logs.txt"
         try:
             # Get console logs from global state
-            from server import console_logs
+            from api_utils.server_state import state
+
+            console_logs = state.console_logs
 
             if console_logs:
                 with open(console_logs_path, "w", encoding="utf-8") as f:
@@ -527,27 +528,29 @@ async def save_comprehensive_snapshot(
                             f.write(f"  Location: {location}\n")
                         f.write("\n")
 
-                logger.info(f"   Console logs saved ({len(console_logs)} entries)")
+                logger.info(f"Console logs saved ({len(console_logs)} entries)")
             else:
                 with open(console_logs_path, "w", encoding="utf-8") as f:
                     f.write("No console logs captured.\n")
-                logger.info("   No console logs available")
+                logger.info("No console logs available")
         except Exception as console_err:
-            logger.error(f"   Console logs failed: {console_err}")
+            logger.error(f"Console logs failed: {console_err}")
 
         # === 5. Network Requests ===
         network_path = snapshot_dir / "network_requests.json"
         try:
-            from server import network_log
+            from api_utils.server_state import state
+
+            network_log = state.network_log
 
             with open(network_path, "w", encoding="utf-8") as f:
                 json.dump(network_log, f, indent=2, ensure_ascii=False)
 
             req_count = len(network_log.get("requests", []))
             resp_count = len(network_log.get("responses", []))
-            logger.info(f"   Network log saved ({req_count} reqs, {resp_count} resps)")
+            logger.info(f"Network log saved ({req_count} reqs, {resp_count} resps)")
         except Exception as net_err:
-            logger.error(f"   Network log failed: {net_err}")
+            logger.error(f"Network log failed: {net_err}")
 
         # === 6. Playwright State ===
         playwright_state_path = snapshot_dir / "playwright_state.json"
@@ -555,11 +558,11 @@ async def save_comprehensive_snapshot(
             pw_state = await capture_playwright_state(page, locators)
             with open(playwright_state_path, "w", encoding="utf-8") as f:
                 json.dump(pw_state, f, indent=2, ensure_ascii=False)
-            logger.info("   Playwright state saved")
+            logger.info("Playwright state saved")
         except asyncio.CancelledError:
             raise
         except Exception as pw_err:
-            logger.error(f"   Playwright state failed: {pw_err}")
+            logger.error(f"Playwright state failed: {pw_err}")
 
         # === 7. System Context (LLM Context) ===
         context_path = snapshot_dir / "llm.json"
@@ -567,11 +570,11 @@ async def save_comprehensive_snapshot(
             system_context = await capture_system_context(req_id, error_name)
             with open(context_path, "w", encoding="utf-8") as f:
                 json.dump(system_context, f, indent=2, ensure_ascii=False)
-            logger.info("   LLM context saved")
+            logger.info("LLM context saved")
         except asyncio.CancelledError:
             raise
         except Exception as ctx_err:
-            logger.error(f"   LLM context failed: {ctx_err}")
+            logger.error(f"LLM context failed: {ctx_err}")
 
         # === 8. Metadata ===
         metadata_path = snapshot_dir / "metadata.json"
@@ -613,17 +616,86 @@ async def save_comprehensive_snapshot(
 
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
-            logger.info("   Metadata saved")
+            logger.info("Metadata saved")
         except Exception as meta_err:
-            logger.error(f"   Metadata failed: {meta_err}")
+            logger.error(f"Metadata failed: {meta_err}")
 
-        logger.info(f" Comprehensive snapshot complete: {snapshot_dir.name}")
+        # === 9. Human-Readable SUMMARY.txt ===
+        summary_path = snapshot_dir / "SUMMARY.txt"
+        try:
+            summary_lines = [
+                "=" * 70,
+                "ERROR SNAPSHOT SUMMARY",
+                "=" * 70,
+                "",
+                f"Timestamp: {human_timestamp}",
+                f"Request ID: {req_id}",
+                f"Error Name: {error_name}",
+                f"Error Stage: {error_stage or 'N/A'}",
+                "Snapshot Type: COMPREHENSIVE",
+                "",
+            ]
+
+            # Exception info
+            if error_exception:
+                summary_lines.extend(
+                    [
+                        "-" * 70,
+                        "EXCEPTION",
+                        "-" * 70,
+                        f"Type: {type(error_exception).__name__}",
+                        f"Message: {error_exception}",
+                        "",
+                    ]
+                )
+
+            # Application state summary
+            summary_lines.extend(
+                [
+                    "-" * 70,
+                    "QUICK REFERENCE",
+                    "-" * 70,
+                    f"Headless Mode: {os.environ.get('HEADLESS', 'true')}",
+                    f"Default Model: {os.environ.get('DEFAULT_MODEL', 'unknown')}",
+                    "",
+                    "-" * 70,
+                    "FILES IN THIS SNAPSHOT",
+                    "-" * 70,
+                    "  SUMMARY.txt        - This file (start here!)",
+                    "  screenshot.png     - Full page screenshot",
+                    "  dom_dump.html      - Complete HTML source",
+                    "  dom_structure.txt  - Human-readable DOM tree",
+                    "  console_logs.txt   - Browser console output",
+                    "  network_requests.json - Network activity",
+                    "  playwright_state.json - Page/locator states",
+                    "  llm.json           - System context for AI analysis",
+                    "  metadata.json      - Full error details",
+                    "",
+                    "-" * 70,
+                    "DEBUGGING TIPS",
+                    "-" * 70,
+                    "1. Check screenshot.png for visual state",
+                    "2. Search dom_structure.txt for element issues",
+                    "3. Review console_logs.txt for JS errors",
+                    "4. Check network_requests.json for API failures",
+                    "",
+                    "=" * 70,
+                ]
+            )
+
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(summary_lines))
+            logger.info("SUMMARY.txt saved")
+        except Exception as summary_err:
+            logger.error(f"SUMMARY.txt failed: {summary_err}")
+
+        logger.info(f"Comprehensive snapshot complete: {snapshot_dir.name}")
         return str(snapshot_dir)
 
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f" Failed to create snapshot directory: {e}", exc_info=True)
+        logger.error(f"Failed to create snapshot directory: {e}", exc_info=True)
         return ""
 
 
@@ -647,7 +719,7 @@ async def save_error_snapshot_enhanced(
         additional_context: Extra context dict to include in metadata (optional)
         locators: Dict of named locators to capture states for (optional)
     """
-    import server
+    from api_utils.server_state import state
 
     # Parse req_id from error_name if present (format: "error_name_req_id")
     name_parts = error_name.split("_")
@@ -658,17 +730,26 @@ async def save_error_snapshot_enhanced(
     )
     base_error_name = error_name if req_id == "unknown" else "_".join(name_parts[:-1])
 
-    page_to_snapshot = server.page_instance
+    page_to_snapshot = state.page_instance
 
     if (
-        not hasattr(server, "browser_instance")
-        or not server.browser_instance
-        or not server.browser_instance.is_connected()
+        not hasattr(state, "browser_instance")
+        or not state.browser_instance
+        or not state.browser_instance.is_connected()
         or not page_to_snapshot
         or page_to_snapshot.is_closed()
     ):
         logger.warning(
-            f"[{req_id}] Cannot save snapshot ({base_error_name}), browser/page unavailable."
+            f"[{req_id}] Browser/page unavailable ({base_error_name}), saving minimal snapshot..."
+        )
+        # Fallback to minimal snapshot
+        from browser_utils.operations_modules.errors import save_minimal_snapshot
+
+        await save_minimal_snapshot(
+            error_name=base_error_name,
+            req_id=req_id,
+            error_exception=error_exception,
+            additional_context=additional_context,
         )
         return
 
@@ -694,21 +775,4 @@ async def save_error_snapshot_enhanced(
         additional_context=merged_context if merged_context else None,
         locators=locators,
         error_exception=error_exception,
-    )
-
-
-async def save_error_snapshot_legacy(error_name: str = "error") -> None:
-    """
-    Legacy error snapshot function for backward compatibility.
-
-    DEPRECATED: Use save_error_snapshot_enhanced() or save_comprehensive_snapshot() instead.
-
-    Args:
-        error_name: Error name with optional req_id suffix (e.g., "error_hbfu521")
-    """
-    # Delegate to enhanced function with minimal context
-    await save_error_snapshot_enhanced(
-        error_name=error_name,
-        error_stage="Legacy snapshot call",
-        additional_context={"legacy_call": True},
     )

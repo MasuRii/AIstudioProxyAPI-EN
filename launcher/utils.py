@@ -19,7 +19,7 @@ def is_port_in_use(port: int, host: str = "0.0.0.0") -> bool:
         except OSError:
             return True
         except Exception as e:
-            logger.warning(f"检查端口 {port} (主机 {host}) 时发生未知错误: {e}")
+            logger.warning(f"Unknown error checking port {port} (host {host}): {e}")
             return True
 
 
@@ -44,10 +44,10 @@ def find_pids_on_port(port: int) -> List[int]:
             elif process.returncode != 0 and (
                 "command not found" in stderr.lower() or "未找到命令" in stderr
             ):
-                logger.error("命令 'lsof' 未找到。请确保已安装。")
-            elif process.returncode not in [0, 1]:  # lsof 在未找到时返回1
+                logger.error("Command 'lsof' not found. Please ensure it is installed.")
+            elif process.returncode not in [0, 1]:  # lsof returns 1 when not found
                 logger.warning(
-                    f"执行 lsof 命令失败 (返回码 {process.returncode}): {stderr.strip()}"
+                    f"Failed to execute lsof command (return code {process.returncode}): {stderr.strip()}"
                 )
         elif system_platform == "Windows":
             command = f'netstat -ano -p TCP | findstr "LISTENING" | findstr ":{port} "'
@@ -69,29 +69,29 @@ def find_pids_on_port(port: int) -> List[int]:
                     ):
                         if parts[-1].isdigit():
                             pids.append(int(parts[-1]))
-                pids = list(set(pids))  # 去重
-            elif process.returncode not in [0, 1]:  # findstr 在未找到时返回1
+                pids = list(set(pids))  # Deduplicate
+            elif process.returncode not in [0, 1]:  # findstr returns 1 when not found
                 logger.warning(
-                    f"执行 netstat/findstr 命令失败 (返回码 {process.returncode}): {stderr.strip()}"
+                    f"Failed to execute netstat/findstr command (return code {process.returncode}): {stderr.strip()}"
                 )
         else:
             logger.warning(
-                f"不支持的操作系统 '{system_platform}' 用于查找占用端口的进程。"
+                f"Unsupported operating system '{system_platform}' for finding processes on port."
             )
     except FileNotFoundError:
-        cmd_name = command.split()[0] if command else "相关工具"
-        logger.error(f"命令 '{cmd_name}' 未找到。")
+        cmd_name = command.split()[0] if command else "required tool"
+        logger.error(f"Command '{cmd_name}' not found.")
     except subprocess.TimeoutExpired:
-        logger.error(f"执行命令 '{command}' 超时。")
+        logger.error(f"Command '{command}' timed out.")
     except Exception as e:
-        logger.error(f"查找占用端口 {port} 的进程时出错: {e}", exc_info=True)
+        logger.error(f"Error finding processes on port {port}: {e}", exc_info=True)
     return pids
 
 
 def kill_process_interactive(pid: int) -> bool:
     system_platform = platform.system()
     success = False
-    logger.info(f"  尝试终止进程 PID: {pid}...")
+    logger.info(f"Attempting to terminate process PID: {pid}...")
     try:
         if system_platform == "Linux" or system_platform == "Darwin":
             result_term = subprocess.run(
@@ -103,11 +103,11 @@ def kill_process_interactive(pid: int) -> bool:
                 check=False,
             )
             if result_term.returncode == 0:
-                logger.info(f"    PID {pid} 已发送 SIGTERM 信号。")
+                logger.info(f"SIGTERM signal sent to PID {pid}.")
                 success = True
             else:
                 logger.warning(
-                    f"    PID {pid} SIGTERM 失败: {result_term.stderr.strip() or result_term.stdout.strip()}. 尝试 SIGKILL..."
+                    f"    PID {pid} SIGTERM failed: {result_term.stderr.strip() or result_term.stdout.strip()}. Trying SIGKILL..."
                 )
                 result_kill = subprocess.run(
                     f"kill -9 {pid}",
@@ -118,11 +118,11 @@ def kill_process_interactive(pid: int) -> bool:
                     check=False,
                 )
                 if result_kill.returncode == 0:
-                    logger.info(f"    PID {pid} 已发送 SIGKILL 信号。")
+                    logger.info(f"SIGKILL signal sent to PID {pid}.")
                     success = True
                 else:
                     logger.error(
-                        f"    ✗ PID {pid} SIGKILL 失败: {result_kill.stderr.strip() or result_kill.stdout.strip()}."
+                        f"    ✗ PID {pid} SIGKILL failed: {result_kill.stderr.strip() or result_kill.stdout.strip()}."
                     )
         elif system_platform == "Windows":
             command_desc = f"taskkill /PID {pid} /T /F"
@@ -139,28 +139,32 @@ def kill_process_interactive(pid: int) -> bool:
             if result.returncode == 0 and (
                 "SUCCESS" in output.upper() or "成功" in output
             ):
-                logger.info(f"    PID {pid} 已通过 taskkill /F 终止。")
+                logger.info(f"PID {pid} terminated via taskkill /F.")
                 success = True
             elif (
                 "could not find process" in error_output.lower()
                 or "找不到" in error_output
-            ):  # 进程可能已自行退出
-                logger.info(f"    PID {pid} 执行 taskkill 时未找到 (可能已退出)。")
-                success = True  # 视为成功，因为目标是端口可用
+            ):  # Process may have already exited
+                logger.info(
+                    f"PID {pid} not found when executing taskkill (may have exited)."
+                )
+                success = True  # Treat as success since goal is port availability
             else:
-                # 统计错误数量而非逐个输出
+                # Count errors rather than outputting each one
                 combined = (error_output + " " + output).strip()
                 error_count = combined.count("ERROR:")
                 if error_count > 0:
                     logger.warning(
-                        f"    PID {pid} taskkill /F: (抑制 {error_count} 条错误信息)"
+                        f"    PID {pid} taskkill /F: (suppressed {error_count} error messages)"
                     )
                 else:
-                    logger.warning(f"    PID {pid} taskkill /F 返回非零状态")
+                    logger.warning(f"PID {pid} taskkill /F returned non-zero status")
         else:
-            logger.warning(f"    不支持的操作系统 '{system_platform}' 用于终止进程。")
+            logger.warning(
+                f"Unsupported operating system '{system_platform}' for terminating processes."
+            )
     except Exception as e:
-        logger.error(f"    终止 PID {pid} 时发生意外错误: {e}", exc_info=True)
+        logger.error(f"Unexpected error terminating PID {pid}: {e}", exc_info=True)
     return success
 
 
@@ -173,13 +177,13 @@ def input_with_timeout(prompt_message: str, timeout_seconds: int = 30) -> str:
             try:
                 user_input_container[0] = sys.stdin.readline().strip()
             except Exception:
-                user_input_container[0] = ""  # 出错时返回空字符串
+                user_input_container[0] = ""  # Return empty string on error
 
         input_thread = threading.Thread(target=get_input_in_thread, daemon=True)
         input_thread.start()
         input_thread.join(timeout=timeout_seconds)
         if input_thread.is_alive():
-            print("\n输入超时。将使用默认值。", flush=True)
+            print("\nInput timed out. Using default value.", flush=True)
             return ""
         return user_input_container[0] if user_input_container[0] is not None else ""
     else:  # Linux/macOS
@@ -187,7 +191,7 @@ def input_with_timeout(prompt_message: str, timeout_seconds: int = 30) -> str:
         if readable_fds:
             return sys.stdin.readline().strip()
         else:
-            print("\n输入超时。将使用默认值。", flush=True)
+            print("\nInput timed out. Using default value.", flush=True)
             return ""
 
 

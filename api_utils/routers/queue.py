@@ -21,7 +21,7 @@ async def cancel_queued_request(
         while not request_queue.empty():
             item = request_queue.get_nowait()
             if item.get("req_id") == req_id:
-                logger.info("在队列中找到请求，标记为已取消。")
+                logger.info("Found request in queue, marking as cancelled.")
                 item["cancelled"] = True
                 if (future := item.get("result_future")) and not future.done():
                     future.set_exception(client_cancelled(req_id))
@@ -39,7 +39,7 @@ async def cancel_request(
     request_queue: Queue = Depends(get_request_queue),
 ):
     set_request_id(req_id)
-    logger.info("收到取消请求。")
+    logger.info("Received cancellation request.")
     if await cancel_queued_request(req_id, request_queue, logger):
         return JSONResponse(
             content={

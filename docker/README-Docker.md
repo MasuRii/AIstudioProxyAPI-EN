@@ -25,7 +25,7 @@ Docker 部署提供了以下优势：
 ## 🔧 Docker 环境规格
 
 - **基础镜像**: Python 3.10-slim-bookworm (稳定且轻量)
-- **Python版本**: 3.10 (在容器内运行，与主机Python版本无关)
+- **Python 版本**: 3.10 (在容器内运行，与主机 Python 版本无关)
 - **依赖管理**: Poetry (现代化 Python 依赖管理)
 - **构建方式**: 多阶段构建 (builder + runtime)
 - **架构支持**: x86_64 和 ARM64 (Apple Silicon)
@@ -180,6 +180,7 @@ docker run -d \
    ```
 
    **`.env` 文件的优势:**
+
    - ✅ **版本更新无忧**: 一个 `git pull` 就完成更新，无需重新配置
    - ✅ **配置集中管理**: 所有配置项统一在 `.env` 文件中
    - ✅ **Docker 兼容**: 容器会自动读取挂载的 `.env` 文件
@@ -241,6 +242,8 @@ TRACE_LOGS_ENABLED=false
 
 # 认证配置
 AUTO_CONFIRM_LOGIN=true
+# 注意：AUTO_SAVE_AUTH 仅在 debug 模式下用于保存新认证文件
+# Docker 容器运行于 headless 模式，使用预先生成的认证文件，此设置无效
 AUTO_SAVE_AUTH=false
 AUTH_SAVE_TIMEOUT=30
 

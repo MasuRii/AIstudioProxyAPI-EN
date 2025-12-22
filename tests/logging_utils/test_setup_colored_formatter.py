@@ -16,8 +16,8 @@ from logging_utils.setup import ColoredFormatter
 class TestColoredFormatterCoverage:
     def test_colored_formatter_windows_ansi_failure(self):
         """
-        测试场景: Windows ANSI 启用失败
-        预期: use_color 设置为 False (lines 37-38)
+        Test scenario: Windows ANSI enable fails
+        Expected: use_color set to False (lines 37-38)
         """
         with patch("logging_utils.setup.sys.platform", "win32"):
             # Mock ctypes module to raise exception during kernel32 access
@@ -34,8 +34,8 @@ class TestColoredFormatterCoverage:
 
     def test_colored_formatter_formattime_with_datefmt(self):
         """
-        测试场景: formatTime 使用自定义 datefmt
-        预期: 使用 strftime 格式化 (line 43)
+        Test scenario: formatTime with custom datefmt
+        Expected: Use strftime for formatting (line 43)
         """
         formatter = ColoredFormatter()
 
@@ -63,8 +63,8 @@ class TestColoredFormatterCoverage:
 
     def test_colored_formatter_format_without_color(self):
         """
-        测试场景: format 方法在 use_color=False 时
-        预期: 调用父类 format 方法 (line 59)
+        Test scenario: format method when use_color=False
+        Expected: Call parent format method (line 59)
         """
         # Create formatter with colors disabled
         formatter = ColoredFormatter(use_color=False)
@@ -92,8 +92,8 @@ class TestColoredFormatterCoverage:
 
     def test_colored_formatter_format_unknown_levelname(self):
         """
-        测试场景: format 方法遇到未知的 levelname
-        预期: 调用父类 format 方法 (line 59)
+        Test scenario: format method encounters unknown levelname
+        Expected: Call parent format method (line 59)
         """
         formatter = ColoredFormatter(use_color=True)
 
@@ -120,7 +120,7 @@ class TestColoredFormatterCoverage:
 
 class TestColoredFormatterEdgeCases:
     def test_colored_formatter_all_color_levels(self):
-        """测试所有支持的日志级别颜色"""
+        """Test all supported log level colors"""
         formatter = ColoredFormatter(use_color=True)
 
         levels = [
@@ -150,7 +150,7 @@ class TestColoredFormatterEdgeCases:
             assert levelname in result or "\033[" in result
 
     def test_colored_formatter_linux_platform(self):
-        """测试 Linux 平台不会尝试启用 Windows ANSI"""
+        """Test Linux platform does not attempt to enable Windows ANSI"""
         with patch("logging_utils.setup.sys.platform", "linux"):
             formatter = ColoredFormatter(use_color=True)
 
@@ -158,7 +158,7 @@ class TestColoredFormatterEdgeCases:
             assert formatter.use_color is True
 
     def test_colored_formatter_macos_platform(self):
-        """测试 macOS 平台不会尝试启用 Windows ANSI"""
+        """Test macOS platform does not attempt to enable Windows ANSI"""
         with patch("logging_utils.setup.sys.platform", "darwin"):
             formatter = ColoredFormatter(use_color=True)
 

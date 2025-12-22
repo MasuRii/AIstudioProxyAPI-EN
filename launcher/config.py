@@ -1,132 +1,75 @@
 import argparse
 import os
+import re
 import sys
-from dataclasses import dataclass
 from typing import Dict, Optional
 
 from launcher.utils import get_proxy_from_gsettings
 
-# --- 配置常量 ---
+# --- Configuration Constants ---
 PYTHON_EXECUTABLE = sys.executable
-ENDPOINT_CAPTURE_TIMEOUT = int(
-    os.environ.get("ENDPOINT_CAPTURE_TIMEOUT", "45")
-)  # 秒 (from dev)
-DEFAULT_SERVER_PORT = int(
-    os.environ.get("DEFAULT_FASTAPI_PORT", "2048")
-)  # FastAPI 服务器端口
-DEFAULT_CAMOUFOX_PORT = int(
-    os.environ.get("DEFAULT_CAMOUFOX_PORT", "9222")
-)  # Camoufox 调试端口 (如果内部启动需要)
-DEFAULT_STREAM_PORT = int(os.environ.get("STREAM_PORT", "3120"))  # 流式代理服务器端口
-DEFAULT_HELPER_ENDPOINT = os.environ.get(
-    "GUI_DEFAULT_HELPER_ENDPOINT", ""
-)  # 外部 Helper 端点
-DEFAULT_AUTH_SAVE_TIMEOUT = int(
-    os.environ.get("AUTH_SAVE_TIMEOUT", "30")
-)  # 认证保存超时时间
-DEFAULT_SERVER_LOG_LEVEL = os.environ.get("SERVER_LOG_LEVEL", "INFO")  # 服务器日志级别
-AUTH_PROFILES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "auth_profiles"
-)
+ENDPOINT_CAPTURE_TIMEOUT = int(os.environ.get("ENDPOINT_CAPTURE_TIMEOUT", "45"))
+DEFAULT_SERVER_PORT = int(os.environ.get("DEFAULT_FASTAPI_PORT", "2048"))
+DEFAULT_CAMOUFOX_PORT = int(os.environ.get("DEFAULT_CAMOUFOX_PORT", "9222"))
+DEFAULT_STREAM_PORT = int(os.environ.get("STREAM_PORT", "3120"))
+DEFAULT_HELPER_ENDPOINT = os.environ.get("GUI_DEFAULT_HELPER_ENDPOINT", "")
+DEFAULT_AUTH_SAVE_TIMEOUT = int(os.environ.get("AUTH_SAVE_TIMEOUT", "30"))
+DEFAULT_SERVER_LOG_LEVEL = os.environ.get("SERVER_LOG_LEVEL", "INFO")
+AUTH_PROFILES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "auth_profiles")
 ACTIVE_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "active")
 SAVED_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "saved")
-HTTP_PROXY = os.environ.get("HTTP_PROXY", "")
-HTTPS_PROXY = os.environ.get("HTTPS_PROXY", "")
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 LAUNCHER_LOG_FILE_PATH = os.path.join(LOG_DIR, "launch_app.log")
-
-# --- WebSocket 端点正则表达式 ---
-import re
+DIRECT_LAUNCH = os.environ.get("DIRECT_LAUNCH", "").lower() in ("true", "1", "yes")
 
 ws_regex = re.compile(r"(ws://\S+)")
-
-
-@dataclass
-class LauncherConfig:
-    server_port: int
-    stream_port: int
-    helper_endpoint: str
-    camoufox_debug_port: int
-    launch_mode: str
-    active_auth_json: Optional[str]
-    auto_save_auth: bool
-    save_auth_as: Optional[str]
-    auth_save_timeout: int
-    exit_on_auth_save: bool
-    server_log_level: str
-    server_redirect_print: bool
-    debug_logs: bool
-    trace_logs: bool
-    internal_launch_mode: Optional[str] = None
-    internal_auth_file: Optional[str] = None
-    internal_camoufox_port: int = DEFAULT_CAMOUFOX_PORT
-    internal_camoufox_proxy: Optional[str] = None
-    internal_camoufox_os: str = "random"
 
 
 def determine_proxy_configuration(
     internal_camoufox_proxy_arg: Optional[str] = None,
 ) -> Dict[str, Optional[str]]:
     """
-    统一的代理配置确定函数
-    按优先级顺序：命令行参数 > 环境变量 > 系统设置
-
-    Args:
-        internal_camoufox_proxy_arg: --internal-camoufox-proxy 命令行参数值
-
-    Returns:
-        dict: 包含代理配置信息的字典
-        {
-            'camoufox_proxy': str or None,  # Camoufox浏览器使用的代理
-            'stream_proxy': str or None,    # 流式代理服务使用的上游代理
-            'source': str                   # 代理来源说明
-        }
+    Unified proxy configuration determination function.
+    Priority: Command-line arguments > Environment variables > System settings.
     """
-    result = {"camoufox_proxy": None, "stream_proxy": None, "source": "无代理"}
+    result = {"camoufox_proxy": None, "stream_proxy": None, "source": "No Proxy"}
 
-    # 1. 优先使用命令行参数
     if internal_camoufox_proxy_arg is not None:
-        if internal_camoufox_proxy_arg.strip():  # 非空字符串
+        if internal_camoufox_proxy_arg.strip():
             result["camoufox_proxy"] = internal_camoufox_proxy_arg.strip()
             result["stream_proxy"] = internal_camoufox_proxy_arg.strip()
-            result["source"] = (
-                f"命令行参数 --internal-camoufox-proxy: {internal_camoufox_proxy_arg.strip()}"
-            )
-        else:  # 空字符串，明确禁用代理
-            result["source"] = "命令行参数 --internal-camoufox-proxy='' (明确禁用代理)"
+            result["source"] = f"CLI argument --internal-camoufox-proxy: {internal_camoufox_proxy_arg.strip()}"
+        else:
+            result["source"] = "CLI argument --internal-camoufox-proxy='' (Explicitly disabled)"
         return result
 
-    # 2. 尝试环境变量 UNIFIED_PROXY_CONFIG (优先级高于 HTTP_PROXY/HTTPS_PROXY)
     unified_proxy = os.environ.get("UNIFIED_PROXY_CONFIG")
     if unified_proxy:
         result["camoufox_proxy"] = unified_proxy
         result["stream_proxy"] = unified_proxy
-        result["source"] = f"环境变量 UNIFIED_PROXY_CONFIG: {unified_proxy}"
+        result["source"] = f"Environment variable UNIFIED_PROXY_CONFIG: {unified_proxy}"
         return result
 
-    # 3. 尝试环境变量 HTTP_PROXY
     http_proxy = os.environ.get("HTTP_PROXY")
     if http_proxy:
         result["camoufox_proxy"] = http_proxy
         result["stream_proxy"] = http_proxy
-        result["source"] = f"环境变量 HTTP_PROXY: {http_proxy}"
+        result["source"] = f"Environment variable HTTP_PROXY: {http_proxy}"
         return result
 
-    # 4. 尝试环境变量 HTTPS_PROXY
     https_proxy = os.environ.get("HTTPS_PROXY")
     if https_proxy:
         result["camoufox_proxy"] = https_proxy
         result["stream_proxy"] = https_proxy
-        result["source"] = f"环境变量 HTTPS_PROXY: {https_proxy}"
+        result["source"] = f"Environment variable HTTPS_PROXY: {https_proxy}"
         return result
 
-    # 5. 尝试系统代理设置 (仅限 Linux)
     if sys.platform.startswith("linux"):
         gsettings_proxy = get_proxy_from_gsettings()
         if gsettings_proxy:
             result["camoufox_proxy"] = gsettings_proxy
             result["stream_proxy"] = gsettings_proxy
-            result["source"] = f"gsettings 系统代理: {gsettings_proxy}"
+            result["source"] = f"gsettings System Proxy: {gsettings_proxy}"
             return result
 
     return result
@@ -134,10 +77,10 @@ def determine_proxy_configuration(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Camoufox 浏览器模拟与 FastAPI 代理服务器的启动器。",
+        description="Launcher for Camoufox browser simulation and FastAPI proxy server.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    # 内部参数 (from dev)
+    # Internal parameters
     parser.add_argument(
         "--internal-launch-mode",
         type=str,
@@ -160,138 +103,121 @@ def parse_args() -> argparse.Namespace:
         "--internal-camoufox-os", type=str, default="random", help=argparse.SUPPRESS
     )
 
-    # 用户可见参数 (merged from dev and helper)
+    # User-visible parameters
     parser.add_argument(
         "--server-port",
         type=int,
         default=DEFAULT_SERVER_PORT,
-        help=f"FastAPI 服务器监听的端口号 (默认: {DEFAULT_SERVER_PORT})",
+        help=f"FastAPI server listening port (Default: {DEFAULT_SERVER_PORT})",
     )
     parser.add_argument(
         "--stream-port",
         type=int,
-        default=DEFAULT_STREAM_PORT,  # 从 .env 文件读取默认值
-        help=(
-            f"流式代理服务器使用端口"
-            f"提供来禁用此功能 --stream-port=0 . 默认: {DEFAULT_STREAM_PORT}"
-        ),
+        default=DEFAULT_STREAM_PORT,
+        help=f"Streaming proxy server port. Provide 0 to disable. Default: {DEFAULT_STREAM_PORT}",
     )
     parser.add_argument(
         "--helper",
         type=str,
-        default=DEFAULT_HELPER_ENDPOINT,  # 使用默认值
-        help=(
-            f"Helper 服务器的 getStreamResponse 端点地址 (例如: http://127.0.0.1:3121/getStreamResponse). "
-            f"提供空字符串 (例如: --helper='') 来禁用此功能. 默认: {DEFAULT_HELPER_ENDPOINT}"
-        ),
+        default=DEFAULT_HELPER_ENDPOINT,
+        help=f"Helper server getStreamResponse endpoint. Provide empty string to disable. Default: {DEFAULT_HELPER_ENDPOINT}",
     )
     parser.add_argument(
-        "--camoufox-debug-port",  # from dev
+        "--camoufox-debug-port",
         type=int,
         default=DEFAULT_CAMOUFOX_PORT,
-        help=f"内部 Camoufox 实例监听的调试端口号 (默认: {DEFAULT_CAMOUFOX_PORT})",
+        help=f"Internal Camoufox instance debugging port (Default: {DEFAULT_CAMOUFOX_PORT})",
     )
-    mode_selection_group = (
-        parser.add_mutually_exclusive_group()
-    )  # from dev (more options)
+    
+    mode_selection_group = parser.add_mutually_exclusive_group()
     mode_selection_group.add_argument(
         "--debug",
         action="store_true",
-        help="启动调试模式 (浏览器界面可见，允许交互式认证)",
+        help="Start in debug mode (browser visible, interactive auth allowed)",
     )
     mode_selection_group.add_argument(
         "--headless",
         action="store_true",
-        help="启动无头模式 (浏览器无界面，需要预先保存的认证文件)",
+        help="Start in headless mode (no browser UI, requires pre-saved auth)",
     )
     mode_selection_group.add_argument(
         "--virtual-display",
         action="store_true",
-        help="启动无头模式并使用虚拟显示 (Xvfb, 仅限 Linux)",
-    )  # from dev
+        help="Start in headless mode with virtual display (Xvfb, Linux only)",
+    )
 
-    # --camoufox-os 参数已移除，将由脚本内部自动检测系统并设置
-    parser.add_argument(  # from dev
+    parser.add_argument(
         "--active-auth-json",
         type=str,
         default=None,
-        help="[无头模式/调试模式可选] 指定要使用的活动认证JSON文件的路径 (在 auth_profiles/active/ 或 auth_profiles/saved/ 中，或绝对路径)。"
-        "如果未提供，无头模式将使用 active/ 目录中最新的JSON文件，调试模式将提示选择或不使用。",
+        help="[Optional] Path to active authentication JSON file.",
     )
     
-    # 修复: 从环境变量读取默认值，而不是使用 argparse 的默认 False
     debug_logs_default = os.environ.get('DEBUG_LOGS_ENABLED', 'false').lower() == 'true'
     trace_logs_default = os.environ.get('TRACE_LOGS_ENABLED', 'false').lower() == 'true'
     auto_save_auth_default = os.environ.get('AUTO_SAVE_AUTH', 'false').lower() == 'true'
     
-    parser.add_argument(  # from dev
+    parser.add_argument(
         "--auto-save-auth",
         action="store_true",
-        help="[调试模式] 在登录成功后，如果之前未加载认证文件，则自动提示并保存新的认证状态。",
+        help="[Debug Mode] Automatically prompt and save new auth state after successful login.",
     )
     parser.add_argument(
         "--save-auth-as",
         type=str,
         default=None,
-        help="[调试模式] 指定保存新认证文件的文件名 (不含.json后缀)。",
+        help="[Debug Mode] Filename for the new auth file (without .json extension).",
     )
-    parser.add_argument(  # from dev
+    parser.add_argument(
         "--auth-save-timeout",
         type=int,
         default=DEFAULT_AUTH_SAVE_TIMEOUT,
-        help=f"[调试模式] 自动保存认证或输入认证文件名的等待超时时间 (秒)。默认: {DEFAULT_AUTH_SAVE_TIMEOUT}",
+        help=f"[Debug Mode] Timeout in seconds to wait for auth save. Default: {DEFAULT_AUTH_SAVE_TIMEOUT}",
     )
     parser.add_argument(
         "--exit-on-auth-save",
         action="store_true",
-        help="[调试模式] 在通过UI成功保存新的认证文件后，自动关闭启动器和所有相关进程。",
+        help="[Debug Mode] Automatically close the launcher and processes after saving new auth file.",
     )
-    # 日志相关参数 (from dev)
+    
     parser.add_argument(
         "--server-log-level",
         type=str,
         default=DEFAULT_SERVER_LOG_LEVEL,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help=f"server.py 的日志级别。默认: {DEFAULT_SERVER_LOG_LEVEL}",
+        help=f"Log level for server.py. Default: {DEFAULT_SERVER_LOG_LEVEL}",
     )
     parser.add_argument(
         "--server-redirect-print",
         action="store_true",
-        help="将 server.py 中的 print 输出重定向到其日志系统。默认不重定向以便调试模式下的 input() 提示可见。",
+        help="Redirect server.py print output to its logging system.",
     )
     parser.add_argument(
         "--debug-logs",
         action="store_true",
         default=debug_logs_default,
-        help="启用 server.py 内部的 DEBUG 级别详细日志 (环境变量 DEBUG_LOGS_ENABLED)。",
+        help="Enable internal DEBUG logs for server.py (DEBUG_LOGS_ENABLED env).",
     )
     parser.add_argument(
         "--trace-logs",
         action="store_true",
         default=trace_logs_default,
-        help="启用 server.py 内部的 TRACE 级别更详细日志 (环境变量 TRACE_LOGS_ENABLED)。",
+        help="Enable internal TRACE logs for server.py (TRACE_LOGS_ENABLED env).",
+    )
+    parser.add_argument(
+        "--skip-frontend-build",
+        action="store_true",
+        help="Skip frontend build check (for environments without Node.js/npm).",
     )
 
     args = parser.parse_args()
     
-    # 标记哪些参数是通过命令行明确设置的
-    # 这样我们可以在运行时区分默认值（来自.env）和用户显式设置
-    if '--debug-logs' in sys.argv:
-        args.debug_logs_from_cli = True
-    else:
-        args.debug_logs_from_cli = False
-        
-    if '--trace-logs' in sys.argv:
-        args.trace_logs_from_cli = True
-    else:
-        args.trace_logs_from_cli = False
-        
-    if '--auto-save-auth' in sys.argv:
-        args.auto_save_auth_from_cli = True
-    else:
-        args.auto_save_auth_from_cli = False
+    # Mark which arguments were explicitly set via CLI
+    args.debug_logs_from_cli = '--debug-logs' in sys.argv
+    args.trace_logs_from_cli = '--trace-logs' in sys.argv
+    args.auto_save_auth_from_cli = '--auto-save-auth' in sys.argv
     
-    # 如果没有通过命令行设置，则使用环境变量值
+    # Use environment variables if not set via CLI
     if not args.debug_logs_from_cli:
         args.debug_logs = debug_logs_default
     if not args.trace_logs_from_cli:

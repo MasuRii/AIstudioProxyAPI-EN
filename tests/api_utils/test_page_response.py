@@ -89,8 +89,14 @@ class TestLocateResponseElementsSuccess:
 
             # Verify logger.info called twice (lines 16, 24)
             assert setup["logger"].info.call_count == 2
-            assert "定位响应元素..." in setup["logger"].info.call_args_list[0][0][0]
-            assert "响应元素已定位。" in setup["logger"].info.call_args_list[1][0][0]
+            assert (
+                "Locating response elements..."
+                in setup["logger"].info.call_args_list[0][0][0]
+            )
+            assert (
+                "Response elements located."
+                in setup["logger"].info.call_args_list[1][0][0]
+            )
 
     @pytest.mark.asyncio
     async def test_success_checks_client_disconnect_after_container(
@@ -218,7 +224,9 @@ class TestLocateResponseElementsTimeouts:
 
             # Verify HTTPException status code 502 (upstream error)
             assert exc_info.value.status_code == 502
-            assert "定位AI Studio响应元素失败" in exc_info.value.detail
+            assert (
+                "Failed to locate AI Studio response elements" in exc_info.value.detail
+            )
             assert "Timeout 20000ms exceeded" in exc_info.value.detail
 
     @pytest.mark.asyncio
@@ -252,7 +260,9 @@ class TestLocateResponseElementsTimeouts:
 
             # Verify HTTPException status code 502 (upstream error)
             assert exc_info.value.status_code == 502
-            assert "定位AI Studio响应元素失败" in exc_info.value.detail
+            assert (
+                "Failed to locate AI Studio response elements" in exc_info.value.detail
+            )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -314,7 +324,10 @@ class TestLocateResponseElementsErrors:
 
             # Verify HTTPException status code 500 (server error from generic handler)
             assert exc_info.value.status_code == 500
-            assert "定位响应元素时意外错误" in exc_info.value.detail
+            assert (
+                "Unexpected error while locating response elements"
+                in exc_info.value.detail
+            )
             # Verify check_disconnect was called (line 22)
             setup["check_disconnect"].assert_called_once()
 
@@ -337,7 +350,10 @@ class TestLocateResponseElementsErrors:
 
             # Verify HTTPException status code 500 (server error)
             assert exc_info.value.status_code == 500
-            assert "定位响应元素时意外错误" in exc_info.value.detail
+            assert (
+                "Unexpected error while locating response elements"
+                in exc_info.value.detail
+            )
             assert "Unexpected validation error" in exc_info.value.detail
 
     @pytest.mark.asyncio
@@ -367,5 +383,8 @@ class TestLocateResponseElementsErrors:
                 )
 
             assert exc_info.value.status_code == 500
-            assert "定位响应元素时意外错误" in exc_info.value.detail
+            assert (
+                "Unexpected error while locating response elements"
+                in exc_info.value.detail
+            )
             assert error_msg in exc_info.value.detail

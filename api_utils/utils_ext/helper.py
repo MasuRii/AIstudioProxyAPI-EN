@@ -7,9 +7,11 @@ async def use_helper_get_response(
 ) -> AsyncGenerator[str, None]:
     import aiohttp
 
-    from server import logger
+    from api_utils.server_state import state
 
-    logger.info(f"正在尝试使用Helper端点: {helper_endpoint}")
+    logger = state.logger
+
+    logger.info(f"Attempting to use Helper endpoint: {helper_endpoint}")
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -23,8 +25,10 @@ async def use_helper_get_response(
                         if chunk:
                             yield chunk.decode("utf-8", errors="ignore")
                 else:
-                    logger.error(f"Helper端点返回错误状态: {response.status}")
+                    logger.error(
+                        f"Helper endpoint returned error status: {response.status}"
+                    )
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.error(f"使用Helper端点时出错: {e}")
+        logger.error(f"Error using Helper endpoint: {e}")

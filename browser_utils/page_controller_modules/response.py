@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable
+from typing import Callable, Optional
 
 from playwright.async_api import expect as expect_async
 
@@ -25,14 +25,17 @@ class ResponseController(BaseController):
     """Handles retrieval of AI responses."""
 
     async def get_response(
-        self, check_client_disconnected: Callable[[str], bool]
+        self,
+        check_client_disconnected: Callable,
+        prompt_length: int = 0,
+        timeout: Optional[float] = None,
     ) -> str:
-        """获取响应内容。"""
+        """Retrieve response content."""
         set_request_id(self.req_id)
-        self.logger.info("等待并获取响应...")
+        self.logger.debug("[Response] Waiting for and retrieving response...")
 
         try:
-            # 等待响应容器出现
+            # Wait for response container
             response_container_locator = self.page.locator(
                 RESPONSE_CONTAINER_SELECTOR
             ).last
@@ -40,18 +43,21 @@ class ResponseController(BaseController):
                 RESPONSE_TEXT_SELECTOR
             )
 
-            self.logger.info(" 等待响应元素附加到DOM...")
+            self.logger.debug(
+                "[Response] Waiting for response element to be attached to DOM..."
+            )
             await expect_async(response_element_locator).to_be_attached(timeout=90000)
             await self._check_disconnect(
-                check_client_disconnected, "获取响应 - 响应元素已附加"
+                check_client_disconnected,
+                "Retrieve Response - Response element attached",
             )
 
-            # 等待响应完成
+            # Wait for response completion
             submit_button_locator = self.page.locator(SUBMIT_BUTTON_SELECTOR)
             edit_button_locator = self.page.locator(EDIT_MESSAGE_BUTTON_SELECTOR)
             input_field_locator = self.page.locator(PROMPT_TEXTAREA_SELECTOR)
 
-            self.logger.info(" 等待响应完成...")
+            self.logger.debug("[Response] Waiting for response completion...")
             completion_detected = await _wait_for_response_completion(
                 self.page,
                 input_field_locator,
@@ -60,32 +66,38 @@ class ResponseController(BaseController):
                 self.req_id,
                 check_client_disconnected,
                 None,
+                prompt_length=prompt_length,
+                timeout=timeout,
             )
 
             if not completion_detected:
-                self.logger.warning(" 响应完成检测失败，尝试获取当前内容")
+                self.logger.warning(
+                    "Response completion detection failed, attempting to retrieve current content"
+                )
             else:
-                self.logger.info(" 响应完成检测成功")
+                self.logger.debug("[Response] Response completion detection successful")
 
-            # 获取最终响应内容
+            # Get final response content
             final_content = await _get_final_response_content(
                 self.page, self.req_id, check_client_disconnected
             )
 
             if not final_content or not final_content.strip():
-                self.logger.warning(" 获取到的响应内容为空")
+                self.logger.warning("Retrieved response content is empty")
                 await save_error_snapshot(f"empty_response_{self.req_id}")
-                # 不抛出异常，返回空内容让上层处理
+                # Do not raise exception, return empty content to let caller handle
                 return ""
 
-            self.logger.info(f" 成功获取响应内容 ({len(final_content)} chars)")
+            self.logger.debug(
+                f"[Response] Successfully retrieved content ({len(final_content)} chars)"
+            )
             return final_content
 
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
-                self.logger.info(" 获取响应任务被取消")
+                self.logger.info("Retrieve response task cancelled")
                 raise
-            self.logger.error(f" 获取响应时出错: {e}")
+            self.logger.error(f"Error retrieving response: {e}")
             if not isinstance(e, ClientDisconnectedError):
                 await save_error_snapshot(f"get_response_error_{self.req_id}")
             raise
@@ -94,41 +106,40 @@ class ResponseController(BaseController):
         self, check_client_disconnected: Callable
     ) -> None:
         """
-        确保生成已停止。
-        如果提交按钮仍处于启用状态，则点击它以停止生成。
-        等待直到提交按钮变为禁用状态。
+        Ensure generation has stopped.
+        If submit button is still enabled, click it to stop generation.
+        Wait until submit button becomes disabled.
         """
         submit_button_locator = self.page.locator(SUBMIT_BUTTON_SELECTOR)
 
-        # 检查客户端连接状态
-        check_client_disconnected("确保生成停止 - 前置检查")
-        await asyncio.sleep(0.5)  # 给UI一点时间更新
+        # Check client connection status
+        check_client_disconnected("Ensure generation stopped - pre-check")
+        await asyncio.sleep(0.5)  # Give UI time to update
 
-        # 检查按钮是否仍然启用，如果启用则直接点击停止
-        self.logger.info(" 检查发送按钮状态以确保生成停止...")
+        # Check if button is still enabled, if so click to stop
         try:
             is_button_enabled = await submit_button_locator.is_enabled(timeout=2000)
-            self.logger.info(f" 发送按钮启用状态: {is_button_enabled}")
 
             if is_button_enabled:
-                # 流式响应完成后按钮仍启用，直接点击停止
-                self.logger.info(" 按钮仍启用，主动点击按钮停止生成...")
+                # Button still enabled after stream completion, click to stop
+                self.logger.debug(
+                    "[Cleanup] Submit button state: ENABLED -> Clicking stop"
+                )
                 await submit_button_locator.click(timeout=5000, force=True)
-                self.logger.info(" 发送按钮点击完成。")
             else:
-                self.logger.info(" 发送按钮已禁用，无需点击。")
+                self.logger.debug(
+                    "[Cleanup] Submit button state: DISABLED (no action needed)"
+                )
         except Exception as button_check_err:
             if isinstance(button_check_err, asyncio.CancelledError):
                 raise
-            self.logger.warning(f" 检查按钮状态失败: {button_check_err}")
+            self.logger.warning(f"Failed to check button state: {button_check_err}")
 
-        # 等待按钮最终禁用
-        self.logger.info(" 等待发送按钮最终禁用...")
+        # Wait for button to be disabled
         try:
             await expect_async(submit_button_locator).to_be_disabled(timeout=30000)
-            self.logger.info(" 发送按钮已禁用。")
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            self.logger.warning(f" 确保生成停止时超时或错误: {e}")
-            # 即使超时也不抛出异常，因为这只是清理步骤
+            self.logger.warning(f"Timeout or error ensuring generation stopped: {e}")
+            # Do not raise even on timeout as this is just a cleanup step

@@ -9,8 +9,8 @@ from fastapi import HTTPException
 
 def test_http_error_basic():
     """
-    测试场景: 创建基本的 HTTP 错误
-    策略: 纯函数测试，无需模拟
+    Test scenario: Create basic HTTP error
+    Strategy: Pure function test, no mocking needed
     """
     from api_utils.error_utils import http_error
 
@@ -24,8 +24,8 @@ def test_http_error_basic():
 
 def test_http_error_with_headers():
     """
-    测试场景: 创建带自定义头的 HTTP 错误
-    验证: headers 参数被正确传递
+    Test scenario: Create HTTP error with custom headers
+    Verify: headers parameter passed correctly
     """
     from api_utils.error_utils import http_error
 
@@ -44,8 +44,8 @@ def test_http_error_with_headers():
 
 def test_http_error_with_none_headers():
     """
-    测试场景: 显式传递 None 作为 headers
-    预期: 应该返回 None 而不是空字典
+    Test scenario: Explicitly pass None as headers
+    Expected: Should return None instead of empty dict
     """
     from api_utils.error_utils import http_error
 
@@ -56,8 +56,8 @@ def test_http_error_with_none_headers():
 
 def test_client_cancelled_default_message():
     """
-    测试场景: 创建客户端取消错误（默认消息）
-    验证: 499 状态码和默认消息格式
+    Test scenario: Create client cancelled error (default message)
+    Verify: 499 status code and default message format
     """
     from api_utils.error_utils import client_cancelled
 
@@ -69,8 +69,8 @@ def test_client_cancelled_default_message():
 
 def test_client_cancelled_custom_message():
     """
-    测试场景: 创建客户端取消错误（自定义消息）
-    验证: 自定义消息被正确格式化
+    Test scenario: Create client cancelled error (custom message)
+    Verify: Custom message formatted correctly
     """
     from api_utils.error_utils import client_cancelled
 
@@ -82,8 +82,8 @@ def test_client_cancelled_custom_message():
 
 def test_client_disconnected_without_stage():
     """
-    测试场景: 客户端断开连接（无 stage）
-    验证: 消息不包含 stage 信息
+    Test scenario: Client disconnected (no stage)
+    Verify: Message does not contain stage info
     """
     from api_utils.error_utils import client_disconnected
 
@@ -95,8 +95,8 @@ def test_client_disconnected_without_stage():
 
 def test_client_disconnected_with_stage():
     """
-    测试场景: 客户端断开连接（有 stage）
-    验证: 消息包含 stage 信息
+    Test scenario: Client disconnected (with stage)
+    Verify: Message contains stage info
     """
     from api_utils.error_utils import client_disconnected
 
@@ -108,8 +108,8 @@ def test_client_disconnected_with_stage():
 
 def test_processing_timeout_default():
     """
-    测试场景: 处理超时（默认消息）
-    验证: 504 状态码和默认消息
+    Test scenario: Processing timeout (default message)
+    Verify: 504 status code and default message
     """
     from api_utils.error_utils import processing_timeout
 
@@ -121,8 +121,8 @@ def test_processing_timeout_default():
 
 def test_processing_timeout_custom_message():
     """
-    测试场景: 处理超时（自定义消息）
-    验证: 自定义消息被正确格式化
+    Test scenario: Processing timeout (custom message)
+    Verify: Custom message formatted correctly
     """
     from api_utils.error_utils import processing_timeout
 
@@ -134,8 +134,8 @@ def test_processing_timeout_custom_message():
 
 def test_bad_request():
     """
-    测试场景: 创建 400 错误请求
-    验证: 状态码和消息格式
+    Test scenario: Create 400 bad request
+    Verify: Status code and message format
     """
     from api_utils.error_utils import bad_request
 
@@ -149,8 +149,8 @@ def test_bad_request():
 
 def test_server_error():
     """
-    测试场景: 创建 500 服务器错误
-    验证: 状态码和消息格式
+    Test scenario: Create 500 server error
+    Verify: Status code and message format
     """
     from api_utils.error_utils import server_error
 
@@ -162,8 +162,8 @@ def test_server_error():
 
 def test_upstream_error():
     """
-    测试场景: 创建 502 上游错误
-    验证: 状态码和消息格式
+    Test scenario: Create 502 upstream error
+    Verify: Status code and message format
     """
     from api_utils.error_utils import upstream_error
 
@@ -175,49 +175,60 @@ def test_upstream_error():
 
 def test_service_unavailable_default_retry():
     """
-    测试场景: 服务不可用（默认重试时间）
-    验证: 503 状态码、Retry-After 头、中文消息
+    Test scenario: Service unavailable (default retry time)
+    Verify: 503 status code, Retry-After header, English message
     """
     from api_utils.error_utils import service_unavailable
 
     result = service_unavailable(req_id="req707")
 
     assert result.status_code == 503
-    assert result.detail == "[req707] 服务当前不可用。请稍后重试。"
+    assert (
+        result.detail
+        == "[req707] Service currently unavailable. Please try again later."
+    )
     assert result.headers == {"Retry-After": "30"}
 
 
 def test_service_unavailable_custom_retry():
     """
-    测试场景: 服务不可用（自定义重试时间）
-    验证: Retry-After 头包含自定义值
+    Test scenario: Service unavailable (custom retry time)
+    Verify: Retry-After header contains custom value
     """
     from api_utils.error_utils import service_unavailable
 
     result = service_unavailable(req_id="req808", retry_after_seconds=120)
 
     assert result.status_code == 503
-    assert result.detail == "[req808] 服务当前不可用。请稍后重试。"
+    assert (
+        result.detail
+        == "[req808] Service currently unavailable. Please try again later."
+    )
     assert result.headers == {"Retry-After": "120"}
 
 
 def test_error_with_unicode_in_message():
     """
-    测试场景: 错误消息包含 Unicode 字符
-    验证: 正确处理非 ASCII 字符
+    Test scenario: Error message contains Unicode characters
+    Verify: Correctly handle non-ASCII characters
     """
+    # Note: instructing to remove emojis, but keeping non-English if part of message?
+    # User said: "Remove all non-ASCII characters (e.g., emojis like 🎉)."
+    # So I will translate the message and remove the emoji.
     from api_utils.error_utils import server_error
 
-    result = server_error(req_id="req909", message="处理失败：模型切换超时 😢")
+    result = server_error(
+        req_id="req909", message="Processing failed: Model switch timeout"
+    )
 
     assert result.status_code == 500
-    assert result.detail == "[req909] 处理失败：模型切换超时 😢"
+    assert result.detail == "[req909] Processing failed: Model switch timeout"
 
 
 def test_error_with_special_characters():
     """
-    测试场景: 错误消息包含特殊字符
-    验证: 正确处理引号、换行等特殊字符
+    Test scenario: Error message contains special characters
+    Verify: Correctly handle quotes, newlines, etc.
     """
     from api_utils.error_utils import bad_request
 

@@ -6,6 +6,7 @@ Test script to verify the fix works with the actual .env file structure.
 import os
 import sys
 
+
 def test_real_env_loading():
     """Test that the fix works with real .env values."""
     

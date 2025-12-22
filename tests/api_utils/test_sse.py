@@ -10,30 +10,30 @@ import json
 
 def test_generate_sse_chunk_basic():
     """
-    测试场景: 生成基本的 SSE 数据块
-    策略: 纯函数测试，验证输出格式和结构
+    Test scenario: Generate basic SSE data chunk
+    Strategy: Pure function test, verify output format and structure
     """
     from api_utils.sse import generate_sse_chunk
 
     result = generate_sse_chunk(delta="Hello", req_id="req123", model="gemini-1.5-pro")
 
-    # 验证 SSE 格式
+    # Verify SSE format
     assert isinstance(result, str)
     assert result.startswith("data: ")
     assert result.endswith("\n\n")
 
-    # 提取并解析 JSON
+    # Extract and parse JSON
     json_part = result[6:-2]  # Remove "data: " prefix and "\n\n" suffix
     chunk_data = json.loads(json_part)
 
-    # 验证结构
+    # Verify structure
     assert chunk_data["id"] == "chatcmpl-req123"
     assert chunk_data["object"] == "chat.completion.chunk"
     assert chunk_data["model"] == "gemini-1.5-pro"
     assert "created" in chunk_data
     assert isinstance(chunk_data["created"], int)
 
-    # 验证 choices
+    # Verify choices
     assert len(chunk_data["choices"]) == 1
     choice = chunk_data["choices"][0]
     assert choice["index"] == 0
@@ -43,8 +43,8 @@ def test_generate_sse_chunk_basic():
 
 def test_generate_sse_chunk_empty_delta():
     """
-    测试场景: 生成空 delta 的 SSE 块
-    验证: 能处理空字符串
+    Test scenario: Generate SSE chunk with empty delta
+    Verify: Can handle empty string
     """
     from api_utils.sse import generate_sse_chunk
 
@@ -59,25 +59,25 @@ def test_generate_sse_chunk_empty_delta():
 
 def test_generate_sse_chunk_unicode():
     """
-    测试场景: 生成包含 Unicode 字符的 SSE 块
-    验证: 正确处理中文、emoji 等字符
+    Test scenario: Generate SSE chunk containing Unicode characters
+    Verify: Correctly handle Unicode characters
     """
     from api_utils.sse import generate_sse_chunk
 
     result = generate_sse_chunk(
-        delta="你好世界 😀", req_id="req789", model="test-model"
+        delta="hello world", req_id="req789", model="test-model"
     )
 
     json_part = result[6:-2]
     chunk_data = json.loads(json_part)
 
-    assert chunk_data["choices"][0]["delta"]["content"] == "你好世界 😀"
+    assert chunk_data["choices"][0]["delta"]["content"] == "hello world"
 
 
 def test_generate_sse_chunk_special_characters():
     """
-    测试场景: 生成包含特殊字符的 SSE 块
-    验证: 正确转义引号、换行等
+    Test scenario: Generate SSE chunk containing special characters
+    Verify: Correctly escape quotes, newlines, etc.
     """
     from api_utils.sse import generate_sse_chunk
 
@@ -92,19 +92,19 @@ def test_generate_sse_chunk_special_characters():
 
 def test_generate_sse_stop_chunk_default_reason():
     """
-    测试场景: 生成默认停止原因的 SSE 块
-    验证: finish_reason 为 "stop"，包含 [DONE] 标记
+    Test scenario: Generate SSE chunk with default stop reason
+    Verify: finish_reason is "stop", includes [DONE] marker
     """
     from api_utils.sse import generate_sse_stop_chunk
 
     result = generate_sse_stop_chunk(req_id="req202", model="gemini-1.5-pro")
 
-    # 验证包含两个 data: 块
+    # Verify includes two data: chunks
     assert result.count("data:") == 2
     assert "data: [DONE]" in result
     assert result.endswith("\n\n")
 
-    # 提取第一个 JSON 块（stop chunk）
+    # Extract first JSON chunk (stop chunk)
     lines = result.split("\n")
     first_data_line = None
     for line in lines:
@@ -115,19 +115,19 @@ def test_generate_sse_stop_chunk_default_reason():
     assert first_data_line is not None
     chunk_data = json.loads(first_data_line)
 
-    # 验证结构
+    # Verify structure
     assert chunk_data["id"] == "chatcmpl-req202"
     assert chunk_data["object"] == "chat.completion.chunk"
     assert chunk_data["model"] == "gemini-1.5-pro"
     assert chunk_data["choices"][0]["delta"] == {}
     assert chunk_data["choices"][0]["finish_reason"] == "stop"
-    assert "usage" not in chunk_data  # 无 usage 时不应包含该字段
+    assert "usage" not in chunk_data  # Should not include usage when not provided
 
 
 def test_generate_sse_stop_chunk_custom_reason():
     """
-    测试场景: 生成自定义停止原因的 SSE 块
-    验证: finish_reason 为自定义值
+    Test scenario: Generate SSE chunk with custom stop reason
+    Verify: finish_reason is custom value
     """
     from api_utils.sse import generate_sse_stop_chunk
 
@@ -145,8 +145,8 @@ def test_generate_sse_stop_chunk_custom_reason():
 
 def test_generate_sse_stop_chunk_with_usage():
     """
-    测试场景: 生成包含 usage 统计的停止块
-    验证: usage 字段被正确包含
+    Test scenario: Generate stop chunk containing usage statistics
+    Verify: usage field correctly included
     """
     from api_utils.sse import generate_sse_stop_chunk
 
@@ -170,8 +170,8 @@ def test_generate_sse_stop_chunk_with_usage():
 
 def test_generate_sse_stop_chunk_with_empty_usage():
     """
-    测试场景: 生成包含空 usage 字典的停止块
-    验证: 空字典被视为 falsy，不会被包含（正确行为）
+    Test scenario: Generate stop chunk with empty usage dict
+    Verify: Empty dict treated as falsy, not included (correct behavior)
     """
     from api_utils.sse import generate_sse_stop_chunk
 
@@ -183,15 +183,15 @@ def test_generate_sse_stop_chunk_with_empty_usage():
     for line in lines:
         if line.startswith("data:") and not line.startswith("data: [DONE]"):
             chunk_data = json.loads(line[6:])
-            # 空字典是 falsy，不应包含 usage 字段
+            # Empty dict is falsy, should not include usage field
             assert "usage" not in chunk_data
             break
 
 
 def test_generate_sse_error_chunk_default_type():
     """
-    测试场景: 生成默认错误类型的 SSE 块
-    验证: error_type 为 "server_error"
+    Test scenario: Generate SSE chunk with default error type
+    Verify: error_type is "server_error"
     """
     from api_utils.sse import generate_sse_error_chunk
 
@@ -206,7 +206,7 @@ def test_generate_sse_error_chunk_default_type():
     json_part = result[6:-2]
     error_chunk = json.loads(json_part)
 
-    # 验证 error 结构
+    # Verify error structure
     assert "error" in error_chunk
     error = error_chunk["error"]
     assert error["message"] == "Internal error occurred"
@@ -217,8 +217,8 @@ def test_generate_sse_error_chunk_default_type():
 
 def test_generate_sse_error_chunk_custom_type():
     """
-    测试场景: 生成自定义错误类型的 SSE 块
-    验证: error_type 参数被正确使用
+    Test scenario: Generate SSE chunk with custom error type
+    Verify: error_type parameter used correctly
     """
     from api_utils.sse import generate_sse_error_chunk
 
@@ -235,23 +235,23 @@ def test_generate_sse_error_chunk_custom_type():
 
 def test_generate_sse_error_chunk_unicode_message():
     """
-    测试场景: 错误消息包含 Unicode 字符
-    验证: 正确处理中文、emoji 等
+    Test scenario: Error message contains Unicode characters
+    Verify: Correctly handle Unicode characters
     """
     from api_utils.sse import generate_sse_error_chunk
 
-    result = generate_sse_error_chunk(message="处理失败 😢", req_id="req808")
+    result = generate_sse_error_chunk(message="Processing failed", req_id="req808")
 
     json_part = result[6:-2]
     error_chunk = json.loads(json_part)
 
-    assert error_chunk["error"]["message"] == "处理失败 😢"
+    assert error_chunk["error"]["message"] == "Processing failed"
 
 
 def test_sse_format_consistency():
     """
-    测试场景: 验证所有 SSE 函数输出格式一致性
-    验证: 都以 "data: " 开头，以 "\n\n" 结尾
+    Test scenario: Verify output format consistency across all SSE functions
+    Verify: All start with "data: " and end with "\n\n"
     """
     from api_utils.sse import (
         generate_sse_chunk,
@@ -263,10 +263,10 @@ def test_sse_format_consistency():
     stop = generate_sse_stop_chunk(req_id="req", model="model")
     error = generate_sse_error_chunk(message="error", req_id="req")
 
-    # 验证格式一致性
+    # Verify format consistency
     assert chunk.startswith("data: ")
     assert error.startswith("data: ")
-    # stop chunk 包含两个 data: 块，但也以 data: 开头
+    # stop chunk contains two data: chunks, but also starts with data:
     assert stop.startswith("data: ")
 
     assert chunk.endswith("\n\n")

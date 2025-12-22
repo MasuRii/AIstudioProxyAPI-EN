@@ -15,9 +15,9 @@ Success Criteria:
 - All references use `state` consistently, not undefined `server`
 """
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-import asyncio
 
 
 @pytest.mark.asyncio

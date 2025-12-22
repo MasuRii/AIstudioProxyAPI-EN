@@ -188,8 +188,8 @@ async def test_websocketmanager_connect_success():
     assert sent_data["type"] == "connection_status"
     assert sent_data["status"] == "connected"
 
-    # Should log connection
-    mock_logger.info.assert_called_once()
+    # Should log connection (uses debug level)
+    mock_logger.debug.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -225,7 +225,7 @@ def test_websocketmanager_disconnect_existing():
         manager.disconnect("client1")
 
     assert "client1" not in manager.active_connections
-    mock_logger.info.assert_called_once()
+    mock_logger.debug.assert_called_once()
 
 
 def test_websocketmanager_disconnect_nonexistent():
@@ -324,7 +324,7 @@ async def test_websocketmanager_broadcast_runtimeerror_closed():
     assert "client1" not in manager.active_connections
     # Should log the closed connection
     assert any(
-        "已关闭" in str(call) or "client1" in str(call)
+        "is closed" in str(call) or "client1" in str(call)
         for call in mock_logger.info.call_args_list
     )
 

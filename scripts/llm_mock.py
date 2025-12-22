@@ -1,13 +1,14 @@
-import argparse # New import
-from flask import Flask, request, jsonify
-import requests
-import time
-import uuid
-import logging
+import argparse  # New import
 import json
-import sys # New import
-from typing import Dict, Any
-from datetime import datetime, UTC
+import logging
+import sys  # New import
+import uuid
+from datetime import datetime
+from typing import Any, Dict
+
+import requests
+from flask import Flask, jsonify, request
+
 
 # Custom Log Handler, ensuring flush
 class FlushingStreamHandler(logging.StreamHandler):
@@ -18,8 +19,9 @@ class FlushingStreamHandler(logging.StreamHandler):
         except Exception:
             self.handleError(record)
 
+
 # Configure logging
-log_format = '%(asctime)s [%(levelname)s] %(message)s'
+log_format = "%(asctime)s [%(levelname)s] %(message)s"
 formatter = logging.Formatter(log_format)
 
 # Create a handler explicitly pointing to sys.stderr and using custom FlushingStreamHandler
@@ -36,9 +38,11 @@ root_logger = logging.getLogger()
 if root_logger.hasHandlers():
     root_logger.handlers.clear()
 root_logger.addHandler(stderr_handler)
-root_logger.setLevel(logging.INFO) # Ensure root logger level is set
+root_logger.setLevel(logging.INFO)  # Ensure root logger level is set
 
-logger = logging.getLogger(__name__) # Get logger named 'llm', inheriting root logger config
+logger = logging.getLogger(
+    __name__
+)  # Get logger named 'llm', inheriting root logger config
 
 app = Flask(__name__)
 # Flask's app.logger propagates to root logger by default.
@@ -66,7 +70,7 @@ ENABLED_MODELS = {
 }
 
 # API Configuration
-API_URL = "" # Will be set in main function based on arguments
+API_URL = ""  # Will be set in main function based on arguments
 DEFAULT_MAIN_SERVER_PORT = 2048
 # Please replace with your API Key (Do not share publicly)
 API_KEY = "123456"
@@ -93,11 +97,15 @@ def tags_endpoint():
     models = []
     for model_name in ENABLED_MODELS:
         # Derive family: extract prefix from model name (e.g. "gpt-4o" -> "gpt")
-        family = model_name.split('-')[0].lower() if '-' in model_name else model_name.lower()
+        family = (
+            model_name.split("-")[0].lower()
+            if "-" in model_name
+            else model_name.lower()
+        )
         # Special handling for known models
-        if 'llama' in model_name:
-            family = 'llama'
-            format = 'gguf'
+        if "llama" in model_name:
+            family = "llama"
+            format = "gguf"
             size = 1234567890
             parameter_size = "405B" if "405b" in model_name else "unknown"
             quantization_level = "Q4_0"
@@ -131,7 +139,7 @@ def tags_endpoint():
                     "quantization_level": quantization_level,
                 },
             }
-        })
+        )
     logger.info(f"Returning {len(models)} models: {[m['name'] for m in models]}")
     return jsonify({"models": models}), 200
 
@@ -155,7 +163,10 @@ def generate_ollama_mock_response(prompt: str, model: str) -> Dict[str, Any]:
         "eval_duration": 3456789,
     }
 
-def convert_api_to_ollama_response(api_response: Dict[str, Any], model: str) -> Dict[str, Any]:
+
+def convert_api_to_ollama_response(
+    api_response: Dict[str, Any], model: str
+) -> Dict[str, Any]:
     """Convert API's OpenAI format response to Ollama format"""
     try:
         content = api_response["choices"][0]["message"]["content"]
@@ -188,7 +199,7 @@ def print_request_params(data: Dict[str, Any], endpoint: str) -> None:
 
     messages_info = []
     for msg in data.get("messages", []):
-        role = msg.get("role", "未知")
+        role = msg.get("role", "unknown")
         content = msg.get("content", "")
         content_preview = content[:50] + "..." if len(content) > 50 else content
         messages_info.append(f"[{role}] {content_preview}")
@@ -199,10 +210,12 @@ def print_request_params(data: Dict[str, Any], endpoint: str) -> None:
         "Temperature": temperature,
         "Stream": stream,
         "Message Count": len(data.get("messages", [])),
-        "Messages Preview": messages_info
+        "Messages Preview": messages_info,
     }
 
-    logger.info(f"Request Parameters: {json.dumps(params_str, ensure_ascii=False, indent=2)}")
+    logger.info(
+        f"Request Parameters: {json.dumps(params_str, ensure_ascii=False, indent=2)}"
+    )
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -217,7 +230,9 @@ def ollama_chat_endpoint():
         messages = data.get("messages", [])
         if not messages or not isinstance(messages, list):
             logger.error("Invalid request: 'messages' must be a non-empty list")
-            return jsonify({"error": "Invalid request: 'messages' must be a non-empty list"}), 400
+            return jsonify(
+                {"error": "Invalid request: 'messages' must be a non-empty list"}
+            ), 400
 
         model = data.get("model", "llama3.2")
         user_message = next(
@@ -247,7 +262,9 @@ def ollama_chat_endpoint():
 
         try:
             logger.info(f"Forwarding request to API: {API_URL}")
-            response = requests.post(API_URL, json=api_request, headers=headers, timeout=300000)
+            response = requests.post(
+                API_URL, json=api_request, headers=headers, timeout=300000
+            )
             response.raise_for_status()
             api_response = response.json()
             ollama_response = convert_api_to_ollama_response(api_response, model)
@@ -277,7 +294,9 @@ def api_chat_endpoint():
         messages = data.get("messages", [])
         if not messages or not isinstance(messages, list):
             logger.error("Invalid request: 'messages' must be a non-empty list")
-            return jsonify({"error": "Invalid request: 'messages' must be a non-empty list"}), 400
+            return jsonify(
+                {"error": "Invalid request: 'messages' must be a non-empty list"}
+            ), 400
 
         model = data.get("model", "grok-3")
         user_message = next(
@@ -299,7 +318,9 @@ def api_chat_endpoint():
 
         try:
             logger.info(f"Forwarding request to API: {API_URL}")
-            response = requests.post(API_URL, json=data, headers=headers, timeout=300000)
+            response = requests.post(
+                API_URL, json=data, headers=headers, timeout=300000
+            )
             response.raise_for_status()
             api_response = response.json()
             ollama_response = convert_api_to_ollama_response(api_response, model)
@@ -316,7 +337,7 @@ def api_chat_endpoint():
 
 def main():
     """Start mock server"""
-    global API_URL # Declare that we are modifying global variables
+    global API_URL  # Declare that we are modifying global variables
 
     parser = argparse.ArgumentParser(description="LLM Mock Service for AI Studio Proxy")
     parser.add_argument(
@@ -328,7 +349,7 @@ def main():
     args = parser.parse_args()
 
     API_URL = f"http://localhost:{args.main_server_port}/v1/chat/completions"
-    
+
     logger.info(f"Mock Ollama and API proxy server will forward requests to: {API_URL}")
     logger.info("Starting Mock Ollama and API proxy server at: http://localhost:11434")
     app.run(host="0.0.0.0", port=11434, debug=False)

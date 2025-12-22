@@ -14,7 +14,7 @@ def build_chat_completion_response_json(
     seed: Optional[int] = None,
     response_format: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """构造 OpenAI 兼容的非流式 chat.completion JSON 响应。"""
+    """Construct an OpenAI-compatible non-streaming chat.completion JSON response."""
     created_ts = int(time.time())
     resp: Dict[str, Any] = {
         "id": f"{CHAT_COMPLETION_ID_PREFIX}{req_id}-{created_ts}",

@@ -1,16 +1,15 @@
-import asyncio
 import os
 import sys
 import time
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add project root to the Python path to resolve module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import pytest
 
-from browser_utils.auth_rotation import perform_auth_rotation, _get_next_profile, _perform_canary_test
+from browser_utils.auth_rotation import perform_auth_rotation
 from config.global_state import GlobalState
 
 # Mark the entire module as async

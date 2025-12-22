@@ -13,8 +13,8 @@ from config import CHAT_COMPLETION_ID_PREFIX
 
 def test_build_chat_completion_response_json_basic():
     """
-    测试场景: 构造基本响应 (无可选参数)
-    预期: 返回完整的 chat.completion 响应,不包含 seed 和 response_format (lines 18-34)
+    Test scenario: Construct basic response (no optional parameters)
+    Expected: Return complete chat.completion response, without seed and response_format (lines 18-34)
     """
     message_payload = {"role": "assistant", "content": "Hello, how can I help?"}
     usage_stats = {"prompt_tokens": 10, "completion_tokens": 7, "total_tokens": 17}
@@ -28,17 +28,17 @@ def test_build_chat_completion_response_json_basic():
             usage_stats=usage_stats,
         )
 
-    # 验证: 基本结构 (lines 19-34)
+    # Verify: Basic structure (lines 19-34)
     assert response["object"] == "chat.completion"
     assert response["created"] == 1234567890
     assert response["model"] == "gemini-1.5-pro"
     assert response["system_fingerprint"] == "camoufox-proxy"
 
-    # 验证: ID 格式 (line 20)
+    # Verify: ID format (line 20)
     assert response["id"] == f"{CHAT_COMPLETION_ID_PREFIX}test-req-123-1234567890"
     assert response["id"].startswith(CHAT_COMPLETION_ID_PREFIX)
 
-    # 验证: choices 数组 (lines 24-31)
+    # Verify: choices array (lines 24-31)
     assert len(response["choices"]) == 1
     choice = response["choices"][0]
     assert choice["index"] == 0
@@ -46,18 +46,18 @@ def test_build_chat_completion_response_json_basic():
     assert choice["finish_reason"] == "stop"
     assert choice["native_finish_reason"] == "stop"
 
-    # 验证: usage (line 32)
+    # Verify: usage (line 32)
     assert response["usage"] == usage_stats
 
-    # 验证: 不包含可选字段
+    # Verify: Does not include optional fields
     assert "seed" not in response
     assert "response_format" not in response
 
 
 def test_build_chat_completion_response_json_with_seed():
     """
-    测试场景: 包含 seed 参数
-    预期: 响应包含 seed 字段 (lines 35-36)
+    Test scenario: Include seed parameter
+    Expected: Response contains seed field (lines 35-36)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -71,15 +71,15 @@ def test_build_chat_completion_response_json_with_seed():
         seed=42,
     )
 
-    # 验证: seed 字段存在 (line 36)
+    # Verify: seed field exists (line 36)
     assert "seed" in response
     assert response["seed"] == 42
 
 
 def test_build_chat_completion_response_json_with_response_format():
     """
-    测试场景: 包含 response_format 参数
-    预期: 响应包含 response_format 字段 (lines 37-38)
+    Test scenario: Include response_format parameter
+    Expected: Response contains response_format field (lines 37-38)
     """
     message_payload = {"role": "assistant", "content": '{"result": "json"}'}
     usage_stats = {"prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13}
@@ -94,15 +94,15 @@ def test_build_chat_completion_response_json_with_response_format():
         response_format=response_format,
     )
 
-    # 验证: response_format 字段存在 (line 38)
+    # Verify: response_format field exists (line 38)
     assert "response_format" in response
     assert response["response_format"] == {"type": "json_object"}
 
 
 def test_build_chat_completion_response_json_with_both_optional_params():
     """
-    测试场景: 同时包含 seed 和 response_format
-    预期: 两个可选字段都存在 (lines 35-38)
+    Test scenario: Include both seed and response_format
+    Expected: Both optional fields exist (lines 35-38)
     """
     message_payload = {"role": "assistant", "content": "Full response"}
     usage_stats = {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}
@@ -118,7 +118,7 @@ def test_build_chat_completion_response_json_with_both_optional_params():
         response_format=response_format,
     )
 
-    # 验证: 两个可选字段都存在
+    # Verify: Both optional fields exist
     assert "seed" in response
     assert response["seed"] == 999
     assert "response_format" in response
@@ -127,8 +127,8 @@ def test_build_chat_completion_response_json_with_both_optional_params():
 
 def test_build_chat_completion_response_json_seed_none_not_included():
     """
-    测试场景: seed=None (显式传递)
-    预期: seed 字段不包含在响应中 (line 35 条件为 False)
+    Test scenario: seed=None (explicitly passed)
+    Expected: seed field not included in response (condition at line 35 is False)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -142,14 +142,14 @@ def test_build_chat_completion_response_json_seed_none_not_included():
         seed=None,
     )
 
-    # 验证: seed 不包含
+    # Verify: seed not included
     assert "seed" not in response
 
 
 def test_build_chat_completion_response_json_response_format_none_not_included():
     """
-    测试场景: response_format=None (显式传递)
-    预期: response_format 字段不包含在响应中 (line 37 条件为 False)
+    Test scenario: response_format=None (explicitly passed)
+    Expected: response_format field not included in response (condition at line 37 is False)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -163,14 +163,14 @@ def test_build_chat_completion_response_json_response_format_none_not_included()
         response_format=None,
     )
 
-    # 验证: response_format 不包含
+    # Verify: response_format not included
     assert "response_format" not in response
 
 
 def test_build_chat_completion_response_json_custom_system_fingerprint():
     """
-    测试场景: 自定义 system_fingerprint
-    预期: 使用提供的值而非默认值 (line 33)
+    Test scenario: Custom system_fingerprint
+    Expected: Use provided value instead of default (line 33)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -184,14 +184,14 @@ def test_build_chat_completion_response_json_custom_system_fingerprint():
         system_fingerprint="custom-fingerprint-123",
     )
 
-    # 验证: 自定义 system_fingerprint
+    # Verify: Custom system_fingerprint
     assert response["system_fingerprint"] == "custom-fingerprint-123"
 
 
 def test_build_chat_completion_response_json_different_finish_reasons():
     """
-    测试场景: 不同的 finish_reason 值
-    预期: finish_reason 和 native_finish_reason 都设置正确 (lines 28-29)
+    Test scenario: Different finish_reason values
+    Expected: Both finish_reason and native_finish_reason set correctly (lines 28-29)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -221,8 +221,8 @@ def test_build_chat_completion_response_json_different_finish_reasons():
 
 def test_build_chat_completion_response_json_timestamp_format():
     """
-    测试场景: 验证时间戳格式
-    预期: created 字段是整数时间戳 (line 18, 22)
+    Test scenario: Verify timestamp format
+    Expected: created field is an integer timestamp (line 18, 22)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -237,15 +237,15 @@ def test_build_chat_completion_response_json_timestamp_format():
             usage_stats=usage_stats,
         )
 
-    # 验证: created 是整数 (line 18 使用 int())
+    # Verify: created is an integer (line 18 using int())
     assert isinstance(response["created"], int)
     assert response["created"] == 1234567890
 
 
 def test_build_chat_completion_response_json_id_includes_timestamp():
     """
-    测试场景: 验证 ID 包含时间戳
-    预期: ID 格式为 prefix-req_id-timestamp (line 20)
+    Test scenario: Verify ID contains timestamp
+    Expected: ID format is prefix-req_id-timestamp (line 20)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
@@ -259,15 +259,15 @@ def test_build_chat_completion_response_json_id_includes_timestamp():
             usage_stats=usage_stats,
         )
 
-    # 验证: ID 包含时间戳
+    # Verify: ID contains timestamp
     assert response["id"] == f"{CHAT_COMPLETION_ID_PREFIX}unique-req-9999999999"
     assert "9999999999" in response["id"]
 
 
 def test_build_chat_completion_response_json_message_payload_structure():
     """
-    测试场景: 验证 message_payload 原样传递
-    预期: message 字段完全等于 message_payload (line 27)
+    Test scenario: Verify message_payload passed as is
+    Expected: message field is exactly equal to message_payload (line 27)
     """
     # Complex message with tool_calls
     message_payload = {
@@ -291,15 +291,15 @@ def test_build_chat_completion_response_json_message_payload_structure():
         usage_stats=usage_stats,
     )
 
-    # 验证: message_payload 原样传递
+    # Verify: message_payload passed as is
     assert response["choices"][0]["message"] == message_payload
     assert response["choices"][0]["message"]["tool_calls"][0]["id"] == "call_123"
 
 
 def test_build_chat_completion_response_json_usage_stats_structure():
     """
-    测试场景: 验证 usage_stats 原样传递
-    预期: usage 字段完全等于 usage_stats (line 32)
+    Test scenario: Verify usage_stats passed as is
+    Expected: usage field is exactly equal to usage_stats (line 32)
     """
     message_payload = {"role": "assistant", "content": "Test"}
     usage_stats = {
@@ -317,6 +317,6 @@ def test_build_chat_completion_response_json_usage_stats_structure():
         usage_stats=usage_stats,
     )
 
-    # 验证: usage_stats 原样传递,包括额外字段
+    # Verify: usage_stats passed as is, including extra fields
     assert response["usage"] == usage_stats
     assert response["usage"]["prompt_tokens_details"]["cached_tokens"] == 20

@@ -1,15 +1,15 @@
-import sys
 import os
-import json
+import sys
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Add repository root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import AFTER sys.path modification
 from api_utils.utils_ext import cooldown_manager
+
 
 class TestCooldownPersistence(unittest.TestCase):
     def setUp(self):

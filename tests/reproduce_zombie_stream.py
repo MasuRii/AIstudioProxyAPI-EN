@@ -1,9 +1,9 @@
 import asyncio
-import sys
-import os
-import time
 import logging
-from unittest.mock import MagicMock, patch
+import os
+import sys
+import time
+from unittest.mock import MagicMock
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -44,8 +44,8 @@ sys.modules["config"].UI_GENERATION_WAIT_TIMEOUT_MS = 100
 sys.modules["config"].GlobalState = MockGlobalState
 
 # Now we can import
-from api_utils.utils_ext.stream import use_stream_response
 import server
+from api_utils.utils_ext.stream import use_stream_response
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

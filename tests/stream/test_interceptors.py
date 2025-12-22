@@ -279,8 +279,8 @@ class TestHttpInterceptorEdgeCases:
     @pytest.mark.asyncio
     async def test_process_response_raises_on_invalid_chunking(self, interceptor):
         """
-        测试场景: process_response 遇到无效的分块数据时抛出异常
-        预期: 异常被重新抛出 (lines 78-79)
+        Test scenario: process_response raises exception when encountering invalid chunked data
+        Expected: Exception is re-raised (lines 78-79)
         """
         # 创建看起来像有效分块但会导致解压失败的数据
         # _decode_chunked 会处理它,但 _decompress_zlib_stream 会失败
@@ -302,8 +302,8 @@ class TestHttpInterceptorEdgeCases:
     @pytest.mark.asyncio
     async def test_process_response_raises_on_decompression_error(self, interceptor):
         """
-        测试场景: 解压缩失败时抛出异常
-        预期: zlib.error 被重新抛出 (lines 78-79)
+        Test scenario: raises exception when decompression fails
+        Expected: zlib.error is re-raised (lines 78-79)
         """
         # 创建有效的分块数据,但压缩数据是无效的
         invalid_compressed = b"not a valid zlib stream"
@@ -322,8 +322,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_response_with_malformed_json(self, interceptor):
         """
-        测试场景: 正则匹配到的数据不是有效的 JSON
-        预期: json.loads 失败,continue 跳过 (lines 98-99)
+        Test scenario: data matched by regex is not valid JSON
+        Expected: json.loads fails, continue to skip (lines 98-99)
         """
         # 创建符合正则的字符串,但 JSON 格式错误
         # 正则: rb'\[\[\[null,.*?]],"model"]'
@@ -342,8 +342,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_response_with_multiple_malformed_json(self, interceptor):
         """
-        测试场景: 所有匹配都是无效 JSON
-        预期: 返回空结果 (lines 98-99 全部 continue)
+        Test scenario: all matches are invalid JSON
+        Expected: return empty result (lines 98-99 all continue)
         """
         # 多个符合正则但 JSON 无效的字符串
         malformed1 = b'[[[null,invalid}]],"model"]'  # 不是 JSON
@@ -360,8 +360,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_toolcall_params_with_invalid_structure(self, interceptor):
         """
-        测试场景: parse_toolcall_params 遇到无效参数结构
-        预期: 抛出异常 (lines 139-140)
+        Test scenario: parse_toolcall_params encounters invalid parameter structure
+        Expected: raises exception (lines 139-140)
         """
         # 传入格式错误的 args (期望是嵌套列表,但只给字符串)
         invalid_args = "not a list"
@@ -371,8 +371,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_toolcall_params_with_malformed_nested_structure(self, interceptor):
         """
-        测试场景: 嵌套对象参数格式错误
-        预期: 递归调用时抛出异常 (lines 139-140)
+        Test scenario: nested object parameter format error
+        Expected: raises exception during recursive call (lines 139-140)
         """
         # 外层格式正确,但嵌套对象的参数格式错误
         malformed_args = [
@@ -389,8 +389,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_toolcall_params_with_index_error(self, interceptor):
         """
-        测试场景: 参数列表索引越界
-        预期: IndexError 被抛出 (lines 139-140)
+        Test scenario: parameter list index out of bounds
+        Expected: IndexError is raised (lines 139-140)
         """
         # args[0] 期望是参数列表,但 args 为空
         invalid_args = []
@@ -400,8 +400,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_decode_chunked_edge_case_truncated_end(self):
         """
-        测试场景: 分块数据在末尾被截断 (line 177)
-        预期: 检测到 length_crlf_idx + 2 + length + 2 > len(response_body), break
+        Test scenario: chunked data truncated at the end (line 177)
+        Expected: detects length_crlf_idx + 2 + length + 2 > len(response_body), break
         """
         # 创建一个完整的块,但最后的 \r\n 被截断
         chunk = b"Hello"
@@ -419,8 +419,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_decode_chunked_edge_case_partial_final_chunk(self):
         """
-        测试场景: 最后一个块的数据不完整 (line 177)
-        预期: length + 2 > len(response_body), break
+        Test scenario: last chunk data incomplete (line 177)
+        Expected: length + 2 > len(response_body), break
         """
         # 声明一个10字节的块,但只提供5字节数据
         declared_length = 10
@@ -438,8 +438,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_decode_chunked_zero_length_chunk_without_final_marker(self):
         """
-        测试场景: 遇到 0 长度块但没有 0\r\n\r\n 标记
-        预期: 返回 chunked_data, is_done=False
+        Test scenario: encounter zero-length chunk but no 0\r\n\r\n marker
+        Expected: return chunked_data, is_done=False
         """
         # 正常的零长度块应该是 0\r\n\r\n
         # 但这里只有 0\r\n (缺少后续的 \r\n)
@@ -453,8 +453,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_decode_chunked_multiple_chunks_with_truncation(self):
         """
-        测试场景: 多个块,最后一个被截断 (line 177)
-        预期: 前面的块被解析,最后一个被丢弃
+        Test scenario: multiple chunks, last one truncated (line 177)
+        Expected: previous chunks parsed, last one discarded
         """
         chunk1 = b"First"
         chunk2 = b"Second"
@@ -474,8 +474,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_decode_chunked_chunk_exactly_at_buffer_end(self):
         """
-        测试场景: 块数据正好到缓冲区末尾,没有结束标记
-        预期: 解析块,但 is_done=False
+        Test scenario: chunk data exactly at buffer end, no end marker
+        Expected: parse chunk, but is_done=False
         """
         chunk = b"Exact"
         data = hex(len(chunk))[2:].encode() + b"\r\n" + chunk + b"\r\n"
@@ -489,8 +489,8 @@ class TestHttpInterceptorEdgeCases:
     @pytest.mark.asyncio
     async def test_process_request_with_non_intercepted_path(self, interceptor):
         """
-        测试场景: 请求路径不应被拦截
-        预期: 直接返回原始数据,不进入 try-except 块
+        Test scenario: request path should not be intercepted
+        Expected: return original data directly, does not enter try-except block
         """
         data = b"regular request data"
         result = await interceptor.process_request(data, "example.com", "/api/other")
@@ -502,8 +502,8 @@ class TestHttpInterceptorEdgeCases:
         self, interceptor
     ):
         """
-        测试场景: 拦截路径的请求正常处理
-        预期: 返回原始数据 (try 块执行)
+        Test scenario: request on intercepted path processed normally
+        Expected: returns original data (try block executes)
         """
         data = b'{"key": "value"}'
         result = await interceptor.process_request(
@@ -514,8 +514,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_response_with_json_array_parsing_error(self, interceptor):
         """
-        测试场景: JSON 解析成功但结构不符合预期 (json_data[0][0] 索引失败)
-        预期: except 捕获 IndexError/TypeError, continue
+        Test scenario: JSON parsing successful but structure not as expected (json_data[0][0] indexing fails)
+        Expected: except catches IndexError/TypeError, continue
         """
         # 符合正则,但结构不对: json_data 不是预期的嵌套结构
         invalid_structure = b'[[],"model"]'  # json_data[0][0] 会失败
@@ -527,8 +527,8 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_response_empty_matches(self, interceptor):
         """
-        测试场景: 没有符合正则的数据
-        预期: 返回空结果
+        Test scenario: no data matching regex
+        Expected: return empty result
         """
         data = b"no matching pattern here"
 
@@ -560,8 +560,8 @@ class TestInterceptorExceptionPaths:
     @pytest.mark.asyncio
     async def test_process_response_raises_exception(self, interceptor):
         """
-        测试场景: process_response 内部方法抛出异常
-        预期: 异常被重新抛出 (lines 78-79)
+        Test scenario: internal method in process_response raises exception
+        Expected: exception is re-raised (lines 78-79)
         """
         # Mock _decode_chunked to raise exception
         with patch.object(
@@ -574,8 +574,8 @@ class TestInterceptorExceptionPaths:
 
     def test_parse_response_invalid_json(self, interceptor):
         """
-        测试场景: 正则匹配成功但 JSON 解析失败
-        预期: 捕获异常并 continue (lines 98-99)
+        Test scenario: regex match successful but JSON parsing fails
+        Expected: catch exception and continue (lines 98-99)
         """
         # Create data that matches regex but has invalid JSON
         # Pattern: rb'\[\[\[null,.*?]],"model"]'
@@ -591,8 +591,8 @@ class TestInterceptorExceptionPaths:
 
     def test_parse_toolcall_params_exception(self, interceptor):
         """
-        测试场景: parse_toolcall_params 解析参数时抛出异常
-        预期: 异常被重新抛出 (lines 139-140)
+        Test scenario: parse_toolcall_params raises exception during parameter parsing
+        Expected: exception is re-raised (lines 139-140)
         """
         # Pass malformed args that cause exception during parsing
         # Expected structure: [[param1, param2, ...]]
@@ -604,8 +604,8 @@ class TestInterceptorExceptionPaths:
 
     def test_decode_chunked_final_break(self):
         """
-        测试场景: _decode_chunked 在最后的 break 条件下退出
-        预期: 覆盖 line 177 的 break 语句
+        Test scenario: _decode_chunked exits at final break condition
+        Expected: cover the break statement at line 177
         """
         # Create chunked data where:
         # length_crlf_idx + 2 + length + 2 > len(response_body)
@@ -632,8 +632,8 @@ class TestInterceptorEdgeCases:
 
     def test_parse_response_malformed_payload_access(self, interceptor):
         """
-        测试场景: payload 访问时出现 IndexError
-        预期: 异常被捕获,继续处理 (lines 98-99)
+        Test scenario: IndexError during payload access
+        Expected: exception is caught, continue processing (lines 98-99)
         """
         # Create valid JSON but with unexpected structure
         # This will pass json.loads but fail on payload access
@@ -649,8 +649,8 @@ class TestInterceptorEdgeCases:
 
     def test_parse_toolcall_params_index_error(self, interceptor):
         """
-        测试场景: parse_toolcall_params 访问 args[0] 时出现 IndexError
-        预期: 异常被重新抛出 (lines 139-140)
+        Test scenario: parse_toolcall_params encounters IndexError accessing args[0]
+        Expected: exception is re-raised (lines 139-140)
         """
         # Pass empty list (args[0] will raise IndexError)
         with pytest.raises(IndexError):

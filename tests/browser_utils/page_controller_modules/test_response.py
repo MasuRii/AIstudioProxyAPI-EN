@@ -57,7 +57,9 @@ async def test_get_response_success(response_controller, mock_page):
 async def test_get_response_client_disconnected(response_controller, mock_page):
     """Test response retrieval with client disconnection."""
     check_client_disconnected = MagicMock(
-        side_effect=lambda x: True if "获取响应 - 响应元素已附加" in x else False
+        side_effect=lambda x: True
+        if "Retrieve Response - Response element attached" in x
+        else False
     )
 
     # Mock locators

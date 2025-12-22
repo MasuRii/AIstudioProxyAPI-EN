@@ -42,6 +42,6 @@ def upstream_error(req_id: str, message: str) -> HTTPException:
 def service_unavailable(req_id: str, retry_after_seconds: int = 30) -> HTTPException:
     return http_error(
         503,
-        f"[{req_id}] 服务当前不可用。请稍后重试。",
+        f"[{req_id}] Service currently unavailable. Please try again later.",
         headers={"Retry-After": str(retry_after_seconds)},
     )

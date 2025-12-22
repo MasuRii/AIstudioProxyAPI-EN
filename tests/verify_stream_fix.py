@@ -14,10 +14,10 @@ Success Criteria:
 - Logging statement includes correct max_empty_retries value
 """
 
-import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import queue
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 
 @pytest.mark.asyncio

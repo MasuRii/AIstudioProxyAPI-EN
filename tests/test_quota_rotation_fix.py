@@ -12,10 +12,10 @@ The fix ensures that post-rotation empty DONE signals are properly
 identified as stale zombie packets and ignored.
 """
 
-import asyncio
 import time
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+
 from config.global_state import GlobalState
 
 
@@ -31,7 +31,6 @@ class TestQuotaRotationFix:
 
     def test_post_rotation_zombie_detection_various_timestamps(self):
         """Test zombie detection works correctly for various rotation timestamps"""
-        from api_utils.utils_ext.stream import use_stream_response
         
         # Simulate the exact scenario from the bug report:
         # Rotation completes at t=0, DONE received at t=0.9 (< 1 second)

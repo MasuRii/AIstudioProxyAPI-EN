@@ -30,8 +30,8 @@ def client(app):
 
 def test_get_api_info_no_auth_required(client):
     """
-    测试场景: API 无需认证,返回基本信息
-    预期: api_key_required=False, auth_header=None, supported_auth_methods=[]
+    Test scenario: API requires no authentication, returns basic info
+    Expected: api_key_required=False, auth_header=None, supported_auth_methods=[]
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", []),
@@ -45,8 +45,8 @@ def test_get_api_info_no_auth_required(client):
         assert response.status_code == 200
         data = response.json()
 
-        # 验证基本字段
-        assert data["model_name"] == "gemini-2.0-flash"  # 使用 MODEL_NAME 作为 fallback
+        # Verify basic fields
+        assert data["model_name"] == "gemini-2.0-flash"  # Use MODEL_NAME as fallback
         assert data["openai_compatible"] is True
         assert data["api_key_required"] is False
         assert data["api_key_count"] == 0
@@ -54,15 +54,15 @@ def test_get_api_info_no_auth_required(client):
         assert data["supported_auth_methods"] == []
         assert data["message"] == "API Key is not required."
 
-        # 验证 URL 构造
+        # Verify URL construction
         assert data["server_base_url"].startswith("http")
         assert data["api_base_url"].endswith("/v1")
 
 
 def test_get_api_info_with_auth_required(client):
     """
-    测试场景: API 需要认证,配置了 3 个密钥
-    预期: api_key_required=True, 包含认证头信息
+    Test scenario: API requires authentication, 3 keys configured
+    Expected: api_key_required=True, contains authentication header info
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", ["key1", "key2", "key3"]),
@@ -90,12 +90,12 @@ def test_get_api_info_with_auth_required(client):
 
 def test_get_api_info_with_custom_model_id(app, client):
     """
-    测试场景: 使用自定义模型 ID
-    预期: 返回 dependency 提供的模型 ID
+    Test scenario: Use custom model ID
+    Expected: Return model ID provided by dependency
     """
     from api_utils.dependencies import get_current_ai_studio_model_id
 
-    # 使用 FastAPI dependency override
+    # Use FastAPI dependency override
     app.dependency_overrides[get_current_ai_studio_model_id] = (
         lambda: "gemini-2.0-flash-thinking-exp"
     )
@@ -108,14 +108,14 @@ def test_get_api_info_with_custom_model_id(app, client):
 
         assert data["model_name"] == "gemini-2.0-flash-thinking-exp"
 
-    # 清理 override
+    # Clean up override
     app.dependency_overrides.clear()
 
 
 def test_get_api_info_with_custom_host_header(client):
     """
-    测试场景: 请求包含自定义 Host 头
-    预期: 使用 Host 头构造 URL
+    Test scenario: Request contains custom Host header
+    Expected: Use Host header to construct URL
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", []),
@@ -135,8 +135,8 @@ def test_get_api_info_with_custom_host_header(client):
 
 def test_get_api_info_with_x_forwarded_proto_https(client):
     """
-    测试场景: 请求通过 HTTPS 反向代理,带 X-Forwarded-Proto 头
-    预期: 使用 https 作为 scheme
+    Test scenario: Request via HTTPS reverse proxy, with X-Forwarded-Proto header
+    Expected: Use https as scheme
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", []),
@@ -159,8 +159,8 @@ def test_get_api_info_with_x_forwarded_proto_https(client):
 
 def test_get_api_info_with_custom_port_via_env(client):
     """
-    测试场景: 通过环境变量设置自定义端口
-    预期: 使用 SERVER_PORT_INFO 环境变量值
+    Test scenario: Set custom port via environment variable
+    Expected: Use SERVER_PORT_INFO environment variable value
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", []),
@@ -170,21 +170,21 @@ def test_get_api_info_with_custom_port_via_env(client):
         patch("api_utils.routers.info.MODEL_NAME", "gemini-1.5-pro"),
         patch("api_utils.routers.info.get_environment_variable", return_value="9999"),
     ):
-        # 不提供端口信息,应从环境变量读取
+        # No port info provided, should read from environment variable
         response = client.get("/info")
 
         assert response.status_code == 200
         response.json()
 
-        # TestClient 默认使用 testserver, 但如果 request.url.port 为 None,
-        # 会回退到 SERVER_PORT_INFO
-        # 由于 TestClient 可能提供端口,这里主要验证逻辑执行无误
+        # TestClient uses testserver by default, but if request.url.port is None,
+        # it will fall back to SERVER_PORT_INFO
+        # Since TestClient might provide a port, we mainly verify the logic executes correctly
 
 
 def test_get_api_info_url_construction_with_port(client):
     """
-    测试场景: URL 包含端口号
-    预期: 正确构造带端口的 base URL
+    Test scenario: URL contains port number
+    Expected: Correctly construct base URL with port
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", []),
@@ -204,8 +204,8 @@ def test_get_api_info_url_construction_with_port(client):
 
 def test_get_api_info_with_one_api_key(client):
     """
-    测试场景: 仅配置 1 个 API 密钥
-    预期: api_key_count=1, message 单数形式
+    Test scenario: Only 1 API key configured
+    Expected: api_key_count=1, message singular form
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", ["single_key"]),
@@ -225,8 +225,8 @@ def test_get_api_info_with_one_api_key(client):
 
 def test_get_api_info_model_fallback_to_default(client):
     """
-    测试场景: current_ai_studio_model_id 为 None, 使用 MODEL_NAME
-    预期: effective_model_name = MODEL_NAME
+    Test scenario: current_ai_studio_model_id is None, use MODEL_NAME
+    Expected: effective_model_name = MODEL_NAME
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", []),
@@ -245,8 +245,8 @@ def test_get_api_info_model_fallback_to_default(client):
 
 def test_get_api_info_response_structure(client):
     """
-    测试场景: 验证完整的响应结构
-    预期: 包含所有必需字段
+    Test scenario: Verify complete response structure
+    Expected: Contains all required fields
     """
     with (
         patch("api_utils.auth_utils.API_KEYS", ["key1", "key2"]),
@@ -260,7 +260,7 @@ def test_get_api_info_response_structure(client):
         assert response.status_code == 200
         data = response.json()
 
-        # 验证所有必需字段存在
+        # Verify all required fields exist
         required_fields = [
             "model_name",
             "api_base_url",
@@ -274,9 +274,9 @@ def test_get_api_info_response_structure(client):
         ]
 
         for field in required_fields:
-            assert field in data, f"缺少必需字段: {field}"
+            assert field in data, f"Missing required field: {field}"
 
-        # 验证类型
+        # Verify types
         assert isinstance(data["model_name"], str)
         assert isinstance(data["api_base_url"], str)
         assert isinstance(data["server_base_url"], str)

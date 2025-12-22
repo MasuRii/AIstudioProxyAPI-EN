@@ -15,8 +15,8 @@ import pytest
 
 def test_main_module_as_main():
     """
-    测试场景: 以 __main__ 模式执行模块
-    预期: 覆盖 line 129 (if __name__ == "__main__")
+    Test scenario: Execute module in __main__ mode
+    Expected: Cover line 129 (if __name__ == "__main__")
     """
     # Mock ProxyServer to avoid actually starting the proxy
     with (
@@ -53,8 +53,8 @@ def test_main_module_as_main():
 @pytest.mark.asyncio
 async def test_main_with_upstream_proxy_logging():
     """
-    测试场景: main() 函数使用上游代理时的日志输出
-    预期: 覆盖 line 66 (if args.proxy: logger.info(...))
+    Test scenario: Log output when main() function uses upstream proxy
+    Expected: Cover line 66 (if args.proxy: logger.info(...))
     """
     with (
         patch("stream.main.parse_args") as mock_parse,
@@ -93,8 +93,8 @@ async def test_main_with_upstream_proxy_logging():
 @pytest.mark.asyncio
 async def test_main_keyboard_interrupt_handling():
     """
-    测试场景: main() 函数处理 KeyboardInterrupt 异常
-    预期: 覆盖 lines 79-80 (except KeyboardInterrupt: logger.info(...))
+    Test scenario: main() function handles KeyboardInterrupt exception
+    Expected: Cover lines 79-80 (except KeyboardInterrupt: logger.info(...))
     """
     with (
         patch("stream.main.parse_args") as mock_parse,
@@ -128,8 +128,8 @@ async def test_main_keyboard_interrupt_handling():
 @pytest.mark.asyncio
 async def test_main_cancelled_error_re_raising():
     """
-    测试场景: main() 函数重新抛出 CancelledError
-    预期: 覆盖 lines 81-82 (except asyncio.CancelledError: raise)
+    Test scenario: main() function re-throws CancelledError
+    Expected: Cover lines 81-82 (except asyncio.CancelledError: raise)
     """
     with (
         patch("stream.main.parse_args") as mock_parse,
@@ -157,8 +157,8 @@ async def test_main_cancelled_error_re_raising():
 @pytest.mark.asyncio
 async def test_main_generic_exception_handling():
     """
-    测试场景: main() 函数处理通用异常并退出
-    预期: 覆盖 lines 83-85 (except Exception: logger.error(...); sys.exit(1))
+    Test scenario: main() function handles generic exception and exits
+    Expected: Cover lines 83-85 (except Exception: logger.error(...); sys.exit(1))
     """
     with (
         patch("stream.main.parse_args") as mock_parse,
@@ -189,7 +189,7 @@ async def test_main_generic_exception_handling():
 
         # Verify error was logged (line 84)
         mock_logger.error.assert_called_once_with(
-            f"Error starting proxy server: {test_error}"
+            f"Error starting proxy server: {test_error}", exc_info=True
         )
 
         # Verify sys.exit(1) was called (line 85)
@@ -199,8 +199,8 @@ async def test_main_generic_exception_handling():
 @pytest.mark.asyncio
 async def test_builtin_with_default_port():
     """
-    测试场景: builtin() 函数在 port=None 时使用默认端口
-    预期: 覆盖 line 110 (if port is None: port = 3120)
+    Test scenario: builtin() function uses default port when port=None
+    Expected: Cover line 110 (if port is None: port = 3120)
     """
     with (
         patch("stream.main.ProxyServer") as mock_proxy_class,
@@ -228,8 +228,8 @@ async def test_builtin_with_default_port():
 @pytest.mark.asyncio
 async def test_builtin_keyboard_interrupt_handling():
     """
-    测试场景: builtin() 函数处理 KeyboardInterrupt 异常
-    预期: 覆盖 lines 123-124 (except KeyboardInterrupt: logger.info(...))
+    Test scenario: builtin() function handles KeyboardInterrupt exception
+    Expected: Cover lines 123-124 (except KeyboardInterrupt: logger.info(...))
     """
     with (
         patch("stream.main.ProxyServer") as mock_proxy_class,
@@ -255,8 +255,8 @@ async def test_builtin_keyboard_interrupt_handling():
 @pytest.mark.asyncio
 async def test_builtin_cancelled_error_re_raising():
     """
-    测试场景: builtin() 函数重新抛出 CancelledError
-    预期: 覆盖 lines 125-126 (except asyncio.CancelledError: raise)
+    Test scenario: builtin() function re-throws CancelledError
+    Expected: Cover lines 125-126 (except asyncio.CancelledError: raise)
     """
     with patch("stream.main.ProxyServer") as mock_proxy_class:
         # Mock ProxyServer.start() to raise CancelledError
@@ -274,8 +274,8 @@ async def test_builtin_cancelled_error_re_raising():
 @pytest.mark.asyncio
 async def test_builtin_generic_exception_handling():
     """
-    测试场景: builtin() 函数处理通用异常并退出
-    预期: 覆盖 lines 127-129 (except Exception: logger.error(...); sys.exit(1))
+    Test scenario: builtin() function handles generic exception and exits
+    Expected: Cover lines 127-129 (except Exception: logger.error(...); sys.exit(1))
     """
     with (
         patch("stream.main.ProxyServer") as mock_proxy_class,
@@ -298,7 +298,7 @@ async def test_builtin_generic_exception_handling():
 
         # Verify error was logged (line 128)
         mock_logger.error.assert_called_once_with(
-            f"Error starting proxy server: {test_error}"
+            f"Error starting proxy server: {test_error}", exc_info=True
         )
 
         # Verify sys.exit(1) was called (line 129)

@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 def test_normalize_reasoning_effort_none_uses_default():
     """
-    测试场景: reasoning_effort 为 None，使用默认配置
-    策略: Mock 配置值，测试默认行为
+    Test scenario: reasoning_effort is None, use default configuration
+    Strategy: Mock configuration values, test default behavior
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -29,8 +29,8 @@ def test_normalize_reasoning_effort_none_uses_default():
 
 def test_normalize_reasoning_effort_zero_disables():
     """
-    测试场景: reasoning_effort = 0 关闭思考模式
-    验证: thinking_enabled = False
+    Test scenario: reasoning_effort = 0 disables thinking mode
+    Verify: thinking_enabled = False
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -44,8 +44,8 @@ def test_normalize_reasoning_effort_zero_disables():
 
 def test_normalize_reasoning_effort_string_zero_disables():
     """
-    测试场景: reasoning_effort = "0" (字符串) 关闭思考模式
-    验证: 字符串 "0" 也能正确处理
+    Test scenario: reasoning_effort = "0" (string) disables thinking mode
+    Verify: String "0" is also handled correctly
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -59,8 +59,8 @@ def test_normalize_reasoning_effort_string_zero_disables():
 
 def test_normalize_reasoning_effort_none_string_no_budget():
     """
-    测试场景: reasoning_effort = "none" 开启思考，不限预算
-    验证: thinking_enabled = True, budget_enabled = False
+    Test scenario: reasoning_effort = "none" enables thinking, no budget limit
+    Verify: thinking_enabled = True, budget_enabled = False
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -74,8 +74,8 @@ def test_normalize_reasoning_effort_none_string_no_budget():
 
 def test_normalize_reasoning_effort_minus_one_string_no_budget():
     """
-    测试场景: reasoning_effort = "-1" (字符串) 开启思考，不限预算
-    验证: 字符串 "-1" 等价于 "none"
+    Test scenario: reasoning_effort = "-1" (string) enables thinking, no budget limit
+    Verify: String "-1" is equivalent to "none"
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -89,8 +89,8 @@ def test_normalize_reasoning_effort_minus_one_string_no_budget():
 
 def test_normalize_reasoning_effort_minus_one_int_no_budget():
     """
-    测试场景: reasoning_effort = -1 (整数) 开启思考，不限预算
-    验证: 整数 -1 等价于 "none"
+    Test scenario: reasoning_effort = -1 (integer) enables thinking, no budget limit
+    Verify: Integer -1 is equivalent to "none"
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -104,8 +104,8 @@ def test_normalize_reasoning_effort_minus_one_int_no_budget():
 
 def test_normalize_reasoning_effort_preset_low():
     """
-    测试场景: reasoning_effort = "low" (预设值)
-    验证: thinking_enabled = True, budget_enabled = False (由 _should_enable_from_raw 确定)
+    Test scenario: reasoning_effort = "low" (preset value)
+    Verify: thinking_enabled = True, budget_enabled = False (determined by _should_enable_from_raw)
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -119,8 +119,8 @@ def test_normalize_reasoning_effort_preset_low():
 
 def test_normalize_reasoning_effort_preset_medium():
     """
-    测试场景: reasoning_effort = "medium" (预设值)
-    验证: thinking_enabled = True, budget_enabled = False (由 _should_enable_from_raw 确定)
+    Test scenario: reasoning_effort = "medium" (preset value)
+    Verify: thinking_enabled = True, budget_enabled = False (determined by _should_enable_from_raw)
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -134,8 +134,8 @@ def test_normalize_reasoning_effort_preset_medium():
 
 def test_normalize_reasoning_effort_preset_high():
     """
-    测试场景: reasoning_effort = "high" (预设值)
-    验证: thinking_enabled = True, budget_enabled = False (由 _should_enable_from_raw 确定)
+    Test scenario: reasoning_effort = "high" (preset value)
+    Verify: thinking_enabled = True, budget_enabled = False (determined by _should_enable_from_raw)
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -149,8 +149,8 @@ def test_normalize_reasoning_effort_preset_high():
 
 def test_normalize_reasoning_effort_positive_integer():
     """
-    测试场景: reasoning_effort = 5000 (正整数预算)
-    验证: 开启思考并设置具体预算值
+    Test scenario: reasoning_effort = 5000 (positive integer budget)
+    Verify: Enable thinking and set specific budget value
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -164,8 +164,8 @@ def test_normalize_reasoning_effort_positive_integer():
 
 def test_normalize_reasoning_effort_string_number():
     """
-    测试场景: reasoning_effort = "8000" (字符串数字)
-    验证: 字符串数字被正确解析
+    Test scenario: reasoning_effort = "8000" (string number)
+    Verify: String number correctly parsed
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -179,8 +179,8 @@ def test_normalize_reasoning_effort_string_number():
 
 def test_normalize_reasoning_effort_invalid_string_uses_default():
     """
-    测试场景: reasoning_effort = "invalid" (无效字符串)
-    验证: 使用默认配置
+    Test scenario: reasoning_effort = "invalid" (invalid string)
+    Verify: Use default configuration
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -195,8 +195,8 @@ def test_normalize_reasoning_effort_invalid_string_uses_default():
 
 def test_normalize_reasoning_effort_negative_number_uses_default():
     """
-    测试场景: reasoning_effort = -5 (负数，非 -1)
-    验证: 使用默认配置
+    Test scenario: reasoning_effort = -5 (negative number, not -1)
+    Verify: Use default configuration
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -214,8 +214,8 @@ def test_normalize_reasoning_effort_negative_number_uses_default():
 
 def test_normalize_reasoning_effort_case_insensitive():
     """
-    测试场景: reasoning_effort 字符串大小写不敏感
-    验证: "NONE", "None", "none" 都被正确处理
+    Test scenario: reasoning_effort string is case-insensitive
+    Verify: "NONE", "None", "none" are all correctly handled
     """
     from browser_utils.thinking_normalizer import normalize_reasoning_effort
 
@@ -228,8 +228,8 @@ def test_normalize_reasoning_effort_case_insensitive():
 
 def test_parse_budget_value_positive_int():
     """
-    测试场景: _parse_budget_value 解析正整数
-    验证: 返回原始整数值
+    Test scenario: _parse_budget_value parses positive integer
+    Verify: Return original integer value
     """
     from browser_utils.thinking_normalizer import _parse_budget_value
 
@@ -240,8 +240,8 @@ def test_parse_budget_value_positive_int():
 
 def test_parse_budget_value_zero_returns_none():
     """
-    测试场景: _parse_budget_value 解析 0
-    验证: 0 不是有效预算，返回 None
+    Test scenario: _parse_budget_value parses 0
+    Verify: 0 is not a valid budget, return None
     """
     from browser_utils.thinking_normalizer import _parse_budget_value
 
@@ -250,8 +250,8 @@ def test_parse_budget_value_zero_returns_none():
 
 def test_parse_budget_value_negative_returns_none():
     """
-    测试场景: _parse_budget_value 解析负数
-    验证: 负数不是有效预算，返回 None
+    Test scenario: _parse_budget_value parses negative number
+    Verify: Negative number is not a valid budget, return None
     """
     from browser_utils.thinking_normalizer import _parse_budget_value
 
@@ -261,8 +261,8 @@ def test_parse_budget_value_negative_returns_none():
 
 def test_parse_budget_value_string_number():
     """
-    测试场景: _parse_budget_value 解析字符串数字
-    验证: "1000" → 1000
+    Test scenario: _parse_budget_value parses string number
+    Verify: "1000" → 1000
     """
     from browser_utils.thinking_normalizer import _parse_budget_value
 
@@ -272,8 +272,8 @@ def test_parse_budget_value_string_number():
 
 def test_parse_budget_value_string_with_whitespace():
     """
-    测试场景: _parse_budget_value 解析带空格的字符串
-    验证: "  1000  " → 1000 (trim 后解析)
+    Test scenario: _parse_budget_value parses string with whitespace
+    Verify: "  1000  " → 1000 (parse after trimming)
     """
     from browser_utils.thinking_normalizer import _parse_budget_value
 
@@ -282,8 +282,8 @@ def test_parse_budget_value_string_with_whitespace():
 
 def test_parse_budget_value_invalid_string():
     """
-    测试场景: _parse_budget_value 解析无效字符串
-    验证: 返回 None
+    Test scenario: _parse_budget_value parses invalid string
+    Verify: Return None
     """
     from browser_utils.thinking_normalizer import _parse_budget_value
 
@@ -294,8 +294,8 @@ def test_parse_budget_value_invalid_string():
 
 def test_format_directive_log_disabled():
     """
-    测试场景: 格式化日志（思考模式关闭）
-    验证: 日志包含 "关闭思考模式"
+    Test scenario: Format log (thinking mode disabled)
+    Verify: Log contains "Disabling thinking mode"
     """
     from browser_utils.thinking_normalizer import (
         ThinkingDirective,
@@ -311,14 +311,14 @@ def test_format_directive_log_disabled():
 
     log = format_directive_log(directive)
 
-    assert "关闭思考模式" in log
-    assert "原始值: 0" in log
+    assert "Disabling thinking mode" in log
+    assert "Original value: 0" in log
 
 
 def test_format_directive_log_enabled_with_budget():
     """
-    测试场景: 格式化日志（思考模式开启，有预算限制）
-    验证: 日志包含预算值
+    Test scenario: Format log (thinking mode enabled, with budget limit)
+    Verify: Log contains budget value
     """
     from browser_utils.thinking_normalizer import (
         ThinkingDirective,
@@ -334,15 +334,15 @@ def test_format_directive_log_enabled_with_budget():
 
     log = format_directive_log(directive)
 
-    assert "开启思考并限制预算" in log
+    assert "Enabling thinking with budget limit" in log
     assert "8000 tokens" in log
-    assert "原始值: medium" in log
+    assert "Original value: medium" in log
 
 
 def test_format_directive_log_enabled_no_budget():
     """
-    测试场景: 格式化日志（思考模式开启，不限预算）
-    验证: 日志包含 "不限制预算"
+    Test scenario: Format log (thinking mode enabled, no budget limit)
+    Verify: Log contains "no budget limit"
     """
     from browser_utils.thinking_normalizer import (
         ThinkingDirective,
@@ -358,5 +358,5 @@ def test_format_directive_log_enabled_no_budget():
 
     log = format_directive_log(directive)
 
-    assert "开启思考，不限制预算" in log
-    assert "原始值: none" in log
+    assert "Enabling thinking, no budget limit" in log
+    assert "Original value: none" in log

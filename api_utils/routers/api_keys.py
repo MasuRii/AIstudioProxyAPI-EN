@@ -20,12 +20,12 @@ async def get_api_keys(logger: logging.Logger = Depends(get_logger)):
 
     try:
         auth_utils.initialize_keys()
-        keys_info = [{"value": key, "status": "有效"} for key in auth_utils.API_KEYS]
+        keys_info = [{"value": key, "status": "Valid"} for key in auth_utils.API_KEYS]
         return JSONResponse(
             content={"success": True, "keys": keys_info, "total_count": len(keys_info)}
         )
     except Exception as e:
-        logger.error(f"获取API密钥列表失败: {e}")
+        logger.error(f"Failed to get API key list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -36,11 +36,11 @@ async def add_api_key(
 
     key_value = request.key.strip()
     if not key_value or len(key_value) < 8:
-        raise HTTPException(status_code=400, detail="无效的API密钥格式。")
+        raise HTTPException(status_code=400, detail="Invalid API key format.")
 
     auth_utils.initialize_keys()
     if key_value in auth_utils.API_KEYS:
-        raise HTTPException(status_code=400, detail="该API密钥已存在。")
+        raise HTTPException(status_code=400, detail="API key already exists.")
 
     try:
         key_file_path = auth_utils.KEY_FILE_PATH
@@ -51,16 +51,16 @@ async def add_api_key(
             f.write(key_value)
 
         auth_utils.initialize_keys()
-        logger.info(f"API密钥已添加: {key_value[:4]}...{key_value[-4:]}")
+        logger.info(f"API key added: {key_value[:4]}...{key_value[-4:]}")
         return JSONResponse(
             content={
                 "success": True,
-                "message": "API密钥添加成功",
+                "message": "API key added successfully",
                 "key_count": len(auth_utils.API_KEYS),
             }
         )
     except Exception as e:
-        logger.error(f"添加API密钥失败: {e}")
+        logger.error(f"Failed to add API key: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -71,18 +71,18 @@ async def test_api_key(
 
     key_value = request.key.strip()
     if not key_value:
-        raise HTTPException(status_code=400, detail="API密钥不能为空。")
+        raise HTTPException(status_code=400, detail="API key cannot be empty.")
 
     auth_utils.initialize_keys()
     is_valid = auth_utils.verify_api_key(key_value)
     logger.info(
-        f"API密钥测试: {key_value[:4]}...{key_value[-4:]} - {'有效' if is_valid else '无效'}"
+        f"API key test: {key_value[:4]}...{key_value[-4:]} - {'Valid' if is_valid else 'Invalid'}"
     )
     return JSONResponse(
         content={
             "success": True,
             "valid": is_valid,
-            "message": "密钥有效" if is_valid else "密钥无效或不存在",
+            "message": "Key valid" if is_valid else "Key invalid or non-existent",
         }
     )
 
@@ -94,11 +94,11 @@ async def delete_api_key(
 
     key_value = request.key.strip()
     if not key_value:
-        raise HTTPException(status_code=400, detail="API密钥不能为空。")
+        raise HTTPException(status_code=400, detail="API key cannot be empty.")
 
     auth_utils.initialize_keys()
     if key_value not in auth_utils.API_KEYS:
-        raise HTTPException(status_code=404, detail="API密钥不存在。")
+        raise HTTPException(status_code=404, detail="API key does not exist.")
 
     try:
         key_file_path = auth_utils.KEY_FILE_PATH
@@ -109,14 +109,14 @@ async def delete_api_key(
             f.writelines(line for line in lines if line.strip() != key_value)
 
         auth_utils.initialize_keys()
-        logger.info(f"API密钥已删除: {key_value[:4]}...{key_value[-4:]}")
+        logger.info(f"API key deleted: {key_value[:4]}...{key_value[-4:]}")
         return JSONResponse(
             content={
                 "success": True,
-                "message": "API密钥删除成功",
+                "message": "API key deleted successfully",
                 "key_count": len(auth_utils.API_KEYS),
             }
         )
     except Exception as e:
-        logger.error(f"删除API密钥失败: {e}")
+        logger.error(f"Failed to delete API key: {e}")
         raise HTTPException(status_code=500, detail=str(e))
