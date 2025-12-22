@@ -15,7 +15,9 @@ DEFAULT_STREAM_PORT = int(os.environ.get("STREAM_PORT", "3120"))
 DEFAULT_HELPER_ENDPOINT = os.environ.get("GUI_DEFAULT_HELPER_ENDPOINT", "")
 DEFAULT_AUTH_SAVE_TIMEOUT = int(os.environ.get("AUTH_SAVE_TIMEOUT", "30"))
 DEFAULT_SERVER_LOG_LEVEL = os.environ.get("SERVER_LOG_LEVEL", "INFO")
-AUTH_PROFILES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "auth_profiles")
+AUTH_PROFILES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "auth_profiles"
+)
 ACTIVE_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "active")
 SAVED_AUTH_DIR = os.path.join(AUTH_PROFILES_DIR, "saved")
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
@@ -38,9 +40,13 @@ def determine_proxy_configuration(
         if internal_camoufox_proxy_arg.strip():
             result["camoufox_proxy"] = internal_camoufox_proxy_arg.strip()
             result["stream_proxy"] = internal_camoufox_proxy_arg.strip()
-            result["source"] = f"CLI argument --internal-camoufox-proxy: {internal_camoufox_proxy_arg.strip()}"
+            result["source"] = (
+                f"CLI argument --internal-camoufox-proxy: {internal_camoufox_proxy_arg.strip()}"
+            )
         else:
-            result["source"] = "CLI argument --internal-camoufox-proxy='' (Explicitly disabled)"
+            result["source"] = (
+                "CLI argument --internal-camoufox-proxy='' (Explicitly disabled)"
+            )
         return result
 
     unified_proxy = os.environ.get("UNIFIED_PROXY_CONFIG")
@@ -153,9 +159,9 @@ def parse_args() -> argparse.Namespace:
         help="[Optional] Path to active authentication JSON file.",
     )
 
-    debug_logs_default = os.environ.get('DEBUG_LOGS_ENABLED', 'false').lower() == 'true'
-    trace_logs_default = os.environ.get('TRACE_LOGS_ENABLED', 'false').lower() == 'true'
-    auto_save_auth_default = os.environ.get('AUTO_SAVE_AUTH', 'false').lower() == 'true'
+    debug_logs_default = os.environ.get("DEBUG_LOGS_ENABLED", "false").lower() == "true"
+    trace_logs_default = os.environ.get("TRACE_LOGS_ENABLED", "false").lower() == "true"
+    auto_save_auth_default = os.environ.get("AUTO_SAVE_AUTH", "false").lower() == "true"
 
     parser.add_argument(
         "--auto-save-auth",
@@ -213,9 +219,10 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     # Mark which arguments were explicitly set via CLI
-    args.debug_logs_from_cli = '--debug-logs' in sys.argv
-    args.trace_logs_from_cli = '--trace-logs' in sys.argv
-    args.auto_save_auth_from_cli = '--auto-save-auth' in sys.argv
+    args.debug_logs_from_cli = "--debug-logs" in sys.argv
+    args.trace_logs_from_cli = "--trace-logs" in sys.argv
+    args.auto_save_auth_from_cli = "--auto-save-auth" in sys.argv
+    args.server_redirect_print_from_cli = "--server-redirect-print" in sys.argv
 
     # Use environment variables if not set via CLI
     if not args.debug_logs_from_cli:

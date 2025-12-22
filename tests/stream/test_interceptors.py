@@ -83,7 +83,7 @@ class TestHttpInterceptor:
 
     def test_parse_response_body(self, interceptor):
         """Test parsing response body content from stream."""
-        # Mock response structure based on regex: [[[null,.*?]],"model"]
+        # Mock response structure based on regex: [[[null,.*?]],\"model\"]
         # Payload len=2 -> body: [payload_id, "body_content"]
         # Actually payload is [payload_id, "body_content"] directly inside the structure matched?
         # If structure is [[[null, "body"]], "model"]
@@ -99,9 +99,11 @@ class TestHttpInterceptor:
         valid_json2 = '"World"'
         match_str2 = f'[[[null,{valid_json2}]],"model"]'
 
-        data = (match_str + match_str2).encode()
+        data = match_str + match_str2
 
-        result = interceptor.parse_response(data)
+        # Use the buffer-based API
+        interceptor.response_buffer = data
+        result = interceptor.parse_response_from_buffer()
         assert result["body"] == "Hello World"
         assert result["reason"] == ""
         assert result["function"] == []
@@ -114,9 +116,9 @@ class TestHttpInterceptor:
         valid_json = '"Thinking...", "extra"'
         match_str = f'[[[null,{valid_json}]],"model"]'
 
-        data = match_str.encode()
-
-        result = interceptor.parse_response(data)
+        # Use the buffer-based API
+        interceptor.response_buffer = match_str
+        result = interceptor.parse_response_from_buffer()
         assert result["reason"] == "Thinking..."
         assert result["body"] == ""
 
@@ -151,9 +153,9 @@ class TestHttpInterceptor:
 
         match_str = f'[[[null,{valid_json}]],"model"]'
 
-        data = match_str.encode()
-
-        result = interceptor.parse_response(data)
+        # Use the buffer-based API
+        interceptor.response_buffer = match_str
+        result = interceptor.parse_response_from_buffer()
         assert len(result["function"]) == 1
         assert result["function"][0]["name"] == "my_func"
         assert result["function"][0]["params"]["arg1"] == "value1"
@@ -277,13 +279,12 @@ class TestHttpInterceptorEdgeCases:
         return HttpInterceptor()
 
     @pytest.mark.asyncio
-    async def test_process_response_raises_on_invalid_chunking(self, interceptor):
+    async def test_process_response_handles_invalid_chunking(self, interceptor):
         """
-        Test scenario: process_response raises exception when encountering invalid chunked data
-        Expected: Exception is re-raised (lines 78-79)
+        Test scenario: process_response handles invalid chunked data gracefully
+        Expected: Returns empty result dict (exceptions are caught internally)
         """
-        # 创建看起来像有效分块但会导致解压失败的数据
-        # _decode_chunked 会处理它,但 _decompress_zlib_stream 会失败
+        # Create data that looks like valid chunked data but decompression will fail
         fake_chunk = b"not compressed data"
         chunked = (
             hex(len(fake_chunk))[2:].encode()
@@ -293,19 +294,19 @@ class TestHttpInterceptorEdgeCases:
             + b"0\r\n\r\n"
         )
 
-        # _decompress_zlib_stream 会因为不是有效的 zlib 数据而抛出异常
-        with pytest.raises(zlib.error):
-            await interceptor.process_response(
-                chunked, "example.com", "/GenerateContent", {}
-            )
+        # process_response catches exceptions and returns empty result
+        result = await interceptor.process_response(
+            chunked, "example.com", "/GenerateContent", {}
+        )
+        assert result == {"body": "", "reason": "", "function": [], "done": False}
 
     @pytest.mark.asyncio
-    async def test_process_response_raises_on_decompression_error(self, interceptor):
+    async def test_process_response_handles_decompression_error(self, interceptor):
         """
-        Test scenario: raises exception when decompression fails
-        Expected: zlib.error is re-raised (lines 78-79)
+        Test scenario: handles decompression failure gracefully
+        Expected: Returns empty result dict (exceptions are caught internally)
         """
-        # 创建有效的分块数据,但压缩数据是无效的
+        # Create valid chunked data but with invalid compressed content
         invalid_compressed = b"not a valid zlib stream"
         chunked = (
             hex(len(invalid_compressed))[2:].encode()
@@ -315,45 +316,45 @@ class TestHttpInterceptorEdgeCases:
             + b"0\r\n\r\n"
         )
 
-        with pytest.raises(zlib.error):
-            await interceptor.process_response(
-                chunked, "example.com", "/GenerateContent", {}
-            )
+        # process_response catches exceptions and returns empty result
+        result = await interceptor.process_response(
+            chunked, "example.com", "/GenerateContent", {}
+        )
+        assert result == {"body": "", "reason": "", "function": [], "done": False}
 
     def test_parse_response_with_malformed_json(self, interceptor):
         """
         Test scenario: data matched by regex is not valid JSON
         Expected: json.loads fails, continue to skip (lines 98-99)
         """
-        # 创建符合正则的字符串,但 JSON 格式错误
-        # 正则: rb'\[\[\[null,.*?]],"model"]'
-        # 需要匹配模式但 JSON 无效: [[[null,{invalid}]],"model"]
-        malformed_match = b'[[[null,{not valid json}]],"model"]'  # 格式错误的 JSON
-        valid_match = b'[[[null,"valid"]],"model"]'
+        # Create string that matches regex but has malformed JSON
+        # Regex: rb'\[\[\[null,.*?]],"model"]'
+        malformed_match = '[[[null,{not valid json}]],"model"]'  # Malformed JSON
+        valid_match = '[[[null,"valid"]],"model"]'
 
-        # 组合数据: 先是错误的,后是正确的
-        data = malformed_match + valid_match
+        # Combine data: malformed first, then valid
+        # Use buffer-based API
+        interceptor.response_buffer = malformed_match + valid_match
+        result = interceptor.parse_response_from_buffer()
 
-        result = interceptor.parse_response(data)
-
-        # 只应解析出有效的部分
+        # Only the valid part should be parsed
         assert result["body"] == "valid"
-        # 错误的 JSON 应该被跳过,不影响结果
+        # Malformed JSON should be skipped and not affect the result
 
     def test_parse_response_with_multiple_malformed_json(self, interceptor):
         """
         Test scenario: all matches are invalid JSON
         Expected: return empty result (lines 98-99 all continue)
         """
-        # 多个符合正则但 JSON 无效的字符串
-        malformed1 = b'[[[null,invalid}]],"model"]'  # 不是 JSON
-        malformed2 = b'[[[null,{broken],"model"]'  # 格式错误
+        # Multiple strings that match regex but have invalid JSON
+        malformed1 = '[[[null,invalid}]],"model"]'  # Not valid JSON
+        malformed2 = '[[[null,{broken],"model"]'  # Malformed
 
-        data = malformed1 + malformed2
+        # Use buffer-based API
+        interceptor.response_buffer = malformed1 + malformed2
+        result = interceptor.parse_response_from_buffer()
 
-        result = interceptor.parse_response(data)
-
-        # 所有都被跳过,返回空值
+        # All should be skipped, return empty values
         assert result["body"] == ""
         assert result["reason"] == ""
         assert result["function"] == []
@@ -517,12 +518,14 @@ class TestHttpInterceptorEdgeCases:
         Test scenario: JSON parsing successful but structure not as expected (json_data[0][0] indexing fails)
         Expected: except catches IndexError/TypeError, continue
         """
-        # 符合正则,但结构不对: json_data 不是预期的嵌套结构
-        invalid_structure = b'[[],"model"]'  # json_data[0][0] 会失败
+        # Matches regex, but structure is wrong: json_data is not the expected nested structure
+        invalid_structure = '[[],"model"]'  # json_data[0][0] will fail
 
-        result = interceptor.parse_response(invalid_structure)
+        # Use buffer-based API
+        interceptor.response_buffer = invalid_structure
+        result = interceptor.parse_response_from_buffer()
 
-        # 应该被跳过,返回空值
+        # Should be skipped, return empty values
         assert result["body"] == ""
 
     def test_parse_response_empty_matches(self, interceptor):
@@ -530,9 +533,9 @@ class TestHttpInterceptorEdgeCases:
         Test scenario: no data matching regex
         Expected: return empty result
         """
-        data = b"no matching pattern here"
-
-        result = interceptor.parse_response(data)
+        # Use buffer-based API
+        interceptor.response_buffer = "no matching pattern here"
+        result = interceptor.parse_response_from_buffer()
 
         assert result["body"] == ""
         assert result["reason"] == ""
@@ -558,10 +561,10 @@ class TestInterceptorExceptionPaths:
         return HttpInterceptor()
 
     @pytest.mark.asyncio
-    async def test_process_response_raises_exception(self, interceptor):
+    async def test_process_response_handles_exception(self, interceptor):
         """
         Test scenario: internal method in process_response raises exception
-        Expected: exception is re-raised (lines 78-79)
+        Expected: exception is caught and empty result returned
         """
         # Mock _decode_chunked to raise exception
         with patch.object(
@@ -569,8 +572,9 @@ class TestInterceptorExceptionPaths:
             "_decode_chunked",
             side_effect=ValueError("Decoding failed"),
         ):
-            with pytest.raises(ValueError, match="Decoding failed"):
-                await interceptor.process_response(b"data", "host", "/path", {})
+            # process_response catches exceptions and returns empty result
+            result = await interceptor.process_response(b"data", "host", "/path", {})
+            assert result == {"body": "", "reason": "", "function": [], "done": False}
 
     def test_parse_response_invalid_json(self, interceptor):
         """
@@ -580,9 +584,11 @@ class TestInterceptorExceptionPaths:
         # Create data that matches regex but has invalid JSON
         # Pattern: rb'\[\[\[null,.*?]],"model"]'
         # Valid match format but invalid JSON inside
-        invalid_match = b'[[[null,"unclosed string]],"model"]'
+        invalid_match = '[[[null,"unclosed string]],"model"]'
 
-        result = interceptor.parse_response(invalid_match)
+        # Use buffer-based API
+        interceptor.response_buffer = invalid_match
+        result = interceptor.parse_response_from_buffer()
 
         # Should skip invalid match and return empty result
         assert result["body"] == ""
@@ -640,7 +646,9 @@ class TestInterceptorEdgeCases:
         malformed_json = json.dumps([[[]]])  # Missing expected payload structure
         match_str = f'[[{malformed_json}],"model"]'
 
-        result = interceptor.parse_response(match_str.encode())
+        # Use buffer-based API
+        interceptor.response_buffer = match_str
+        result = interceptor.parse_response_from_buffer()
 
         # Should handle gracefully and return empty result
         assert result["body"] == ""

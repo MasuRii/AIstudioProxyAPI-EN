@@ -396,10 +396,16 @@ class Launcher:  # pragma: no cover
         os.environ["CAMOUFOX_WS_ENDPOINT"] = captured_ws_endpoint
         os.environ["LAUNCH_MODE"] = self.final_launch_mode
         os.environ["SERVER_LOG_LEVEL"] = self.args.server_log_level.upper()
-        os.environ["SERVER_REDIRECT_PRINT"] = str(
-            self.args.server_redirect_print
-        ).lower()
 
+        # Only set these env vars if CLI flags were explicitly provided
+        # Otherwise, preserve existing env var values (from .env files)
+        if (
+            hasattr(self.args, "server_redirect_print_from_cli")
+            and self.args.server_redirect_print_from_cli
+        ):
+            os.environ["SERVER_REDIRECT_PRINT"] = str(
+                self.args.server_redirect_print
+            ).lower()
         if hasattr(self.args, "debug_logs_from_cli") and self.args.debug_logs_from_cli:
             os.environ["DEBUG_LOGS_ENABLED"] = str(self.args.debug_logs).lower()
         if hasattr(self.args, "trace_logs_from_cli") and self.args.trace_logs_from_cli:

@@ -235,6 +235,7 @@ class TestEnqueueOutput:
 class TestCamoufoxProcessManager:
     """Tests for CamoufoxProcessManager class."""
 
+    @pytest.mark.timeout(20)
     def test_init(self):
         """Test manager initialization."""
         manager = CamoufoxProcessManager()
@@ -242,6 +243,7 @@ class TestCamoufoxProcessManager:
         assert manager.camoufox_proc is None
         assert manager.captured_ws_endpoint is None
 
+    @pytest.mark.timeout(20)
     def test_cleanup_no_process(self):
         """Test cleanup when no process exists."""
         manager = CamoufoxProcessManager()
@@ -251,6 +253,7 @@ class TestCamoufoxProcessManager:
 
         assert manager.camoufox_proc is None
 
+    @pytest.mark.timeout(20)
     def test_cleanup_process_already_exited(self):
         """Test cleanup when process has already exited."""
         manager = CamoufoxProcessManager()
@@ -265,6 +268,7 @@ class TestCamoufoxProcessManager:
     @pytest.mark.skipif(
         sys.platform == "win32", reason="Unix-specific process group test"
     )
+    @pytest.mark.timeout(20)
     def test_cleanup_unix_sigterm_success(self):
         """Test cleanup on Unix with successful SIGTERM."""
         manager = CamoufoxProcessManager()
@@ -290,6 +294,7 @@ class TestCamoufoxProcessManager:
     @pytest.mark.skipif(
         sys.platform == "win32", reason="Unix-specific process group test"
     )
+    @pytest.mark.timeout(20)
     def test_cleanup_unix_sigterm_timeout_then_sigkill(self):
         """Test cleanup on Unix when SIGTERM times out and SIGKILL is needed."""
         manager = CamoufoxProcessManager()
@@ -320,6 +325,7 @@ class TestCamoufoxProcessManager:
     @pytest.mark.skipif(
         sys.platform == "win32", reason="Unix-specific process group test"
     )
+    @pytest.mark.timeout(20)
     def test_cleanup_unix_process_not_found(self):
         """Test cleanup on Unix when process group not found."""
         manager = CamoufoxProcessManager()
@@ -341,6 +347,7 @@ class TestCamoufoxProcessManager:
         assert manager.camoufox_proc is None
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific test")
+    @pytest.mark.timeout(20)
     def test_cleanup_windows(self):
         """Test cleanup on Windows."""
         manager = CamoufoxProcessManager()
@@ -359,6 +366,7 @@ class TestCamoufoxProcessManager:
         mock_run.assert_called_once()
         assert manager.camoufox_proc is None
 
+    @pytest.mark.timeout(20)
     def test_cleanup_fallback_terminate(self):
         """Test cleanup fallback to terminate when no process groups."""
         manager = CamoufoxProcessManager()
@@ -372,18 +380,24 @@ class TestCamoufoxProcessManager:
         mock_proc.stderr.closed = False
         manager.camoufox_proc = mock_proc
 
-        # Remove getpgid/killpg to trigger fallback
+        # Safely mock hasattr for os.getpgid and os.killpg
+        original_hasattr = hasattr
+
+        def mock_hasattr(obj, attr):
+            if obj is os and attr in ("getpgid", "killpg"):
+                return False
+            return original_hasattr(obj, attr)
+
         with (
-            patch.object(os, "getpgid", None),
-            patch.object(os, "killpg", None),
+            patch("sys.platform", "linux"),
+            patch("builtins.hasattr", side_effect=mock_hasattr),
         ):
-            # In case os doesn't have these attrs, patch hasattr
-            with patch("builtins.hasattr", side_effect=lambda obj, attr: False):
-                manager.cleanup()
+            manager.cleanup()
 
         mock_proc.terminate.assert_called_once()
         assert manager.camoufox_proc is None
 
+    @pytest.mark.timeout(20)
     def test_cleanup_fallback_terminate_then_kill(self):
         """Test cleanup fallback when terminate times out."""
         manager = CamoufoxProcessManager()
@@ -397,7 +411,18 @@ class TestCamoufoxProcessManager:
         mock_proc.stderr.closed = False
         manager.camoufox_proc = mock_proc
 
-        with patch("builtins.hasattr", side_effect=lambda obj, attr: False):
+        # Safely mock hasattr for os.getpgid and os.killpg
+        original_hasattr = hasattr
+
+        def mock_hasattr(obj, attr):
+            if obj is os and attr in ("getpgid", "killpg"):
+                return False
+            return original_hasattr(obj, attr)
+
+        with (
+            patch("sys.platform", "linux"),
+            patch("builtins.hasattr", side_effect=mock_hasattr),
+        ):
             manager.cleanup()
 
         mock_proc.terminate.assert_called_once()

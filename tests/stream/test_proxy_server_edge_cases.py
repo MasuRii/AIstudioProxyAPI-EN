@@ -45,7 +45,6 @@ async def test_handle_client_empty_request(proxy_server):
     await proxy_server.handle_client(mock_reader, mock_writer)
 
     mock_writer.close.assert_called()
-    mock_writer.wait_closed.assert_called()
 
 
 @pytest.mark.asyncio

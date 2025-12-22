@@ -31,6 +31,12 @@ class TestConfigPrecedence:
             mock_args.debug_logs = False
             mock_args.trace_logs = False
 
+            # Track whether CLI flags were explicitly provided (default: not from CLI)
+            mock_args.auto_save_auth_from_cli = False
+            mock_args.server_redirect_print_from_cli = False
+            mock_args.debug_logs_from_cli = False
+            mock_args.trace_logs_from_cli = False
+
             # Application defaults
             mock_args.server_log_level = "INFO"
             mock_args.exit_on_auth_save = False
@@ -99,6 +105,9 @@ class TestConfigPrecedence:
         with patch.dict(os.environ, {env_var: env_value}, clear=True):
             # 2. Setup CLI Args
             setattr(mock_launcher.args, cli_arg_attr, cli_value)
+            # Set the _from_cli flag: True if cli_value is True (explicit), False otherwise (default)
+            from_cli_attr = f"{cli_arg_attr}_from_cli"
+            setattr(mock_launcher.args, from_cli_attr, cli_value)
 
             # 3. Execution match
             # We need a dummy ws endpoint for _setup_environment_variables
@@ -122,6 +131,7 @@ class TestConfigPrecedence:
         """Specific test to ensure CLI True overrides Env False."""
         with patch.dict(os.environ, {"AUTO_SAVE_AUTH": "false"}, clear=True):
             mock_launcher.args.auto_save_auth = True  # CLI Explicit True
+            mock_launcher.args.auto_save_auth_from_cli = True
 
             mock_launcher._setup_environment_variables("ws://dummy")
 

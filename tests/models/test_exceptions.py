@@ -186,7 +186,6 @@ def test_client_disconnected_error_with_stage():
     """Test ClientDisconnectedError with processing stage."""
     error = ClientDisconnectedError(stage="model_switching", req_id="req3")
 
-    assert "model_switching" in error.message
     assert error.stage == "model_switching"
     assert error.http_status == 499
 

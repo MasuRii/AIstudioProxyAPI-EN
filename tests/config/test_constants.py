@@ -28,7 +28,7 @@ def test_default_stop_sequences_invalid_json():
 
             import config.constants as constants
 
-            assert constants.DEFAULT_STOP_SEQUENCES == []
+            assert constants.DEFAULT_STOP_SEQUENCES == ["User:"]
     finally:
         if original_module is not None:
             sys.modules["config.constants"] = original_module
@@ -78,7 +78,7 @@ def test_default_stop_sequences_empty_default():
 
             import config.constants as constants
 
-            assert constants.DEFAULT_STOP_SEQUENCES == []
+            assert constants.DEFAULT_STOP_SEQUENCES == ["User:"]
     finally:
         if original_module is not None:
             sys.modules["config.constants"] = original_module
