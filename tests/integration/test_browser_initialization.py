@@ -332,7 +332,6 @@ async def test_init_proxy_settings_applied():
     proxy_config = {"server": "http://127.0.0.1:8080"}
 
     # Create mock server state with proper proxy settings
-    from api_utils.server_state import state as real_state
 
     with (
         patch.dict("os.environ", {"LAUNCH_MODE": "debug"}),

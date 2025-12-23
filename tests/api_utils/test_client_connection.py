@@ -217,7 +217,7 @@ async def test_check_client_connection_via_is_disconnected():
 async def test_check_client_connection_outer_exception():
     """
     Test scenario: is_disconnected() throws exception
-    Expected: Return False (lines 53-54)
+    Expected: Exception is re-raised (outer exception handler re-raises)
     """
     req_id = "test_req"
     request = MagicMock(spec=Request)
@@ -231,11 +231,9 @@ async def test_check_client_connection_outer_exception():
     # is_disconnected() throws exception
     request.is_disconnected = AsyncMock(side_effect=Exception("is_disconnected error"))
 
-    # Execute
-    result = await check_client_connection(req_id, request)
-
-    # Verify: Return False (lines 53-54 executed)
-    assert result is False
+    # Execute and verify exception is re-raised
+    with pytest.raises(Exception, match="is_disconnected error"):
+        await check_client_connection(req_id, request)
 
 
 # ============================================================================

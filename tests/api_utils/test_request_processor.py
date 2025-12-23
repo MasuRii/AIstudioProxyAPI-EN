@@ -23,13 +23,13 @@ from fastapi import HTTPException, Request
 from playwright.async_api import Error as PlaywrightAsyncError
 
 from api_utils.context_types import RequestContext
-from api_utils.server_state import state
 from api_utils.request_processor import (
     _analyze_model_requirements,
     _handle_model_switch_failure,
     _prepare_and_validate_request,
     _validate_page_status,
 )
+from api_utils.server_state import state
 from models import ChatCompletionRequest, Message
 
 # ==================== Unit Tests for Helper Functions ====================
@@ -275,7 +275,7 @@ class TestPrepareAndValidateRequest:
                 return_value=None,
             ),
             patch(
-                "api_utils.request_processor.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS",
+                "config.settings.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS",
                 True,
             ),
         ):
@@ -412,7 +412,7 @@ class TestPrepareAndValidateRequest:
                 return_value=None,
             ),
             patch(
-                "api_utils.request_processor.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS",
+                "config.settings.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS",
                 True,
             ),
         ):
@@ -458,7 +458,7 @@ class TestPrepareAndValidateRequest:
                 return_value=None,
             ),
             patch(
-                "api_utils.request_processor.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS",
+                "config.settings.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS",
                 True,
             ),
         ):
@@ -1230,9 +1230,7 @@ async def test_prepare_and_validate_request_attachments(
 ):
     # Mock ONLY_COLLECT_CURRENT_USER_ATTACHMENTS to True
     with (
-        patch(
-            "api_utils.request_processor.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS", True
-        ),
+        patch("config.settings.ONLY_COLLECT_CURRENT_USER_ATTACHMENTS", True),
         patch("api_utils.request_processor.validate_chat_request"),
         patch(
             "api_utils.request_processor.prepare_combined_prompt",
@@ -1614,7 +1612,6 @@ async def test_process_request_refactored_success(
     """Test successful request processing flow through all stages."""
     mock_future = asyncio.Future()
     mock_check_disconnected = MagicMock(return_value=False)
-    mock_disconnect_task = MagicMock()
 
     # Setup mocks for all refactored steps
     patches = {

@@ -1,6 +1,20 @@
 # Enforce LF line endings for all text files (cross-platform consistency)
 * text=auto eol=lf
 
+# =============================================================================
+# TRANSLATION FORK MERGE STRATEGY
+# =============================================================================
+# This is an English translation fork of a Chinese upstream repository.
+# The README.md will always conflict because:
+#   - Fork: English README (intentional localization)
+#   - Upstream: Chinese README
+#
+# The 'merge=ours' strategy tells Git to always keep our (fork's) version
+# during merges. This serves as additional protection alongside the workflow
+# conflict handling in .github/workflows/upstream-sync.yml
+# =============================================================================
+README.md merge=ours
+
 # Binary files (no line ending conversion)
 *.png binary
 *.jpg binary

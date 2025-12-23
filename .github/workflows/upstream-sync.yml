@@ -6,6 +6,15 @@
 #
 # Fork: MasuRii/AIstudioProxyAPI-EN (main)
 # Upstream: CJackHwang/AIstudioProxyAPI (main)
+#
+# CONFLICT HANDLING:
+# This is an English translation fork of a Chinese upstream. The README.md
+# will ALWAYS conflict because:
+#   - Fork: English README (intentional localization)
+#   - Upstream: Chinese README
+#
+# The workflow auto-resolves README.md conflicts by keeping the fork's version.
+# Other conflicts will fail the workflow and require manual intervention.
 # =============================================================================
 
 name: Sync with Upstream
@@ -128,6 +137,12 @@ jobs:
       # -----------------------------------------------------------------------
       # Step 5: Create sync branch with upstream changes
       # -----------------------------------------------------------------------
+      # CONFLICT RESOLUTION STRATEGY:
+      # 1. Attempt merge with upstream
+      # 2. If conflicts occur, check if ONLY expected files conflict (README.md)
+      # 3. Auto-resolve expected conflicts by keeping fork's version (--ours)
+      # 4. Fail only if unexpected files have conflicts
+      # -----------------------------------------------------------------------
       - name: Create Sync Branch
         id: create_branch
         if: steps.check_changes.outputs.has_changes == 'true' || github.event.inputs.force_sync == 'true'
@@ -148,18 +163,73 @@ jobs:
           
           echo "Merging upstream/main into sync branch..."
           
+          # =====================================================================
+          # EXPECTED CONFLICT FILES (Translation Fork)
+          # These files are expected to conflict because they are intentionally
+          # different in this English fork vs the Chinese upstream.
+          # =====================================================================
+          EXPECTED_CONFLICT_FILES="README.md"
+          
           # Attempt merge with upstream
           # Using --no-edit to auto-generate merge commit message
           if git merge upstream/main --no-edit --allow-unrelated-histories; then
             echo "merge_success=true" >> $GITHUB_OUTPUT
-            echo "::notice::Merge successful"
+            echo "auto_resolved=false" >> $GITHUB_OUTPUT
+            echo "::notice::Merge successful (no conflicts)"
           else
-            echo "merge_success=false" >> $GITHUB_OUTPUT
-            echo "::error::Merge conflicts detected. Manual intervention required."
+            echo "::warning::Merge conflicts detected. Checking if auto-resolvable..."
             
-            # Abort the merge to leave clean state
-            git merge --abort
-            exit 1
+            # Get list of conflicting files
+            CONFLICTING_FILES=$(git diff --name-only --diff-filter=U)
+            echo "Conflicting files:"
+            echo "$CONFLICTING_FILES"
+            
+            # Check if all conflicts are in expected files
+            UNEXPECTED_CONFLICTS=""
+            for file in $CONFLICTING_FILES; do
+              IS_EXPECTED=false
+              for expected in $EXPECTED_CONFLICT_FILES; do
+                if [ "$file" = "$expected" ]; then
+                  IS_EXPECTED=true
+                  break
+                fi
+              done
+              
+              if [ "$IS_EXPECTED" = false ]; then
+                UNEXPECTED_CONFLICTS="$UNEXPECTED_CONFLICTS $file"
+              fi
+            done
+            
+            # Trim whitespace
+            UNEXPECTED_CONFLICTS=$(echo "$UNEXPECTED_CONFLICTS" | xargs)
+            
+            if [ -n "$UNEXPECTED_CONFLICTS" ]; then
+              # Unexpected conflicts found - fail the workflow
+              echo "merge_success=false" >> $GITHUB_OUTPUT
+              echo "auto_resolved=false" >> $GITHUB_OUTPUT
+              echo "::error::Unexpected conflicts in: $UNEXPECTED_CONFLICTS"
+              echo "::error::Manual intervention required for these files."
+              
+              # Abort the merge to leave clean state
+              git merge --abort
+              exit 1
+            else
+              # Only expected conflicts - auto-resolve by keeping fork's version
+              echo "::notice::All conflicts are in expected files. Auto-resolving..."
+              
+              for file in $CONFLICTING_FILES; do
+                echo "  Resolving $file by keeping fork's version (--ours)..."
+                git checkout --ours "$file"
+                git add "$file"
+              done
+              
+              # Complete the merge with resolved conflicts
+              git commit --no-edit
+              
+              echo "merge_success=true" >> $GITHUB_OUTPUT
+              echo "auto_resolved=true" >> $GITHUB_OUTPUT
+              echo "::notice::Merge successful (auto-resolved expected conflicts)"
+            fi
           fi
 
       # -----------------------------------------------------------------------
@@ -193,6 +263,7 @@ jobs:
             - **Upstream Repository**: [CJackHwang/AIstudioProxyAPI](https://github.com/CJackHwang/AIstudioProxyAPI)
             - **Commits Behind**: ${{ steps.check_changes.outputs.commits_behind }}
             - **Sync Date**: ${{ steps.check_changes.outputs.sync_date }}
+            - **Auto-resolved Conflicts**: ${{ steps.create_branch.outputs.auto_resolved == 'true' && '✅ Yes (README.md kept from fork)' || '❌ None' }}
 
             ### Recent Upstream Commits
             ```
@@ -203,6 +274,7 @@ jobs:
             - Please review changes carefully before merging
             - Check for any conflicts with fork-specific modifications
             - Ensure translation/localization files are preserved
+            ${{ steps.create_branch.outputs.auto_resolved == 'true' && '- ⚠️ **README.md conflict was auto-resolved** - The English README from this fork was preserved' || '' }}
 
             ---
             *This PR was automatically generated by the [Upstream Sync Workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*
@@ -229,13 +301,23 @@ jobs:
             
             if [ "${{ steps.create_branch.outputs.merge_success }}" == "true" ]; then
               echo "Merge: Successful"
+              
+              if [ "${{ steps.create_branch.outputs.auto_resolved }}" == "true" ]; then
+                echo "Conflicts: Auto-resolved (expected files only)"
+                echo "  - README.md: Kept fork's English version"
+              else
+                echo "Conflicts: None"
+              fi
+              
               echo "PR Created: Yes"
               echo "Branch: ${{ steps.create_branch.outputs.branch_name }}"
             else
-              echo "Merge: Failed (conflicts detected)"
+              echo "Merge: Failed (unexpected conflicts detected)"
               echo "PR Created: No"
               echo ""
               echo "Manual intervention required to resolve conflicts."
+              echo "Expected conflict files (auto-resolved): README.md"
+              echo "Unexpected conflicts require manual resolution."
             fi
           else
             echo "Status: Fork is up to date with upstream"

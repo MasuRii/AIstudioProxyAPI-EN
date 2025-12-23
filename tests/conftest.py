@@ -28,8 +28,8 @@ def global_mock_error_snapshots():
 @pytest.fixture(autouse=True)
 def reset_global_state():
     """Reset GlobalState and ServerState before each test to ensure isolation."""
-    from config.global_state import GlobalState
     from api_utils.server_state import state
+    from config.global_state import GlobalState
 
     GlobalState.reset_quota_status()
     GlobalState.IS_RECOVERING = False

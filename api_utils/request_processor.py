@@ -31,7 +31,6 @@ from browser_utils.page_controller import PageController
 # --- Configuration Module Imports ---
 from config import (
     MODEL_NAME,
-    ONLY_COLLECT_CURRENT_USER_ATTACHMENTS,
     RESPONSE_COMPLETION_TIMEOUT,
     SUBMIT_BUTTON_SELECTOR,
     UPLOAD_FILES_DIR,

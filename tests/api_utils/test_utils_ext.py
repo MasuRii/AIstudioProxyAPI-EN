@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
+from api_utils.server_state import state
 from api_utils.utils_ext.files import (
     _extension_for_mime,
     extract_data_url_to_local,
@@ -16,7 +17,6 @@ from api_utils.utils_ext.stream import clear_stream_queue, use_stream_response
 from api_utils.utils_ext.tokens import calculate_usage_stats, estimate_tokens
 from api_utils.utils_ext.validation import validate_chat_request
 from models import Message
-from api_utils.server_state import state
 
 # --- tokens.py tests ---
 

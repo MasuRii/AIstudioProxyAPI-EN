@@ -1,5 +1,6 @@
-from unittest.mock import AsyncMock, MagicMock, patch, call
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from playwright.async_api import Error as PlaywrightAsyncError
 
