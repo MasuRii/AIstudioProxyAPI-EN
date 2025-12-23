@@ -472,9 +472,13 @@ class FunctionCallingController(BaseController):
         )
 
         try:
-            # Step 0: Disable Google Search if enabled (blocks FC)
-            from config import GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR
+            # Step 0: Disable Google Search and URL Context if enabled (blocks FC)
+            from config import (
+                GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR,
+                USE_URL_CONTEXT_SELECTOR,
+            )
 
+            # 0a. Disable Google Search
             search_toggle = self.page.locator(
                 GROUNDING_WITH_GOOGLE_SEARCH_TOGGLE_SELECTOR
             )
@@ -487,6 +491,19 @@ class FunctionCallingController(BaseController):
                         f"[{self.req_id}] Disabling Google Search to enable function calling"
                     )
                     await search_toggle.click(timeout=CLICK_TIMEOUT_MS)
+                    await asyncio.sleep(0.5)
+
+            # 0b. Disable URL Context
+            url_toggle = self.page.locator(USE_URL_CONTEXT_SELECTOR)
+            if await url_toggle.count() > 0 and await url_toggle.is_visible(
+                timeout=2000
+            ):
+                is_checked = await url_toggle.get_attribute("aria-checked")
+                if is_checked == "true":
+                    self.logger.info(
+                        f"[{self.req_id}] Disabling URL Context to enable function calling"
+                    )
+                    await url_toggle.click(timeout=CLICK_TIMEOUT_MS)
                     await asyncio.sleep(0.5)
 
             # Step 1: Enable function calling if not already enabled

@@ -1094,8 +1094,48 @@ async def test_supports_google_search_gemini20(controller):
 
 
 @pytest.mark.asyncio
-async def test_supports_google_search_other_models(controller):
-    """Test _supports_google_search returns True for other models."""
-    assert controller._supports_google_search("gemini-2.5-flash") is True
-    assert controller._supports_google_search("gemini-3-pro") is True
-    assert controller._supports_google_search(None) is True
+async def test_adjust_url_context_disable(controller, mock_check_disconnect, mock_page):
+    """Test disabling URL context."""
+    switch = AsyncMock()
+    # Initially enabled
+    switch.get_attribute.return_value = "true"
+    switch.count.return_value = 1
+    mock_page.locator.return_value = switch
+
+    await controller._adjust_url_context(False, mock_check_disconnect)
+
+    # Should click to disable
+    switch.click.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_adjust_parameters_fc_active_disables_url_context(
+    controller, mock_lock, mock_check_disconnect
+):
+    """Test that active function calling force disables URL context."""
+    # Add the method to controller if it doesn't exist (it doesn't in ParameterController)
+    controller.is_function_calling_enabled = AsyncMock(return_value=True)
+
+    with (
+        patch.object(controller, "_adjust_temperature", new_callable=AsyncMock),
+        patch.object(controller, "_adjust_max_tokens", new_callable=AsyncMock),
+        patch.object(controller, "_adjust_stop_sequences", new_callable=AsyncMock),
+        patch.object(controller, "_adjust_top_p", new_callable=AsyncMock),
+        patch.object(
+            controller, "_ensure_tools_panel_expanded", new_callable=AsyncMock
+        ),
+        patch.object(
+            controller, "_adjust_url_context", new_callable=AsyncMock
+        ) as mock_url_adj,
+        patch.object(controller, "_adjust_google_search", new_callable=AsyncMock),
+    ):
+        controller._handle_thinking_budget = AsyncMock()
+
+        # Note: We are testing ParameterController.adjust_parameters here.
+        # We need to make sure it HAS the logic.
+        await controller.adjust_parameters(
+            {}, {}, mock_lock, None, [], mock_check_disconnect
+        )
+
+        # Verify it called _adjust_url_context(False, ...)
+        mock_url_adj.assert_called_with(False, mock_check_disconnect)

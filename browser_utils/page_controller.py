@@ -99,8 +99,16 @@ class PageController(
         top_p = request_params.get("top_p", DEFAULT_TOP_P)
         await self._adjust_top_p(top_p, check_client_disconnected)
         await self._ensure_tools_panel_expanded(check_client_disconnected)
-        if ENABLE_URL_CONTEXT:
-            await self._open_url_content(check_client_disconnected)
+
+        # Force disable URL context if function calling is active
+        is_fc_enabled = await self.is_function_calling_enabled(
+            check_client_disconnected
+        )
+        if is_fc_enabled:
+            await self._adjust_url_context(False, check_client_disconnected)
+        elif ENABLE_URL_CONTEXT:
+            await self._adjust_url_context(True, check_client_disconnected)
+
         await self._handle_thinking_budget(
             request_params,
             page_params_cache,
