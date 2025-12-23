@@ -13,30 +13,28 @@ from browser_utils.initialization.network import (
     _setup_model_list_interception,
     setup_network_interception_and_scripts,
 )
+from config import settings
 
 
 @pytest.mark.asyncio
-async def test_setup_disabled():
-    """Test early return when network interception disabled"""
+@pytest.mark.parametrize(
+    "interception_enabled, scripts_enabled, should_intercept, should_scripts",
+    [
+        (False, False, False, False),
+        (True, True, True, True),
+        (True, False, True, False),
+        (False, True, False, True),
+    ],
+)
+async def test_setup_network_and_scripts_combinations(
+    interception_enabled, scripts_enabled, should_intercept, should_scripts
+):
+    """Test all combinations of network interception and script injection toggles"""
     mock_context = AsyncMock()
 
     with (
-        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", False),
-        patch("config.settings.ENABLE_SCRIPT_INJECTION", False),
-    ):
-        await setup_network_interception_and_scripts(mock_context)
-
-        mock_context.route.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_setup_enabled():
-    """Test setup when both flags enabled"""
-    mock_context = AsyncMock()
-
-    with (
-        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", True),
-        patch("config.settings.ENABLE_SCRIPT_INJECTION", True),
+        patch.object(settings, "NETWORK_INTERCEPTION_ENABLED", interception_enabled),
+        patch.object(settings, "ENABLE_SCRIPT_INJECTION", scripts_enabled),
         patch(
             "browser_utils.initialization.network._setup_model_list_interception"
         ) as mock_setup,
@@ -45,47 +43,16 @@ async def test_setup_enabled():
         ) as mock_scripts,
     ):
         await setup_network_interception_and_scripts(mock_context)
-        mock_setup.assert_called_once_with(mock_context)
-        mock_scripts.assert_called_once_with(mock_context)
 
+        if should_intercept:
+            mock_setup.assert_called_once_with(mock_context)
+        else:
+            mock_setup.assert_not_called()
 
-@pytest.mark.asyncio
-async def test_setup_granular_control():
-    """Test granular control of network interception and script injection"""
-    mock_context = AsyncMock()
-
-    # Case 1: Network enabled, Scripts disabled
-    with (
-        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", True),
-        patch("config.settings.ENABLE_SCRIPT_INJECTION", False),
-        patch(
-            "browser_utils.initialization.network._setup_model_list_interception"
-        ) as mock_setup,
-        patch(
-            "browser_utils.initialization.network.add_init_scripts_to_context"
-        ) as mock_scripts,
-    ):
-        await setup_network_interception_and_scripts(mock_context)
-        mock_setup.assert_called_once_with(mock_context)
-        mock_scripts.assert_not_called()
-
-    mock_setup.reset_mock()
-    mock_scripts.reset_mock()
-
-    # Case 2: Network disabled, Scripts enabled
-    with (
-        patch("config.settings.NETWORK_INTERCEPTION_ENABLED", False),
-        patch("config.settings.ENABLE_SCRIPT_INJECTION", True),
-        patch(
-            "browser_utils.initialization.network._setup_model_list_interception"
-        ) as mock_setup,
-        patch(
-            "browser_utils.initialization.network.add_init_scripts_to_context"
-        ) as mock_scripts,
-    ):
-        await setup_network_interception_and_scripts(mock_context)
-        mock_setup.assert_not_called()
-        mock_scripts.assert_called_once_with(mock_context)
+        if should_scripts:
+            mock_scripts.assert_called_once_with(mock_context)
+        else:
+            mock_scripts.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -133,7 +100,8 @@ async def test_setup_exception_handling():
     mock_context = AsyncMock()
 
     with (
-        patch("config.settings.ENABLE_SCRIPT_INJECTION", True),
+        patch.object(settings, "ENABLE_SCRIPT_INJECTION", True),
+        patch.object(settings, "NETWORK_INTERCEPTION_ENABLED", True),
         patch(
             "browser_utils.initialization.network._setup_model_list_interception",
             side_effect=RuntimeError("Route setup failed"),

@@ -5,6 +5,8 @@ import logging
 
 from playwright.async_api import BrowserContext as AsyncBrowserContext
 
+from config import settings
+
 from .scripts import add_init_scripts_to_context
 
 logger = logging.getLogger("AIStudioProxyServer")
@@ -13,8 +15,6 @@ logger = logging.getLogger("AIStudioProxyServer")
 async def setup_network_interception_and_scripts(context: AsyncBrowserContext):
     """Setup network interception and script injection"""
     try:
-        from config import settings
-
         # Check for network interception toggle
         if settings.NETWORK_INTERCEPTION_ENABLED:
             # Setup network interception
