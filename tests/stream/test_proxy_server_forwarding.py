@@ -128,10 +128,14 @@ def proxy_server(mock_cert_manager, mock_proxy_connector, mock_interceptor):
     """Create ProxyServer instance with mocked dependencies."""
     with patch("logging.getLogger"):
         queue = multiprocessing.Queue()
+        # Immediately call cancel_join_thread to prevent feeder thread from hanging the process
+        queue.cancel_join_thread()
         server = ProxyServer(
             host="127.0.0.1", port=3120, intercept_domains=["*.google.com"], queue=queue
         )
-        return server
+        yield server
+        # Explicitly close the queue to release resources
+        queue.close()
 
 
 # ==================== TESTS: _forward_data (No Interception) ====================

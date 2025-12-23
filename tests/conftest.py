@@ -391,3 +391,15 @@ def real_locks_mock_browser():
             break
 
     state.reset()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    Clean up any remaining multiprocessing children to prevent hangs.
+    This is especially important in CI environments.
+    """
+    import multiprocessing
+
+    for child in multiprocessing.active_children():
+        child.terminate()
+        child.join(timeout=1.0)
