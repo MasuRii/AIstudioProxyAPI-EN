@@ -5,6 +5,11 @@
 # of an upstream project with pre-existing code quality issues. These jobs will
 # report issues but won't block the workflow from completing successfully.
 # As code quality improves, these can be made blocking again.
+#
+# CACHING STRATEGY:
+# - Poetry virtualenv: Cached per OS/Python version/poetry.lock hash
+# - Pip cache: Cached per OS/Python version for faster package resolution
+# - Playwright browsers: Cached per OS/Playwright version (test job only)
 name: PR Check
 
 on:
@@ -21,6 +26,8 @@ concurrency:
 env:
   POETRY_VERSION: "1.8.3"
   PYTHON_KEYRING_BACKEND: "keyring.backends.null.Keyring"
+  # Playwright browser cache location (Linux)
+  PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
 
 jobs:
   lint:
@@ -49,7 +56,15 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Cache Poetry dependencies
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Cache Poetry virtualenv
         uses: actions/cache@v4
         id: cache-deps
         with:
@@ -91,7 +106,15 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Cache Poetry dependencies
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Cache Poetry virtualenv
         uses: actions/cache@v4
         id: cache-deps
         with:
@@ -135,7 +158,15 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Cache Poetry dependencies
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Cache Poetry virtualenv
         uses: actions/cache@v4
         id: cache-deps
         with:
@@ -148,8 +179,28 @@ jobs:
         if: steps.cache-deps.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
+      - name: Get Playwright version
+        id: playwright-version
+        run: |
+          PLAYWRIGHT_VERSION=$(poetry run python -c "import playwright; print(playwright.__version__)" 2>/dev/null || echo "unknown")
+          echo "version=$PLAYWRIGHT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: cache-playwright
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install Playwright browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
         run: poetry run playwright install chromium --with-deps
+
+      - name: Install Playwright system dependencies
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: poetry run playwright install-deps chromium
 
       - name: Run pytest with coverage
         run: |
