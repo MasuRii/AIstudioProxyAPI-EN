@@ -74,7 +74,6 @@ jobs:
             venv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
       - name: Run Ruff linting
@@ -124,7 +123,6 @@ jobs:
             venv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
       - name: Run Pyright type checking
@@ -176,7 +174,6 @@ jobs:
             venv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
 
       - name: Get Playwright version
