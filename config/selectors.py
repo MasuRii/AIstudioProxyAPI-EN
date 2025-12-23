@@ -140,8 +140,36 @@ THINKING_BUDGET_TOGGLE_OLD_ROOT_SELECTOR = (
 # Selectors for detecting and parsing function call widgets in AI Studio responses.
 # These are displayed when the model wants to call a function.
 
-# Function call widget container (wraps the entire function call block)
+# Native Function Call Response Selectors (AI Studio's built-in function calling UI)
+# These are used when native function calling is enabled and the model returns tool calls.
+
+# Native function call chunk container (primary selector for native FC responses)
+NATIVE_FUNCTION_CALL_CHUNK_SELECTOR = (
+    "ms-function-call-chunk, ms-prompt-chunk:has(ms-function-call-chunk)"
+)
+
+# Native function call code block (contains function name and args)
+NATIVE_FUNCTION_CALL_CODE_BLOCK_SELECTOR = (
+    'ms-function-call-chunk ms-code-block[icon="function"], '
+    "ms-function-call-chunk ms-code-block"
+)
+
+# Native function call name selector (in the expansion panel header)
+NATIVE_FUNCTION_CALL_NAME_SELECTOR = (
+    "ms-function-call-chunk ms-code-block mat-panel-title span:not(.material-symbols-outlined), "
+    "ms-function-call-chunk ms-code-block .mat-expansion-panel-header-title span:nth-child(2)"
+)
+
+# Native function call arguments selector (JSON in pre > code block)
+NATIVE_FUNCTION_CALL_ARGS_SELECTOR = (
+    "ms-function-call-chunk ms-code-block pre code, "
+    "ms-function-call-chunk ms-code-block .mat-expansion-panel-body pre code, "
+    "ms-function-call-chunk pre code"
+)
+
+# Function call widget container (wraps the entire function call block) - legacy/fallback
 FUNCTION_CALL_WIDGET_SELECTOR = (
+    "ms-function-call-chunk, "
     "ms-function-call, "
     "[data-test-id='function-call'], "
     "[data-testid='function-call'], "
@@ -152,6 +180,7 @@ FUNCTION_CALL_WIDGET_SELECTOR = (
 
 # Function call header containing the function name
 FUNCTION_CALL_NAME_SELECTOR = (
+    "ms-function-call-chunk ms-code-block mat-panel-title span:not(.material-symbols-outlined), "
     "ms-function-call .function-name, "
     "[data-test-id='function-call'] .function-name, "
     ".function-call-widget .function-name, "
@@ -162,6 +191,7 @@ FUNCTION_CALL_NAME_SELECTOR = (
 
 # Function call arguments/parameters container (usually JSON or formatted view)
 FUNCTION_CALL_ARGS_SELECTOR = (
+    "ms-function-call-chunk ms-code-block pre code, "
     "ms-function-call .function-args, "
     "ms-function-call .function-arguments, "
     "ms-function-call pre, "
@@ -176,6 +206,7 @@ FUNCTION_CALL_ARGS_SELECTOR = (
 
 # Code block containing function call JSON (alternative to structured widget)
 FUNCTION_CALL_CODE_BLOCK_SELECTOR = (
+    "ms-function-call-chunk ms-code-block, "
     "ms-chat-turn pre:has(code.language-json), "
     "ms-chat-turn pre:has(code.language-tool_code), "
     "ms-chat-turn .code-block:has-text('function_call'), "

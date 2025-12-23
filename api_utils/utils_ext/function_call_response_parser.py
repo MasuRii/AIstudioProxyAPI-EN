@@ -24,6 +24,9 @@ from config.selectors import (
     FUNCTION_CALL_CODE_BLOCK_SELECTOR,
     FUNCTION_CALL_NAME_SELECTOR,
     FUNCTION_CALL_WIDGET_SELECTOR,
+    NATIVE_FUNCTION_CALL_ARGS_SELECTOR,
+    NATIVE_FUNCTION_CALL_CHUNK_SELECTOR,
+    NATIVE_FUNCTION_CALL_NAME_SELECTOR,
 )
 
 
@@ -137,7 +140,8 @@ class FunctionCallResponseParser:
     ) -> bool:
         """Quickly detect if the current response contains function calls.
 
-        This is a fast check without full parsing.
+        This is a fast check without full parsing. Supports both native
+        function calling (ms-function-call-chunk) and legacy formats.
 
         Args:
             check_client_disconnected: Optional callback to check connection.
@@ -146,7 +150,15 @@ class FunctionCallResponseParser:
             True if function calls are detected, False otherwise.
         """
         try:
-            # Check for function call widgets
+            # Check for native function call chunks first (AI Studio's built-in FC)
+            native_locator = self.page.locator(NATIVE_FUNCTION_CALL_CHUNK_SELECTOR)
+            if await native_locator.count() > 0:
+                self.logger.debug(
+                    f"[{self.req_id}] Detected native function call chunk(s)"
+                )
+                return True
+
+            # Check for legacy function call widgets
             widget_locator = self.page.locator(FUNCTION_CALL_WIDGET_SELECTOR)
             if await widget_locator.count() > 0:
                 return True
@@ -168,6 +180,9 @@ class FunctionCallResponseParser:
     ) -> FunctionCallParseResult:
         """Parse all function calls from the current response.
 
+        This method supports both native function calling (AI Studio's built-in
+        ms-function-call-chunk elements) and legacy/emulated formats.
+
         Args:
             check_client_disconnected: Optional callback to check connection.
 
@@ -177,19 +192,31 @@ class FunctionCallResponseParser:
         result = FunctionCallParseResult()
 
         try:
-            # Strategy 1: Try structured widget parsing first
-            widget_calls = await self._parse_widget_function_calls()
-            if widget_calls:
-                result.function_calls.extend(widget_calls)
+            # Strategy 1: Try native function call parsing first (ms-function-call-chunk)
+            # This is the format used by AI Studio's built-in native function calling
+            native_calls = await self._parse_native_function_calls()
+            if native_calls:
+                result.function_calls.extend(native_calls)
                 result.has_function_calls = True
+                self.logger.debug(
+                    f"[{self.req_id}] Found {len(native_calls)} native function call(s)"
+                )
 
-            # Strategy 2: Try code block parsing
-            code_block_calls = await self._parse_code_block_function_calls()
-            if code_block_calls:
-                result.function_calls.extend(code_block_calls)
-                result.has_function_calls = True
+            # Strategy 2: Try structured widget parsing (legacy/fallback)
+            if not result.has_function_calls:
+                widget_calls = await self._parse_widget_function_calls()
+                if widget_calls:
+                    result.function_calls.extend(widget_calls)
+                    result.has_function_calls = True
 
-            # Strategy 3: Always try to get text content, and use text pattern matching if no calls found yet
+            # Strategy 3: Try code block parsing
+            if not result.has_function_calls:
+                code_block_calls = await self._parse_code_block_function_calls()
+                if code_block_calls:
+                    result.function_calls.extend(code_block_calls)
+                    result.has_function_calls = True
+
+            # Strategy 4: Always try to get text content, and use text pattern matching if no calls found yet
             text_calls, text_content = await self._parse_text_function_calls()
             result.text_content = text_content
 
@@ -201,7 +228,7 @@ class FunctionCallResponseParser:
             result.function_calls = self._deduplicate_calls(result.function_calls)
 
             self.logger.debug(
-                f"[{self.req_id}] Parsed {len(result.function_calls)} function call(s)"
+                f"[{self.req_id}] Parsed {len(result.function_calls)} function call(s) total"
             )
 
         except Exception as e:
@@ -210,6 +237,134 @@ class FunctionCallResponseParser:
             result.parse_errors.append(error_msg)
 
         return result
+
+    async def _parse_native_function_calls(self) -> List[Any]:
+        """Parse function calls from AI Studio's native function call chunks.
+
+        Native function calls use the ms-function-call-chunk element with:
+        - Function name in mat-panel-title span (after the icon)
+        - Arguments as JSON in pre > code block
+
+        Returns:
+            List of parsed function calls from native chunks.
+        """
+        calls: List[Any] = []
+
+        try:
+            # Look for native function call chunks
+            chunks = self.page.locator(NATIVE_FUNCTION_CALL_CHUNK_SELECTOR)
+            chunk_count = await chunks.count()
+
+            self.logger.debug(
+                f"[{self.req_id}] Found {chunk_count} native function call chunk(s)"
+            )
+
+            for i in range(chunk_count):
+                try:
+                    chunk = chunks.nth(i)
+                    call = await self._parse_single_native_chunk(chunk)
+                    if call:
+                        calls.append(call)
+                        self.logger.debug(
+                            f"[{self.req_id}] Parsed native function call: {call.name}"
+                        )
+                except Exception as e:
+                    self.logger.debug(
+                        f"[{self.req_id}] Error parsing native chunk {i}: {e}"
+                    )
+
+        except Exception as e:
+            self.logger.debug(
+                f"[{self.req_id}] Error accessing native function call chunks: {e}"
+            )
+
+        return calls
+
+    async def _parse_single_native_chunk(self, chunk: Locator) -> Optional[Any]:
+        """Parse a single native function call chunk element.
+
+        Args:
+            chunk: Locator for the ms-function-call-chunk element.
+
+        Returns:
+            ParsedFunctionCall if successful, None otherwise.
+        """
+        try:
+            # Extract function name from mat-panel-title span
+            # The structure is: mat-panel-title > span.material-symbols-outlined (icon) > span (name)
+            name_elem = chunk.locator(NATIVE_FUNCTION_CALL_NAME_SELECTOR)
+
+            function_name = ""
+            if await name_elem.count() > 0:
+                function_name = await name_elem.first.inner_text(timeout=2000)
+                function_name = function_name.strip()
+
+            # If name not found via selector, try alternative extraction
+            if not function_name:
+                # Try to get from mat-expansion-panel-header-title
+                header = chunk.locator(
+                    "mat-panel-title, .mat-expansion-panel-header-title"
+                )
+                if await header.count() > 0:
+                    header_text = await header.first.inner_text(timeout=2000)
+                    # Remove icon text and common prefixes
+                    function_name = self._extract_function_name_from_header(header_text)
+
+            if not function_name:
+                self.logger.debug(
+                    f"[{self.req_id}] Could not extract function name from native chunk"
+                )
+                return None
+
+            # Extract arguments from pre > code block
+            args_elem = chunk.locator(NATIVE_FUNCTION_CALL_ARGS_SELECTOR)
+            arguments: Dict[str, Any] = {}
+
+            if await args_elem.count() > 0:
+                args_text = await args_elem.first.inner_text(timeout=2000)
+                arguments = self._parse_arguments(args_text)
+                self.logger.debug(
+                    f"[{self.req_id}] Extracted arguments for {function_name}: {list(arguments.keys())}"
+                )
+
+            return _create_parsed_call(
+                name=function_name,
+                arguments=arguments,
+                raw_text=f"{function_name}({json.dumps(arguments)})",
+            )
+
+        except Exception as e:
+            self.logger.debug(f"[{self.req_id}] Error parsing native chunk: {e}")
+            return None
+
+    def _extract_function_name_from_header(self, header_text: str) -> str:
+        """Extract function name from header text, removing icons and extra content.
+
+        Args:
+            header_text: Raw text from mat-panel-title or header element.
+
+        Returns:
+            Cleaned function name.
+        """
+        if not header_text:
+            return ""
+
+        # Clean up the header text
+        lines = header_text.strip().split("\n")
+        for line in lines:
+            line = line.strip()
+            # Skip icon names and common prefixes
+            if line and line not in (
+                "function",
+                "functions",
+                "chevron_right",
+                "chevron_left",
+            ):
+                # Skip material icon names
+                if not line.startswith("expand_") and not line.startswith("download"):
+                    return line
+
+        return ""
 
     async def _parse_widget_function_calls(self) -> List[Any]:
         """Parse function calls from structured widget elements.
