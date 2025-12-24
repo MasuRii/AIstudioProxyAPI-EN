@@ -162,6 +162,7 @@ async def _prepare_and_validate_request(
     req_id: str,
     request: ChatCompletionRequest,
     check_client_disconnected: Callable,
+    fc_state: Optional[FunctionCallingState] = None,
 ) -> Tuple[str, List[str], Optional[List[Dict[str, Any]]]]:
     """Prepare and validate request, return (combined prompt, attachment path list, tool_exec_results)."""
     try:
@@ -174,6 +175,7 @@ async def _prepare_and_validate_request(
         req_id,
         getattr(request, "tools", None),
         getattr(request, "tool_choice", None),
+        fc_state=fc_state,
     )
     # Active function execution based on tools/tool_choice (supports per-request MCP endpoints)
     try:
@@ -820,7 +822,7 @@ async def _process_request_refactored(
             attachments_list,
             tool_exec_results,
         ) = await _prepare_and_validate_request(
-            req_id, request, check_client_disconnected
+            req_id, request, check_client_disconnected, fc_state=fc_state
         )
 
         # [TOOL-FORCED] If tool was executed locally (forced), return immediately bypassing AI Studio flow

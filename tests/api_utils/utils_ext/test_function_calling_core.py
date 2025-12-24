@@ -5,6 +5,11 @@ from api_utils.utils_ext.function_calling import (
     ResponseFormatter,
     ParsedFunctionCall,
     SchemaConversionError,
+    FunctionCallingMode,
+)
+from api_utils.utils_ext.function_calling_orchestrator import (
+    FunctionCallingState,
+    should_skip_tool_injection,
 )
 
 
@@ -387,6 +392,138 @@ class TestFunctionCallingCore(unittest.TestCase):
                 combined_args += chunk["function"]["arguments"]
 
         self.assertEqual(json.loads(combined_args), {"location": "SF"})
+
+
+class TestAutoModeFallback(unittest.TestCase):
+    """Test AUTO mode fallback logic for should_skip_tool_injection."""
+
+    def setUp(self):
+        self.sample_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "test_func",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ]
+
+    def test_native_mode_success_skips_injection(self):
+        """When native mode succeeds, tool injection should be skipped."""
+        state = FunctionCallingState(
+            mode=FunctionCallingMode.NATIVE,
+            native_enabled=True,
+            tools_configured=True,
+            fallback_used=False,
+        )
+        result = should_skip_tool_injection(self.sample_tools, fc_state=state)
+        self.assertTrue(result, "Should skip injection when native mode succeeded")
+
+    def test_auto_mode_native_success_skips_injection(self):
+        """When AUTO mode uses native successfully, tool injection should be skipped."""
+        state = FunctionCallingState(
+            mode=FunctionCallingMode.AUTO,
+            native_enabled=True,
+            tools_configured=True,
+            fallback_used=False,
+        )
+        result = should_skip_tool_injection(self.sample_tools, fc_state=state)
+        self.assertTrue(result, "Should skip injection when AUTO mode native succeeded")
+
+    def test_auto_mode_fallback_injects_tools(self):
+        """When AUTO mode falls back to emulated, tools MUST be injected.
+
+        This is the critical bug fix test - previously AUTO mode fallback
+        would skip injection because static config was checked instead of
+        dynamic state.
+        """
+        state = FunctionCallingState(
+            mode=FunctionCallingMode.EMULATED,  # Mode changed after fallback
+            native_enabled=False,
+            tools_configured=False,
+            fallback_used=True,  # Key indicator of fallback
+        )
+        result = should_skip_tool_injection(self.sample_tools, fc_state=state)
+        self.assertFalse(result, "MUST inject tools when AUTO falls back to emulated")
+
+    def test_emulated_mode_always_injects(self):
+        """Emulated mode should always inject tools."""
+        state = FunctionCallingState(
+            mode=FunctionCallingMode.EMULATED,
+            native_enabled=False,
+            tools_configured=False,
+            fallback_used=False,
+        )
+        result = should_skip_tool_injection(self.sample_tools, fc_state=state)
+        self.assertFalse(result, "Emulated mode must always inject tools")
+
+    def test_native_mode_failed_injects_as_fallback(self):
+        """If native mode was attempted but tools not configured, inject as safety."""
+        state = FunctionCallingState(
+            mode=FunctionCallingMode.NATIVE,
+            native_enabled=False,
+            tools_configured=False,  # Native failed to configure
+            fallback_used=False,
+        )
+        result = should_skip_tool_injection(self.sample_tools, fc_state=state)
+        self.assertFalse(result, "Should inject if native failed to configure tools")
+
+    def test_no_state_falls_back_to_static_config(self):
+        """Without fc_state, should use static config (backwards compatibility)."""
+        # This tests the fallback path when fc_state is None
+        # The actual behavior depends on FUNCTION_CALLING_MODE env var
+        result = should_skip_tool_injection(self.sample_tools, fc_state=None)
+        # Result depends on env config - just verify it doesn't crash
+        self.assertIsInstance(result, bool)
+
+    def test_empty_tools_always_skips(self):
+        """Empty tools list should always skip injection."""
+        state = FunctionCallingState(mode=FunctionCallingMode.EMULATED)
+        self.assertTrue(should_skip_tool_injection([], fc_state=state))
+        self.assertTrue(should_skip_tool_injection(None, fc_state=state))
+
+
+class TestOrchestratorEdgeCases(unittest.TestCase):
+    """Test edge cases in the FunctionCallingOrchestrator."""
+
+    def test_orchestrator_has_ensure_fc_disabled_method(self):
+        """Verify the new cleanup method exists for XML client switching scenario."""
+        from api_utils.utils_ext.function_calling_orchestrator import (
+            FunctionCallingOrchestrator,
+        )
+
+        orchestrator = FunctionCallingOrchestrator()
+        self.assertTrue(
+            hasattr(orchestrator, "_ensure_fc_disabled_when_no_tools"),
+            "Orchestrator should have _ensure_fc_disabled_when_no_tools method",
+        )
+
+    def test_get_effective_mode_no_tools_returns_emulated(self):
+        """When no tools are provided, effective mode should be EMULATED."""
+        from api_utils.utils_ext.function_calling_orchestrator import (
+            FunctionCallingOrchestrator,
+        )
+
+        orchestrator = FunctionCallingOrchestrator()
+
+        # No tools should always return EMULATED regardless of config
+        result = orchestrator.get_effective_mode(None)
+        self.assertEqual(result, FunctionCallingMode.EMULATED)
+
+        result = orchestrator.get_effective_mode([])
+        self.assertEqual(result, FunctionCallingMode.EMULATED)
+
+    def test_should_use_native_mode_false_with_no_tools(self):
+        """Native mode should not be used when no tools are provided."""
+        from api_utils.utils_ext.function_calling_orchestrator import (
+            FunctionCallingOrchestrator,
+        )
+
+        orchestrator = FunctionCallingOrchestrator()
+
+        # No tools = no native mode regardless of config
+        self.assertFalse(orchestrator.should_use_native_mode(None, None))
+        self.assertFalse(orchestrator.should_use_native_mode([], None))
 
 
 if __name__ == "__main__":

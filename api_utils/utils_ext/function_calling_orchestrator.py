@@ -122,6 +122,70 @@ class FunctionCallingOrchestrator:
         """Get the function calling cache instance."""
         return self._cache
 
+    async def _ensure_fc_disabled_when_no_tools(
+        self,
+        page_controller: PageController,
+        check_client_disconnected: Callable,
+        req_id: str,
+    ) -> None:
+        """Ensure function calling toggle is disabled when no tools are provided.
+
+        This handles the edge case where a previous request enabled FC,
+        but the current request (e.g., XML-based tools) doesn't use OpenAI-format tools.
+        We need to disable the toggle to prevent interference.
+
+        Args:
+            page_controller: PageController instance for browser automation.
+            check_client_disconnected: Callback to check client connection.
+            req_id: Request ID for logging.
+        """
+        # Only check/disable if we're in native or auto mode
+        # In emulated mode, the toggle should never have been enabled by us
+        if self._config.mode == FunctionCallingMode.EMULATED:
+            return
+
+        try:
+            # Check if FC toggle is currently enabled
+            is_enabled = await page_controller.is_function_calling_enabled(
+                check_client_disconnected, use_cache=True
+            )
+
+            if is_enabled:
+                self.logger.info(
+                    f"[{req_id}] [FC] No tools in request but FC toggle is enabled - disabling for clean state"
+                )
+                start_time = time.perf_counter()
+
+                success = await page_controller.disable_function_calling(
+                    check_client_disconnected
+                )
+
+                elapsed = time.perf_counter() - start_time
+
+                if success:
+                    # Invalidate cache since state changed
+                    self._cache.invalidate(reason="no_tools_cleanup", req_id=req_id)
+                    self.logger.info(
+                        f"[{req_id}] [FC:Perf] FC toggle disabled in {elapsed:.2f}s"
+                    )
+                else:
+                    self.logger.warning(
+                        f"[{req_id}] [FC] Failed to disable FC toggle - may affect response"
+                    )
+
+        except ClientDisconnectedError:
+            # Client gone, nothing to do
+            pass
+        except asyncio.CancelledError:
+            # Cancelled, skip cleanup
+            pass
+        except Exception as e:
+            # Non-fatal error - log and continue
+            # The request can still proceed, just with FC potentially enabled
+            self.logger.warning(
+                f"[{req_id}] [FC] Error checking/disabling FC toggle: {e}"
+            )
+
     def should_use_native_mode(
         self,
         tools: Optional[List[Dict[str, Any]]],
@@ -195,6 +259,7 @@ class FunctionCallingOrchestrator:
         3. If cache miss: converts tools and configures browser UI
         4. Updates cache on success
         5. Handles fallback if native mode fails and fallback is enabled
+        6. If no tools provided but FC was previously enabled, disables it
 
         Args:
             tools: List of OpenAI-format tool definitions.
@@ -210,11 +275,16 @@ class FunctionCallingOrchestrator:
         total_start = time.perf_counter()
         state = FunctionCallingState(mode=self.get_effective_mode(tools))
 
-        # No tools or emulated mode - nothing to configure
+        # No tools provided - ensure FC toggle is disabled if it was previously enabled
         if not tools or len(tools) == 0:
+            await self._ensure_fc_disabled_when_no_tools(
+                page_controller=page_controller,
+                check_client_disconnected=check_client_disconnected,
+                req_id=req_id,
+            )
             if self._config.debug:
                 self.logger.debug(
-                    f"[{req_id}] [FC] No tools in request, skipping FC setup"
+                    f"[{req_id}] [FC] No tools in request, FC setup skipped/disabled"
                 )
             return state
 
@@ -553,22 +623,46 @@ def reset_orchestrator() -> None:
 
 def should_skip_tool_injection(
     tools: Optional[List[Dict[str, Any]]],
+    fc_state: Optional[FunctionCallingState] = None,
 ) -> bool:
     """Determine if tool catalog injection should be skipped.
 
     In native mode, the tool catalog is configured via UI automation,
     so we should skip injecting it into the prompt text.
 
+    When fc_state is provided (from prepare_request), it takes precedence
+    over static config to handle AUTO mode fallback correctly.
+
     Args:
         tools: List of tool definitions from the request.
+        fc_state: Optional dynamic state from FunctionCallingOrchestrator.
+                  If provided, uses the actual resolved mode (handles fallback).
 
     Returns:
-        True if tool injection should be skipped (native mode active),
-        False if tool catalog should be injected (emulated mode).
+        True if tool injection should be skipped (native mode successfully configured),
+        False if tool catalog should be injected (emulated mode or fallback).
     """
     if not tools or len(tools) == 0:
         return True  # No tools, nothing to inject anyway
 
+    # If we have dynamic state from the orchestrator, use it
+    # This correctly handles AUTO mode fallback scenarios
+    if fc_state is not None:
+        # Only skip injection if native mode was successfully configured
+        if fc_state.native_enabled and fc_state.tools_configured:
+            return True
+        # If fallback was used, we need to inject tools
+        if fc_state.fallback_used:
+            return False
+        # If mode is explicitly EMULATED (either configured or after fallback)
+        if fc_state.mode == FunctionCallingMode.EMULATED:
+            return False
+        # Native/Auto mode attempted but tools not configured - inject as fallback
+        if not fc_state.tools_configured:
+            return False
+        return True
+
+    # Fall back to static config check (backwards compatibility)
     mode_str = FUNCTION_CALLING_MODE.lower()
 
     # In emulated mode, always inject tools into prompt

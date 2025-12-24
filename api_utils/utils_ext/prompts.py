@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 from urllib.parse import unquote, urlparse
 
 from api_utils.utils_ext.files import extract_data_url_to_local, save_blob_to_local
@@ -10,12 +10,16 @@ from api_utils.utils_ext.function_calling_orchestrator import should_skip_tool_i
 from logging_utils import set_request_id
 from models import Message
 
+if TYPE_CHECKING:
+    from api_utils.utils_ext.function_calling_orchestrator import FunctionCallingState
+
 
 def prepare_combined_prompt(
     messages: List[Message],
     req_id: str,
     tools: Optional[List[Dict[str, Any]]] = None,
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
+    fc_state: Optional["FunctionCallingState"] = None,
 ) -> Tuple[str, List[str]]:
     """Prepare combined prompt"""
     logger = logging.getLogger("AIStudioProxyServer")
@@ -36,10 +40,11 @@ def prepare_combined_prompt(
 
     # If available tools are declared, inject the tool catalog before the prompt to help the model know available functions
     # Skip injection when using native function calling mode (tools configured via UI)
+    # Pass fc_state to handle AUTO mode fallback correctly
     if isinstance(tools, list) and len(tools) > 0:
-        if should_skip_tool_injection(tools):
+        if should_skip_tool_injection(tools, fc_state=fc_state):
             logger.debug(
-                f"[{req_id}] Skipping tool catalog injection - native/auto mode active"
+                f"[{req_id}] Skipping tool catalog injection - native mode active and configured"
             )
         else:
             try:
