@@ -163,6 +163,12 @@ class HttpInterceptor:
                             array_tool_calls = payload[10]
                             func_name = array_tool_calls[0]
                             params = self.parse_toolcall_params(array_tool_calls[1])
+                            # Log warning if params are empty for tracking potential parse failures
+                            if not params:
+                                self.logger.warning(
+                                    f"[FC:Wire] Function '{func_name}' parsed with empty args - "
+                                    f"may indicate wire format parsing failure. Raw: {array_tool_calls[1][:200] if array_tool_calls[1] else 'None'}..."
+                                )
                             resp["function"].append(
                                 {"name": func_name, "params": params}
                             )

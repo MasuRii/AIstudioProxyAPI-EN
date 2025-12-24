@@ -32,6 +32,18 @@ _FUNCTION_CALL_TEXT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Pattern to strip control characters like <ctrl46> from body content
+# These appear in AI Studio's wire format as string delimiters
+# Also captures trailing } or { that may follow control chars (JSON leak artifacts)
+_CONTROL_CHAR_PATTERN = re.compile(r"<ctrl\d+>[\}\{]?")
+
+
+def _clean_body_text(body: str) -> str:
+    """Clean body text by removing control characters and JSON artifacts."""
+    if not body:
+        return body
+    return _CONTROL_CHAR_PATTERN.sub("", body)
+
 
 async def resilient_stream_generator(
     req_id: str,
@@ -231,7 +243,7 @@ async def gen_sse_from_aux_stream(
 
             typed_data: Dict[str, Any] = cast(Dict[str, Any], data)
             reason = str(typed_data.get("reason", ""))
-            body = str(typed_data.get("body", ""))
+            body = _clean_body_text(str(typed_data.get("body", "")))
             done = bool(typed_data.get("done", False))
             function = cast(List[Any], typed_data.get("function", []))
 
