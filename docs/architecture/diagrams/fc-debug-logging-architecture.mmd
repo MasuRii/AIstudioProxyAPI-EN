@@ -1,0 +1,97 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'secondaryColor': '#fff3e0', 'tertiaryColor': '#f3e5f5'}}}%%
+flowchart TB
+    subgraph Config["Environment Configuration"]
+        ENV[".env Variables"]
+        FC_MASTER["FC_DEBUG_ENABLED"]
+        FC_MODULES["FC_DEBUG_*<br>per-module flags"]
+        FC_LEVELS["FC_DEBUG_LEVEL_*<br>per-module levels"]
+        FC_TRUNC["FC_DEBUG_TRUNCATE_*<br>truncation config"]
+    end
+
+    subgraph Singleton["FunctionCallingDebugLogger - Singleton"]
+        LOGGER["FunctionCallingDebugLogger"]
+        CONFIG["FCDebugConfig"]
+        TRUNC["TruncationConfig"]
+        
+        subgraph ModuleLoggers["Module Loggers"]
+            ORCH_LOG["ORCHESTRATOR Logger"]
+            UI_LOG["UI Logger"]
+            CACHE_LOG["CACHE Logger"]
+            WIRE_LOG["WIRE Logger"]
+            DOM_LOG["DOM Logger"]
+            SCHEMA_LOG["SCHEMA Logger"]
+            RESP_LOG["RESPONSE Logger"]
+        end
+    end
+
+    subgraph Components["FC Components - Callers"]
+        ORCHESTRATOR["FunctionCallingOrchestrator"]
+        UI_CTRL["PageController FC Module"]
+        CACHE["FunctionCallingCache"]
+        WIRE_PARSER["StreamInterceptor"]
+        DOM_PARSER["FunctionCallResponseParser"]
+        SCHEMA_CONV["SchemaConverter"]
+        RESP_FMT["ResponseFormatter"]
+    end
+
+    subgraph LogFiles["Log Files - logs/fc_debug/"]
+        ORCH_FILE["fc_orchestrator.log"]
+        UI_FILE["fc_ui.log"]
+        CACHE_FILE["fc_cache.log"]
+        WIRE_FILE["fc_wire.log"]
+        DOM_FILE["fc_dom.log"]
+        SCHEMA_FILE["fc_schema.log"]
+        RESP_FILE["fc_response.log"]
+        COMBINED["fc_combined.log<br>- optional -"]
+    end
+
+    %% Config flow
+    ENV --> FC_MASTER
+    ENV --> FC_MODULES
+    ENV --> FC_LEVELS
+    ENV --> FC_TRUNC
+    FC_MASTER --> CONFIG
+    FC_MODULES --> CONFIG
+    FC_LEVELS --> CONFIG
+    FC_TRUNC --> TRUNC
+
+    %% Singleton initialization
+    CONFIG --> LOGGER
+    TRUNC --> LOGGER
+    LOGGER --> ModuleLoggers
+
+    %% Component calls
+    ORCHESTRATOR -->|"get_fc_logger + FCModule.ORCHESTRATOR"| ORCH_LOG
+    UI_CTRL -->|"get_fc_logger + FCModule.UI"| UI_LOG
+    CACHE -->|"get_fc_logger + FCModule.CACHE"| CACHE_LOG
+    WIRE_PARSER -->|"get_fc_logger + FCModule.WIRE"| WIRE_LOG
+    DOM_PARSER -->|"get_fc_logger + FCModule.DOM"| DOM_LOG
+    SCHEMA_CONV -->|"get_fc_logger + FCModule.SCHEMA"| SCHEMA_LOG
+    RESP_FMT -->|"get_fc_logger + FCModule.RESPONSE"| RESP_LOG
+
+    %% Log file output
+    ORCH_LOG --> ORCH_FILE
+    ORCH_LOG -.-> COMBINED
+    UI_LOG --> UI_FILE
+    UI_LOG -.-> COMBINED
+    CACHE_LOG --> CACHE_FILE
+    CACHE_LOG -.-> COMBINED
+    WIRE_LOG --> WIRE_FILE
+    WIRE_LOG -.-> COMBINED
+    DOM_LOG --> DOM_FILE
+    DOM_LOG -.-> COMBINED
+    SCHEMA_LOG --> SCHEMA_FILE
+    SCHEMA_LOG -.-> COMBINED
+    RESP_LOG --> RESP_FILE
+    RESP_LOG -.-> COMBINED
+
+    %% Styling
+    classDef configClass fill:#e3f2fd,stroke:#1565c0
+    classDef loggerClass fill:#fff8e1,stroke:#ff8f00
+    classDef componentClass fill:#e8f5e9,stroke:#2e7d32
+    classDef fileClass fill:#fce4ec,stroke:#c2185b
+
+    class ENV,FC_MASTER,FC_MODULES,FC_LEVELS,FC_TRUNC configClass
+    class LOGGER,CONFIG,TRUNC,ORCH_LOG,UI_LOG,CACHE_LOG,WIRE_LOG,DOM_LOG,SCHEMA_LOG,RESP_LOG loggerClass
+    class ORCHESTRATOR,UI_CTRL,CACHE,WIRE_PARSER,DOM_PARSER,SCHEMA_CONV,RESP_FMT componentClass
+    class ORCH_FILE,UI_FILE,CACHE_FILE,WIRE_FILE,DOM_FILE,SCHEMA_FILE,RESP_FILE,COMBINED fileClass

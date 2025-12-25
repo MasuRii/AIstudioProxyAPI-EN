@@ -13,6 +13,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from config import settings
+from logging_utils.fc_debug import FCModule, get_fc_logger
+
+# FC debug logger for cache-specific events
+fc_logger = get_fc_logger()
 
 
 @dataclass
@@ -133,10 +137,12 @@ class FunctionCallingCache:
 
         if not self._enabled:
             self.logger.debug(f"{prefix}[FC:Cache] Caching disabled")
+            fc_logger.debug(FCModule.CACHE, "Caching disabled", req_id=req_id)
             return False
 
         if self._cache is None:
             self.logger.debug(f"{prefix}[FC:Cache] No cached state")
+            fc_logger.log_cache_miss(req_id, "no_cached_state")
             self._miss_count += 1
             return False
 
@@ -147,6 +153,7 @@ class FunctionCallingCache:
                 self.logger.debug(
                     f"{prefix}[FC:Cache] Cache expired (age={age:.1f}s > TTL={self._ttl}s)"
                 )
+                fc_logger.log_cache_miss(req_id, f"expired_ttl_{age:.1f}s")
                 self._miss_count += 1
                 return False
 
@@ -156,6 +163,7 @@ class FunctionCallingCache:
                 f"{prefix}[FC:Cache] Digest mismatch "
                 f"(cached={self._cache.tools_digest[:8]}... vs current={tools_digest[:8]}...)"
             )
+            fc_logger.log_cache_miss(req_id, "digest_mismatch")
             self._miss_count += 1
             return False
 
@@ -169,15 +177,18 @@ class FunctionCallingCache:
                 f"{prefix}[FC:Cache] Model changed "
                 f"({self._cache.model_name} -> {model_name})"
             )
+            fc_logger.log_cache_miss(req_id, "model_changed")
             self._miss_count += 1
             return False
 
         # Cache is valid
         self._hit_count += 1
+        age = time.time() - self._cache.timestamp
         self.logger.debug(
             f"{prefix}[FC:Cache] Valid cache found "
             f"(digest={tools_digest[:8]}..., toggle={self._cache.toggle_enabled})"
         )
+        fc_logger.log_cache_hit(req_id, tools_digest, age)
         return True
 
     def get_cached_state(self) -> Optional[FunctionCallingCacheEntry]:
@@ -221,6 +232,12 @@ class FunctionCallingCache:
             f"{prefix}[FC:Cache] Updated: digest={tools_digest[:8]}..., "
             f"toggle={toggle_enabled}, declarations_set={declarations_set}"
         )
+        fc_logger.debug(
+            FCModule.CACHE,
+            f"Cache updated: digest={tools_digest[:8]}..., "
+            f"toggle={toggle_enabled}, declarations={declarations_set}",
+            req_id=req_id,
+        )
 
     def update_toggle_state(self, enabled: bool, req_id: str = "") -> None:
         """Update just the toggle state without changing other cache data.
@@ -245,6 +262,9 @@ class FunctionCallingCache:
         prefix = f"[{req_id}] " if req_id else ""
         if self._cache:
             self.logger.debug(f"{prefix}[FC:Cache] Invalidated: {reason}")
+            fc_logger.debug(
+                FCModule.CACHE, f"Cache invalidated: {reason}", req_id=req_id
+            )
         self._cache = None
 
     def is_toggle_cached_enabled(self) -> Optional[bool]:

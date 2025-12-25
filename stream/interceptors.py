@@ -7,7 +7,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import unquote
 
 from config.global_state import GlobalState
+from logging_utils.fc_debug import FCModule, get_fc_logger
 from logging_utils.grid_logger import GridFormatter
+
+# FC debug logger for wire format parsing
+fc_logger = get_fc_logger()
 
 
 class HttpInterceptor:
@@ -168,6 +172,19 @@ class HttpInterceptor:
                                 self.logger.warning(
                                     f"[FC:Wire] Function '{func_name}' parsed with empty args - "
                                     f"may indicate wire format parsing failure. Raw: {array_tool_calls[1][:200] if array_tool_calls[1] else 'None'}..."
+                                )
+                                fc_logger.log_wire_parse(
+                                    req_id="",
+                                    func_name=func_name,
+                                    params=params,
+                                    success=False,
+                                )
+                            else:
+                                fc_logger.log_wire_parse(
+                                    req_id="",
+                                    func_name=func_name,
+                                    params=params,
+                                    success=True,
                                 )
                             resp["function"].append(
                                 {"name": func_name, "params": params}

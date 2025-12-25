@@ -12,6 +12,7 @@ import json
 import time
 from typing import Callable, List, Optional
 
+from logging_utils.fc_debug import FCModule, get_fc_logger
 from playwright.async_api import expect as expect_async
 
 from config import (
@@ -31,6 +32,9 @@ from config.settings import FUNCTION_CALLING_UI_TIMEOUT
 from models import ClientDisconnectedError
 
 from .base import BaseController
+
+# FC debug logger for UI automation events
+fc_logger = get_fc_logger()
 
 
 class FunctionCallingController(BaseController):
@@ -127,6 +131,12 @@ class FunctionCallingController(BaseController):
                 f"[{self.req_id}] [FC:UI] Toggle check complete in {elapsed:.3f}s: "
                 f"{'enabled' if is_enabled else 'disabled'}"
             )
+            fc_logger.log_ui_action(
+                self.req_id,
+                "check",
+                "fc_toggle",
+                elapsed_ms=elapsed * 1000,
+            )
 
             # Update instance cache
             self._fc_toggle_cached = is_enabled
@@ -215,6 +225,12 @@ class FunctionCallingController(BaseController):
             if new_state == enable:
                 self.logger.info(
                     f"[{self.req_id}] [FC:UI] Toggle {action}d successfully in {elapsed:.2f}s"
+                )
+                fc_logger.log_ui_action(
+                    self.req_id,
+                    action,
+                    "fc_toggle",
+                    elapsed_ms=elapsed * 1000,
                 )
                 # Update instance cache
                 self._fc_toggle_cached = enable
@@ -324,6 +340,12 @@ class FunctionCallingController(BaseController):
             elapsed = time.perf_counter() - start_time
             self.logger.debug(
                 f"[{self.req_id}] [FC:Perf] Dialog opened in {elapsed:.2f}s"
+            )
+            fc_logger.log_ui_action(
+                self.req_id,
+                "open",
+                "declarations_dialog",
+                elapsed_ms=elapsed * 1000,
             )
             return True
 
@@ -562,6 +584,11 @@ class FunctionCallingController(BaseController):
         self.logger.info(
             f"[{self.req_id}] [FC:UI] Setting {len(declarations)} function declaration(s)"
         )
+        fc_logger.info(
+            FCModule.UI,
+            f"Setting {len(declarations)} function declaration(s)",
+            req_id=self.req_id,
+        )
 
         try:
             # Step 0: Disable Google Search and URL Context if enabled (blocks FC)
@@ -683,6 +710,11 @@ class FunctionCallingController(BaseController):
                 f"[{self.req_id}] [FC:Perf] Function declarations set successfully "
                 f"(total={total_elapsed:.2f}s, toggle={toggle_elapsed:.2f}s, "
                 f"dialog={dialog_elapsed:.2f}s, input={input_elapsed:.2f}s, save={save_elapsed:.2f}s)"
+            )
+            fc_logger.info(
+                FCModule.UI,
+                f"Declarations set successfully in {total_elapsed:.2f}s",
+                req_id=self.req_id,
             )
             return True
 

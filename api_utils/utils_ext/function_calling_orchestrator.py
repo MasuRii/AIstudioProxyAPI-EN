@@ -15,6 +15,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from browser_utils.page_controller import PageController
+from logging_utils.fc_debug import FCModule, get_fc_logger
+
+# FC debug logger for orchestrator-level events
+fc_logger = get_fc_logger()
 from config.settings import (
     FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS,
     FUNCTION_CALLING_DEBUG,
@@ -293,6 +297,7 @@ class FunctionCallingOrchestrator:
                 self.logger.debug(
                     f"[{req_id}] [FC] Using emulated mode, skipping native FC setup"
                 )
+            fc_logger.log_mode_selection(req_id, "emulated", "configured mode")
             return state
 
         # Native or Auto mode - compute digest and check cache
@@ -361,6 +366,9 @@ class FunctionCallingOrchestrator:
             f"[{req_id}] [FC] Configuring native function calling with {len(tools)} tool(s) "
             f"(digest={tools_digest[:8]}...)"
         )
+        fc_logger.log_mode_selection(
+            req_id, "native", f"cache_miss, {len(tools)} tools"
+        )
 
         # Log tool choice if specific
         if tool_choice:
@@ -392,6 +400,9 @@ class FunctionCallingOrchestrator:
                     f"[{req_id}] [FC:Perf] Converted {len(tools)} tools to Gemini format "
                     f"in {convert_elapsed:.3f}s"
                 )
+            fc_logger.log_schema_conversion(
+                req_id, tool_count=len(tools), elapsed_ms=convert_elapsed * 1000
+            )
 
             # Retry loop for UI automation
             last_error: Optional[Exception] = None
@@ -430,6 +441,11 @@ class FunctionCallingOrchestrator:
                             f"[{req_id}] [FC:Perf] Native function calling configured "
                             f"in {total_elapsed:.2f}s"
                         )
+                        fc_logger.info(
+                            FCModule.ORCHESTRATOR,
+                            f"Native FC configured successfully in {total_elapsed:.2f}s",
+                            req_id=req_id,
+                        )
                         return state
                     else:
                         raise NativeFunctionCallingError(
@@ -467,6 +483,7 @@ class FunctionCallingOrchestrator:
             self.logger.warning(
                 f"[{req_id}] [FC] Falling back to emulated mode due to schema error"
             )
+            fc_logger.log_mode_selection(req_id, "emulated", "fallback_schema_error")
             return state
 
         except NativeFunctionCallingError as e:
@@ -479,6 +496,9 @@ class FunctionCallingOrchestrator:
                 state.mode = FunctionCallingMode.EMULATED
                 self.logger.info(
                     f"[{req_id}] [FC] Falling back to emulated mode for function calling"
+                )
+                fc_logger.log_mode_selection(
+                    req_id, "emulated", "fallback_native_error"
                 )
                 return state
             elif state.mode == FunctionCallingMode.NATIVE:

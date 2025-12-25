@@ -18,8 +18,12 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from logging_utils.fc_debug import FCModule, get_fc_logger
 
 logger = logging.getLogger("AIStudioProxyServer")
+
+# FC debug logger for schema conversion and response formatting
+fc_logger = get_fc_logger()
 
 
 # =============================================================================
@@ -246,6 +250,7 @@ class SchemaConverter:
             )
 
         logger.debug(f"Converting OpenAI tool to Gemini: {name}")
+        fc_logger.debug(FCModule.SCHEMA, f"Converting tool: {name}")
 
         # Build Gemini FunctionDeclaration
         gemini_declaration: Dict[str, Any] = {"name": name}
@@ -294,6 +299,10 @@ class SchemaConverter:
             except SchemaConversionError as e:
                 raise SchemaConversionError(f"Error converting tool at index {i}: {e}")
 
+        fc_logger.info(
+            FCModule.SCHEMA,
+            f"Converted {len(declarations)} tools to Gemini format",
+        )
         return declarations
 
     def to_json_string(
@@ -661,6 +670,10 @@ class ResponseFormatter:
             List of OpenAI tool_call dicts.
         """
         logger.debug(f"Formatting {len(parsed_calls)} tool call(s)")
+        fc_logger.debug(
+            FCModule.RESPONSE,
+            f"Formatting {len(parsed_calls)} tool call(s) for OpenAI response",
+        )
         return [self.format_tool_call(call) for call in parsed_calls]
 
     def format_tool_call_delta(
