@@ -447,6 +447,7 @@ class FunctionCallingOrchestrator:
                         check_client_disconnected,
                         tools_digest=tools_digest,
                         model_name=model_name,
+                        tools=tools,
                     )
 
                     if success:

@@ -34,8 +34,10 @@ from config.selectors import (
 logger = logging.getLogger("AIStudioProxyServer")
 
 # Compiled patterns for static parsing (used outside class context)
+# Enhanced pattern: captures function names with underscores, hyphens, and special chars
+# Uses greedy match up to newline or open brace, then strips trailing whitespace
 _STATIC_EMULATED_FC_PATTERN = re.compile(
-    r"Request\s+function\s+call:\s*([^\n{]+?)(?:\s*\n|\s*\{|\s*$)",
+    r"Request\s+function\s+call:\s*([\w\-_.]+)(?:\s*\n|\s*\{|\s*$)",
     re.IGNORECASE,
 )
 _STATIC_EMULATED_PARAMS_PATTERN = re.compile(
@@ -110,6 +112,49 @@ def parse_emulated_function_calls_static(text: str) -> List[Any]:
     except Exception as e:
         if FUNCTION_CALLING_DEBUG:
             logger.debug(f"Static emulated FC parsing error: {e}")
+
+    # Validate and potentially correct function names using fuzzy matching
+    calls = _validate_function_names(calls)
+
+    return calls
+
+
+def _validate_function_names(calls: List[Any]) -> List[Any]:
+    """Validate parsed function names against registered tools.
+
+    Uses fuzzy matching to correct truncated or slightly malformed function names
+    that may result from model hallucination in text-format function calls.
+
+    Args:
+        calls: List of ParsedFunctionCall objects.
+
+    Returns:
+        List with corrected function names where possible.
+    """
+    if not calls:
+        return calls
+
+    try:
+        from api_utils.utils_ext.function_calling_cache import FunctionCallingCache
+
+        cache = FunctionCallingCache.get_instance()
+
+        for call in calls:
+            if hasattr(call, "name") and call.name:
+                validated_name, was_corrected, confidence = (
+                    cache.validate_function_name(call.name)
+                )
+                if was_corrected and confidence >= 0.7:
+                    if FUNCTION_CALLING_DEBUG:
+                        logger.debug(
+                            f"Corrected function name: '{call.name}' -> '{validated_name}' "
+                            f"(confidence={confidence:.2f})"
+                        )
+                    call.name = validated_name
+
+    except Exception as e:
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"Function name validation error: {e}")
 
     return calls
 
@@ -196,8 +241,9 @@ class FunctionCallResponseParser:
     # This handles cases where the model outputs text-formatted tool calls
     # instead of using native function calling UI elements
     # Supports: with params (newline or {), without params (end of string/line)
+    # Enhanced: uses \w, hyphen, underscore, and dot to capture full function names
     EMULATED_FUNCTION_CALL_PATTERN = re.compile(
-        r"Request\s+function\s+call:\s*([^\n{]+?)(?:\s*\n|\s*\{|\s*$)",
+        r"Request\s+function\s+call:\s*([\w\-_.]+)(?:\s*\n|\s*\{|\s*$)",
         re.IGNORECASE,
     )
     # Pattern to extract the JSON parameters block after "Parameters:"
@@ -715,6 +761,9 @@ class FunctionCallResponseParser:
                 self.logger.debug(
                     f"[{self.req_id}] Error parsing emulated function calls: {e}"
                 )
+
+        # Validate and potentially correct function names using fuzzy matching
+        calls = _validate_function_names(calls)
 
         return calls
 

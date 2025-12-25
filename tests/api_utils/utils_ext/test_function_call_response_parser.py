@@ -4,14 +4,20 @@ Tests for Function Call Response Parser.
 
 import json
 import pytest
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from api_utils.utils_ext.function_call_response_parser import (
     FunctionCallParseResult,
     FunctionCallResponseParser,
     format_function_calls_to_openai,
+    _validate_function_names,
 )
 from api_utils.utils_ext.function_calling import ParsedFunctionCall
+from api_utils.utils_ext.function_calling_cache import (
+    FunctionCallingCache,
+    FunctionCallingCacheEntry,
+)
 
 
 class TestFunctionCallParseResult:
@@ -223,3 +229,105 @@ class TestFormatFunctionCallsToOpenAI:
 
         assert finish_reason == "tool_calls"
         assert len(message["tool_calls"]) == 1
+
+
+class TestValidateFunctionNames:
+    """Tests for _validate_function_names helper function."""
+
+    @pytest.fixture
+    def mock_cache_with_tools(self):
+        """Set up a cache with registered tool names."""
+        cache = FunctionCallingCache.get_instance()
+        cache._enabled = True
+        cache._cache = FunctionCallingCacheEntry(
+            tools_digest="test",
+            toggle_enabled=True,
+            declarations_set=True,
+            timestamp=time.time(),
+            tool_names={
+                "gh_grep_searchGitHub",
+                "tavily_tavily_search",
+                "context7_get-library-docs",
+            },
+        )
+        return cache
+
+    def test_validate_empty_list(self):
+        """Test validation of empty list returns empty list."""
+        result = _validate_function_names([])
+        assert result == []
+
+    def test_validate_exact_match_no_change(self, mock_cache_with_tools):
+        """Test that exact matches are not modified."""
+        calls = [
+            ParsedFunctionCall(name="gh_grep_searchGitHub", arguments={"q": "test"}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 1
+        assert result[0].name == "gh_grep_searchGitHub"
+
+    def test_validate_corrects_truncated_name(self, mock_cache_with_tools):
+        """Test that truncated names are corrected."""
+        calls = [
+            ParsedFunctionCall(name="gh_grep_searchGitH", arguments={"q": "test"}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 1
+        assert result[0].name == "gh_grep_searchGitHub"
+
+    def test_validate_low_confidence_not_corrected(self, mock_cache_with_tools):
+        """Test that low confidence matches are not corrected."""
+        # "gh" is only ~10% match, below 70% threshold
+        calls = [
+            ParsedFunctionCall(name="gh", arguments={}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 1
+        # Should NOT be corrected due to low confidence
+        assert result[0].name == "gh"
+
+    def test_validate_unknown_name_unchanged(self, mock_cache_with_tools):
+        """Test that unknown names are left unchanged."""
+        calls = [
+            ParsedFunctionCall(name="unknown_function", arguments={}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 1
+        assert result[0].name == "unknown_function"
+
+    def test_validate_multiple_calls(self, mock_cache_with_tools):
+        """Test validation of multiple function calls."""
+        calls = [
+            ParsedFunctionCall(name="gh_grep_searchGitH", arguments={"q": "test"}),
+            ParsedFunctionCall(name="tavily_tavily_sear", arguments={"query": "hello"}),
+            ParsedFunctionCall(name="unknown_func", arguments={}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 3
+        assert result[0].name == "gh_grep_searchGitHub"  # Corrected
+        assert result[1].name == "tavily_tavily_search"  # Corrected
+        assert result[2].name == "unknown_func"  # Unchanged
+
+    def test_validate_handles_empty_name(self, mock_cache_with_tools):
+        """Test that calls with empty name are handled gracefully."""
+        calls = [
+            ParsedFunctionCall(name="", arguments={}),
+            ParsedFunctionCall(name="gh_grep_searchGitHub", arguments={}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 2
+        assert result[0].name == ""
+        assert result[1].name == "gh_grep_searchGitHub"
+
+    def test_validate_no_cache_returns_unchanged(self):
+        """Test that with no cache, calls are returned unchanged."""
+        # Clear any cached instance
+        cache = FunctionCallingCache.get_instance()
+        cache._cache = None
+
+        calls = [
+            ParsedFunctionCall(name="any_function", arguments={}),
+        ]
+        result = _validate_function_names(calls)
+        assert len(result) == 1
+        assert result[0].name == "any_function"

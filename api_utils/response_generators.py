@@ -294,7 +294,9 @@ async def gen_sse_from_aux_stream(
                         parsed_fc = parse_emulated_function_calls_static(original_body)
                         if parsed_fc:
                             function = parsed_fc
-                            logger.info(
+                            # Demoted from INFO to DEBUG - this is normal fallback behavior
+                            # when model outputs text format instead of native FC
+                            logger.debug(
                                 f"[{req_id}] Recovered function calls from emulated text"
                             )
 

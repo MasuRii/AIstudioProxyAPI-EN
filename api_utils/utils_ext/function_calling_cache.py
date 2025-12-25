@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from config import settings
 from config.settings import FUNCTION_CALLING_DEBUG
@@ -30,6 +30,7 @@ class FunctionCallingCacheEntry:
         declarations_set: Whether declarations were successfully set.
         timestamp: When cached (epoch seconds).
         model_name: Associated model name (optional).
+        tool_names: Set of registered tool names for validation.
     """
 
     tools_digest: str  # SHA256 hash of tool definitions
@@ -37,6 +38,9 @@ class FunctionCallingCacheEntry:
     declarations_set: bool  # Whether declarations were successfully set
     timestamp: float  # When cached
     model_name: Optional[str] = None  # Associated model
+    tool_names: Set[str] = field(
+        default_factory=set
+    )  # Registered tool names for validation
 
 
 class FunctionCallingCache:
@@ -119,6 +123,32 @@ class FunctionCallingCache:
             if self._debug:
                 self.logger.warning(f"[FC:Cache] Failed to compute digest: {e}")
             return "invalid"
+
+    def _extract_tool_names(self, tools: List[Dict[str, Any]]) -> Set[str]:
+        """Extract tool names from a list of tool definitions.
+
+        Handles both OpenAI format (nested function.name) and flat format (name at top level).
+
+        Args:
+            tools: List of tool definitions.
+
+        Returns:
+            Set of tool names.
+        """
+        names: Set[str] = set()
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+
+            # Try nested format: {"function": {"name": "..."}}
+            func = tool.get("function", {})
+            if isinstance(func, dict) and "name" in func:
+                names.add(func["name"])
+            # Try flat format: {"name": "..."}
+            elif "name" in tool:
+                names.add(tool["name"])
+
+        return names
 
     def is_cache_valid(
         self,
@@ -221,6 +251,7 @@ class FunctionCallingCache:
         declarations_set: bool,
         model_name: Optional[str] = None,
         req_id: str = "",
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Update cache with new state.
 
@@ -230,11 +261,17 @@ class FunctionCallingCache:
             declarations_set: Whether declarations were set successfully.
             model_name: Model name (optional).
             req_id: Request ID for logging.
+            tools: Optional list of tool definitions to extract names from.
         """
         if not self._enabled:
             return
 
         prefix = f"[{req_id}] " if req_id else ""
+
+        # Extract tool names for validation
+        tool_names: Set[str] = set()
+        if tools:
+            tool_names = self._extract_tool_names(tools)
 
         self._cache = FunctionCallingCacheEntry(
             tools_digest=tools_digest,
@@ -242,6 +279,7 @@ class FunctionCallingCache:
             declarations_set=declarations_set,
             timestamp=time.time(),
             model_name=model_name,
+            tool_names=tool_names,
         )
         if self._debug:
             self.logger.debug(
@@ -332,6 +370,74 @@ class FunctionCallingCache:
             "hits": self._hit_count,
             "misses": self._miss_count,
         }
+
+    def get_registered_tool_names(self) -> Set[str]:
+        """Get the set of registered tool names from cache.
+
+        Returns:
+            Set of tool names, or empty set if no cache exists.
+        """
+        if self._cache is None:
+            return set()
+        return self._cache.tool_names
+
+    def validate_function_name(
+        self, parsed_name: str, req_id: str = ""
+    ) -> Tuple[str, bool, float]:
+        """Validate a parsed function name against registered tools.
+
+        If the exact name isn't found, attempts fuzzy matching (prefix match).
+
+        Args:
+            parsed_name: The function name parsed from model output.
+            req_id: Request ID for logging.
+
+        Returns:
+            Tuple of (validated_name, was_corrected, confidence).
+            - validated_name: The matched tool name or original if no match.
+            - was_corrected: True if the name was corrected via fuzzy match.
+            - confidence: Match confidence (1.0 = exact, 0.0-0.99 = fuzzy).
+        """
+        registered_names = self.get_registered_tool_names()
+
+        if not registered_names:
+            # No registered tools to validate against
+            return parsed_name, False, 0.0
+
+        # Exact match
+        if parsed_name in registered_names:
+            return parsed_name, False, 1.0
+
+        # Fuzzy match: check if any registered name starts with parsed_name
+        # (handles truncation case like "gh_grep_searchGitH" -> "gh_grep_searchGitHub")
+        prefix = f"[{req_id}] " if req_id else ""
+        for registered in registered_names:
+            if registered.startswith(parsed_name):
+                confidence = len(parsed_name) / len(registered)
+                if self._debug:
+                    self.logger.debug(
+                        f"{prefix}[FC:Cache] Fuzzy match: '{parsed_name}' -> '{registered}' "
+                        f"(confidence={confidence:.2f})"
+                    )
+                return registered, True, confidence
+
+        # Also check if parsed_name starts with registered (reversed truncation)
+        for registered in registered_names:
+            if parsed_name.startswith(registered):
+                confidence = len(registered) / len(parsed_name)
+                if self._debug:
+                    self.logger.debug(
+                        f"{prefix}[FC:Cache] Fuzzy match (reverse): '{parsed_name}' -> '{registered}' "
+                        f"(confidence={confidence:.2f})"
+                    )
+                return registered, True, confidence
+
+        # No match found
+        if self._debug:
+            self.logger.warning(
+                f"{prefix}[FC:Cache] Function '{parsed_name}' not found in registered tools"
+            )
+        return parsed_name, False, 0.0
 
 
 __all__ = [

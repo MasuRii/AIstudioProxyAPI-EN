@@ -565,6 +565,7 @@ class FunctionCallingController(BaseController):
         check_client_disconnected: Callable,
         tools_digest: Optional[str] = None,
         model_name: Optional[str] = None,
+        tools: Optional[List[dict]] = None,
     ) -> bool:
         """
         Set function declarations in the AI Studio UI.
@@ -584,6 +585,7 @@ class FunctionCallingController(BaseController):
             check_client_disconnected: Callback to check client connection
             tools_digest: Optional pre-computed digest for caching
             model_name: Optional model name for cache validation
+            tools: Optional original tools list (OpenAI format) for caching tool names
 
         Returns:
             True if declarations were set successfully, False otherwise.
@@ -739,6 +741,7 @@ class FunctionCallingController(BaseController):
                     declarations_set=True,
                     model_name=model_name,
                     req_id=self.req_id,
+                    tools=tools,
                 )
             self._fc_toggle_cached = True
 
