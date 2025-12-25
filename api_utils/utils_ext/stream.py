@@ -5,6 +5,7 @@ import re
 import time
 from typing import Any, AsyncGenerator, Callable, List, Optional, Tuple
 
+from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils import set_request_id
 
 # [REFAC-01] Structural Boundary Pattern
@@ -272,9 +273,10 @@ async def use_stream_response(
                         for fc in parsed_data.get("function", []):
                             fc_params = fc.get("params") or fc.get("arguments") or {}
                             if not fc_params:
-                                logger.warning(
-                                    f"[{req_id}] ⚠️ Wire format returned '{fc.get('name')}' with empty args - will try DOM fallback"
-                                )
+                                if FUNCTION_CALLING_DEBUG:
+                                    logger.warning(
+                                        f"[{req_id}] ⚠️ Wire format returned '{fc.get('name')}' with empty args - will try DOM fallback"
+                                    )
                                 has_seen_functions = False  # Force DOM fallback
                                 break
 
@@ -320,9 +322,10 @@ async def use_stream_response(
                                 page, req_id, logger
                             )
                             if dom_functions:
-                                logger.info(
-                                    f"[{req_id}] ✅ DOM captured function calls after {fc_retry + 1} attempts"
-                                )
+                                if FUNCTION_CALLING_DEBUG:
+                                    logger.info(
+                                        f"[{req_id}] ✅ DOM captured function calls after {fc_retry + 1} attempts"
+                                    )
                                 break
                             # Only retry if we haven't found functions and body is also empty
                             # (indicates potential race condition with UI rendering)
@@ -519,13 +522,15 @@ async def detect_function_calls_from_dom(
             for fc in result.function_calls:
                 function_calls.append({"name": fc.name, "params": fc.arguments})
 
-            logger.info(
-                f"[{req_id}] DOM fallback detected {len(function_calls)} function call(s)"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                logger.info(
+                    f"[{req_id}] DOM fallback detected {len(function_calls)} function call(s)"
+                )
 
         return function_calls, result.text_content
 
     except Exception as e:
-        logger.debug(f"[{req_id}] DOM function call detection failed: {e}")
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"[{req_id}] DOM function call detection failed: {e}")
 
     return [], ""

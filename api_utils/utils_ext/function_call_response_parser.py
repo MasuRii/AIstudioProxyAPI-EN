@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from playwright.async_api import Locator, Page as AsyncPage
 
+from config.settings import FUNCTION_CALLING_DEBUG
 from config.selectors import (
     FUNCTION_CALL_ARGS_SELECTOR,
     FUNCTION_CALL_CODE_BLOCK_SELECTOR,
@@ -107,7 +108,8 @@ def parse_emulated_function_calls_static(text: str) -> List[Any]:
             calls.append(call)
 
     except Exception as e:
-        logger.debug(f"Static emulated FC parsing error: {e}")
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"Static emulated FC parsing error: {e}")
 
     return calls
 
@@ -247,9 +249,10 @@ class FunctionCallResponseParser:
             # Check for native function call chunks first (AI Studio's built-in FC)
             native_locator = self.page.locator(NATIVE_FUNCTION_CALL_CHUNK_SELECTOR)
             if await native_locator.count() > 0:
-                self.logger.debug(
-                    f"[{self.req_id}] Detected native function call chunk(s)"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] Detected native function call chunk(s)"
+                    )
                 return True
 
             # Check for legacy function call widgets
@@ -265,7 +268,10 @@ class FunctionCallResponseParser:
             return False
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error detecting function calls: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error detecting function calls: {e}"
+                )
             return False
 
     async def parse_function_calls(
@@ -292,9 +298,10 @@ class FunctionCallResponseParser:
             if native_calls:
                 result.function_calls.extend(native_calls)
                 result.has_function_calls = True
-                self.logger.debug(
-                    f"[{self.req_id}] Found {len(native_calls)} native function call(s)"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] Found {len(native_calls)} native function call(s)"
+                    )
 
             # Strategy 2: Try structured widget parsing (legacy/fallback)
             if not result.has_function_calls:
@@ -321,13 +328,15 @@ class FunctionCallResponseParser:
             # Deduplicate function calls by name + arguments
             result.function_calls = self._deduplicate_calls(result.function_calls)
 
-            self.logger.debug(
-                f"[{self.req_id}] Parsed {len(result.function_calls)} function call(s) total"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Parsed {len(result.function_calls)} function call(s) total"
+                )
 
         except Exception as e:
             error_msg = f"Error parsing function calls: {e}"
-            self.logger.error(f"[{self.req_id}] {error_msg}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(f"[{self.req_id}] {error_msg}")
             result.parse_errors.append(error_msg)
 
         return result
@@ -349,9 +358,10 @@ class FunctionCallResponseParser:
             chunks = self.page.locator(NATIVE_FUNCTION_CALL_CHUNK_SELECTOR)
             chunk_count = await chunks.count()
 
-            self.logger.debug(
-                f"[{self.req_id}] Found {chunk_count} native function call chunk(s)"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Found {chunk_count} native function call chunk(s)"
+                )
 
             for i in range(chunk_count):
                 try:
@@ -359,18 +369,21 @@ class FunctionCallResponseParser:
                     call = await self._parse_single_native_chunk(chunk)
                     if call:
                         calls.append(call)
-                        self.logger.debug(
-                            f"[{self.req_id}] Parsed native function call: {call.name}"
-                        )
+                        if FUNCTION_CALLING_DEBUG:
+                            self.logger.debug(
+                                f"[{self.req_id}] Parsed native function call: {call.name}"
+                            )
                 except Exception as e:
-                    self.logger.debug(
-                        f"[{self.req_id}] Error parsing native chunk {i}: {e}"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] Error parsing native chunk {i}: {e}"
+                        )
 
         except Exception as e:
-            self.logger.debug(
-                f"[{self.req_id}] Error accessing native function call chunks: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error accessing native function call chunks: {e}"
+                )
 
         return calls
 
@@ -405,9 +418,10 @@ class FunctionCallResponseParser:
                     function_name = self._extract_function_name_from_header(header_text)
 
             if not function_name:
-                self.logger.debug(
-                    f"[{self.req_id}] Could not extract function name from native chunk"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] Could not extract function name from native chunk"
+                    )
                 return None
 
             # Extract arguments from pre > code block
@@ -417,9 +431,10 @@ class FunctionCallResponseParser:
             if await args_elem.count() > 0:
                 args_text = await args_elem.first.inner_text(timeout=2000)
                 arguments = self._parse_arguments(args_text)
-                self.logger.debug(
-                    f"[{self.req_id}] Extracted arguments for {function_name}: {list(arguments.keys())}"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] Extracted arguments for {function_name}: {list(arguments.keys())}"
+                    )
 
             return _create_parsed_call(
                 name=function_name,
@@ -428,7 +443,8 @@ class FunctionCallResponseParser:
             )
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error parsing native chunk: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] Error parsing native chunk: {e}")
             return None
 
     def _extract_function_name_from_header(self, header_text: str) -> str:
@@ -479,12 +495,16 @@ class FunctionCallResponseParser:
                     if call:
                         calls.append(call)
                 except Exception as e:
-                    self.logger.debug(f"[{self.req_id}] Error parsing widget {i}: {e}")
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] Error parsing widget {i}: {e}"
+                        )
 
         except Exception as e:
-            self.logger.debug(
-                f"[{self.req_id}] Error accessing function call widgets: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error accessing function call widgets: {e}"
+                )
 
         return calls
 
@@ -526,7 +546,8 @@ class FunctionCallResponseParser:
             )
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error parsing widget: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] Error parsing widget: {e}")
             return None
 
     async def _parse_code_block_function_calls(self) -> List[Any]:
@@ -551,12 +572,14 @@ class FunctionCallResponseParser:
                     calls.extend(block_calls)
 
                 except Exception as e:
-                    self.logger.debug(
-                        f"[{self.req_id}] Error parsing code block {i}: {e}"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] Error parsing code block {i}: {e}"
+                        )
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error accessing code blocks: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] Error accessing code blocks: {e}")
 
         return calls
 
@@ -583,9 +606,10 @@ class FunctionCallResponseParser:
                 emulated_calls = self._parse_emulated_function_calls(text_content)
                 if emulated_calls:
                     calls.extend(emulated_calls)
-                    self.logger.debug(
-                        f"[{self.req_id}] Found {len(emulated_calls)} emulated text-based function call(s)"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] Found {len(emulated_calls)} emulated text-based function call(s)"
+                        )
 
                 # Strategy B: Check for JSON-style function call patterns
                 if not calls:
@@ -598,7 +622,10 @@ class FunctionCallResponseParser:
                                     calls.append(call)
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error parsing text function calls: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error parsing text function calls: {e}"
+                )
 
         return calls, text_content
 
@@ -677,15 +704,17 @@ class FunctionCallResponseParser:
                         raw_text=part[:500],  # Keep first 500 chars for debugging
                     )
                     calls.append(call)
-                    self.logger.debug(
-                        f"[{self.req_id}] Parsed emulated function call: {function_name} "
-                        f"with {len(arguments)} argument(s)"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] Parsed emulated function call: {function_name} "
+                            f"with {len(arguments)} argument(s)"
+                        )
 
         except Exception as e:
-            self.logger.debug(
-                f"[{self.req_id}] Error parsing emulated function calls: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error parsing emulated function calls: {e}"
+                )
 
         return calls
 
@@ -860,7 +889,8 @@ class FunctionCallResponseParser:
                     arguments[key] = value.strip()
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error parsing inline params: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] Error parsing inline params: {e}")
 
         return arguments
 
@@ -1044,9 +1074,10 @@ class FunctionCallResponseParser:
         args_text = args_text.strip()
 
         # Debug log raw args_text
-        self.logger.debug(
-            f"[{self.req_id}] Raw args_text (len={len(args_text)}): {args_text[:500]}"
-        )
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(
+                f"[{self.req_id}] Raw args_text (len={len(args_text)}): {args_text[:500]}"
+            )
 
         # Try JSON parse
         try:
@@ -1055,7 +1086,8 @@ class FunctionCallResponseParser:
                 return result
             return {"value": result}
         except json.JSONDecodeError as e:
-            self.logger.debug(f"[{self.req_id}] JSON parse failed: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] JSON parse failed: {e}")
 
         # Try to extract key-value pairs
         kv_pattern = re.compile(r'"?(\w+)"?\s*[:=]\s*(".*?"|[^,}\]]+)')

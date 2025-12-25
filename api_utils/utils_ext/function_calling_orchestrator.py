@@ -155,9 +155,10 @@ class FunctionCallingOrchestrator:
             )
 
             if is_enabled:
-                self.logger.info(
-                    f"[{req_id}] [FC] No tools in request but FC toggle is enabled - disabling for clean state"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.info(
+                        f"[{req_id}] [FC] No tools in request but FC toggle is enabled - disabling for clean state"
+                    )
                 start_time = time.perf_counter()
 
                 success = await page_controller.disable_function_calling(
@@ -169,13 +170,15 @@ class FunctionCallingOrchestrator:
                 if success:
                     # Invalidate cache since state changed
                     self._cache.invalidate(reason="no_tools_cleanup", req_id=req_id)
-                    self.logger.info(
-                        f"[{req_id}] [FC:Perf] FC toggle disabled in {elapsed:.2f}s"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.info(
+                            f"[{req_id}] [FC:Perf] FC toggle disabled in {elapsed:.2f}s"
+                        )
                 else:
-                    self.logger.warning(
-                        f"[{req_id}] [FC] Failed to disable FC toggle - may affect response"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.warning(
+                            f"[{req_id}] [FC] Failed to disable FC toggle - may affect response"
+                        )
 
         except ClientDisconnectedError:
             # Client gone, nothing to do
@@ -186,9 +189,10 @@ class FunctionCallingOrchestrator:
         except Exception as e:
             # Non-fatal error - log and continue
             # The request can still proceed, just with FC potentially enabled
-            self.logger.warning(
-                f"[{req_id}] [FC] Error checking/disabling FC toggle: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{req_id}] [FC] Error checking/disabling FC toggle: {e}"
+                )
 
     def should_use_native_mode(
         self,
@@ -297,7 +301,8 @@ class FunctionCallingOrchestrator:
                 self.logger.debug(
                     f"[{req_id}] [FC] Using emulated mode, skipping native FC setup"
                 )
-            fc_logger.log_mode_selection(req_id, "emulated", "configured mode")
+            if FUNCTION_CALLING_DEBUG:
+                fc_logger.log_mode_selection(req_id, "emulated", "configured mode")
             return state
 
         # Native or Auto mode - compute digest and check cache
@@ -320,34 +325,38 @@ class FunctionCallingOrchestrator:
                         check_client_disconnected, use_cache=False
                     )
                     if not toggle_enabled:
-                        self.logger.warning(
-                            f"[{req_id}] [FC:Cache] HIT but UI toggle disabled - re-enabling"
-                        )
+                        if FUNCTION_CALLING_DEBUG:
+                            self.logger.warning(
+                                f"[{req_id}] [FC:Cache] HIT but UI toggle disabled - re-enabling"
+                            )
                         enable_success = await page_controller.enable_function_calling(
                             check_client_disconnected
                         )
                         if not enable_success:
-                            self.logger.warning(
-                                f"[{req_id}] [FC:Cache] Failed to re-enable toggle, "
-                                "falling through to full setup"
-                            )
+                            if FUNCTION_CALLING_DEBUG:
+                                self.logger.warning(
+                                    f"[{req_id}] [FC:Cache] Failed to re-enable toggle, "
+                                    "falling through to full setup"
+                                )
                             # Fall through to full native configuration
                         else:
                             elapsed = time.perf_counter() - total_start
-                            self.logger.info(
-                                f"[{req_id}] [FC:Cache] HIT - toggle re-enabled "
-                                f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
-                            )
+                            if FUNCTION_CALLING_DEBUG:
+                                self.logger.info(
+                                    f"[{req_id}] [FC:Cache] HIT - toggle re-enabled "
+                                    f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
+                                )
                             state.native_enabled = True
                             state.tools_configured = True
                             state.cache_hit = True
                             return state
                     else:
                         elapsed = time.perf_counter() - total_start
-                        self.logger.info(
-                            f"[{req_id}] [FC:Cache] HIT - skipping native FC setup "
-                            f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
-                        )
+                        if FUNCTION_CALLING_DEBUG:
+                            self.logger.info(
+                                f"[{req_id}] [FC:Cache] HIT - skipping native FC setup "
+                                f"(digest={tools_digest[:8]}..., checked in {elapsed:.3f}s)"
+                            )
                         state.native_enabled = True
                         state.tools_configured = True
                         state.cache_hit = True
@@ -355,20 +364,23 @@ class FunctionCallingOrchestrator:
                 except ClientDisconnectedError:
                     raise
                 except Exception as e:
-                    self.logger.warning(
-                        f"[{req_id}] [FC:Cache] Toggle verification failed: {e}, "
-                        "falling through to full setup"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.warning(
+                            f"[{req_id}] [FC:Cache] Toggle verification failed: {e}, "
+                            "falling through to full setup"
+                        )
                     # Fall through to full native configuration
 
         # Cache miss - proceed with native configuration
-        self.logger.info(
-            f"[{req_id}] [FC] Configuring native function calling with {len(tools)} tool(s) "
-            f"(digest={tools_digest[:8]}...)"
-        )
-        fc_logger.log_mode_selection(
-            req_id, "native", f"cache_miss, {len(tools)} tools"
-        )
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.info(
+                f"[{req_id}] [FC] Configuring native function calling with {len(tools)} tool(s) "
+                f"(digest={tools_digest[:8]}...)"
+            )
+        if FUNCTION_CALLING_DEBUG:
+            fc_logger.log_mode_selection(
+                req_id, "native", f"cache_miss, {len(tools)} tools"
+            )
 
         # Log tool choice if specific
         if tool_choice:
@@ -377,17 +389,19 @@ class FunctionCallingOrchestrator:
                     "name"
                 ) or tool_choice.get("name")
                 if forced_fn:
-                    self.logger.info(
-                        f"[{req_id}] [FC] Tool choice: FORCING specific tool '{forced_fn}'"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.info(
+                            f"[{req_id}] [FC] Tool choice: FORCING specific tool '{forced_fn}'"
+                        )
             elif isinstance(tool_choice, str) and tool_choice.lower() not in (
                 "auto",
                 "none",
                 "required",
             ):
-                self.logger.info(
-                    f"[{req_id}] [FC] Tool choice: FORCING specific tool '{tool_choice}'"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.info(
+                        f"[{req_id}] [FC] Tool choice: FORCING specific tool '{tool_choice}'"
+                    )
 
         try:
             # Convert OpenAI tools to Gemini format
@@ -400,18 +414,20 @@ class FunctionCallingOrchestrator:
                     f"[{req_id}] [FC:Perf] Converted {len(tools)} tools to Gemini format "
                     f"in {convert_elapsed:.3f}s"
                 )
-            fc_logger.log_schema_conversion(
-                req_id, tool_count=len(tools), elapsed_ms=convert_elapsed * 1000
-            )
+            if FUNCTION_CALLING_DEBUG:
+                fc_logger.log_schema_conversion(
+                    req_id, tool_count=len(tools), elapsed_ms=convert_elapsed * 1000
+                )
 
             # Retry loop for UI automation
             last_error: Optional[Exception] = None
             for attempt in range(1, self._config.native_retry_count + 1):
                 try:
                     if attempt > 1:
-                        self.logger.warning(
-                            f"[{req_id}] [FC:UI] Retry attempt {attempt}/{self._config.native_retry_count}"
-                        )
+                        if FUNCTION_CALLING_DEBUG:
+                            self.logger.warning(
+                                f"[{req_id}] [FC:UI] Retry attempt {attempt}/{self._config.native_retry_count}"
+                            )
 
                     check_client_disconnected(f"FC prepare attempt {attempt}")
 
@@ -437,15 +453,17 @@ class FunctionCallingOrchestrator:
                         state.native_enabled = True
                         state.tools_configured = True
                         total_elapsed = time.perf_counter() - total_start
-                        self.logger.info(
-                            f"[{req_id}] [FC:Perf] Native function calling configured "
-                            f"in {total_elapsed:.2f}s"
-                        )
-                        fc_logger.info(
-                            FCModule.ORCHESTRATOR,
-                            f"Native FC configured successfully in {total_elapsed:.2f}s",
-                            req_id=req_id,
-                        )
+                        if FUNCTION_CALLING_DEBUG:
+                            self.logger.info(
+                                f"[{req_id}] [FC:Perf] Native function calling configured "
+                                f"in {total_elapsed:.2f}s"
+                            )
+                        if FUNCTION_CALLING_DEBUG:
+                            fc_logger.info(
+                                FCModule.ORCHESTRATOR,
+                                f"Native FC configured successfully in {total_elapsed:.2f}s",
+                                req_id=req_id,
+                            )
                         return state
                     else:
                         raise NativeFunctionCallingError(
@@ -458,9 +476,10 @@ class FunctionCallingOrchestrator:
                     raise
                 except Exception as e:
                     last_error = e
-                    self.logger.warning(
-                        f"[{req_id}] [FC] Native FC attempt {attempt}/{self._config.native_retry_count} failed: {e}"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.warning(
+                            f"[{req_id}] [FC] Native FC attempt {attempt}/{self._config.native_retry_count} failed: {e}"
+                        )
                     if attempt < self._config.native_retry_count:
                         await asyncio.sleep(0.5)
 
@@ -471,7 +490,8 @@ class FunctionCallingOrchestrator:
 
         except SchemaConversionError as e:
             state.error_message = f"Schema conversion error: {e}"
-            self.logger.error(f"[{req_id}] [FC] {state.error_message}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(f"[{req_id}] [FC] {state.error_message}")
 
             # Schema errors are not recoverable - don't fallback
             if state.mode == FunctionCallingMode.NATIVE:
@@ -480,26 +500,35 @@ class FunctionCallingOrchestrator:
             # Auto mode with schema error - fall through to emulated
             state.fallback_used = True
             state.mode = FunctionCallingMode.EMULATED
-            self.logger.warning(
-                f"[{req_id}] [FC] Falling back to emulated mode due to schema error"
-            )
-            fc_logger.log_mode_selection(req_id, "emulated", "fallback_schema_error")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{req_id}] [FC] Falling back to emulated mode due to schema error"
+                )
+            if FUNCTION_CALLING_DEBUG:
+                fc_logger.log_mode_selection(
+                    req_id, "emulated", "fallback_schema_error"
+                )
             return state
 
         except NativeFunctionCallingError as e:
             state.error_message = str(e)
-            self.logger.warning(f"[{req_id}] [FC] Native function calling failed: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{req_id}] [FC] Native function calling failed: {e}"
+                )
 
             # Check if fallback is allowed
             if state.mode == FunctionCallingMode.AUTO and self._config.native_fallback:
                 state.fallback_used = True
                 state.mode = FunctionCallingMode.EMULATED
-                self.logger.info(
-                    f"[{req_id}] [FC] Falling back to emulated mode for function calling"
-                )
-                fc_logger.log_mode_selection(
-                    req_id, "emulated", "fallback_native_error"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.info(
+                        f"[{req_id}] [FC] Falling back to emulated mode for function calling"
+                    )
+                if FUNCTION_CALLING_DEBUG:
+                    fc_logger.log_mode_selection(
+                        req_id, "emulated", "fallback_native_error"
+                    )
                 return state
             elif state.mode == FunctionCallingMode.NATIVE:
                 # Native mode with no fallback - raise error
@@ -511,7 +540,10 @@ class FunctionCallingOrchestrator:
             raise
         except Exception as e:
             state.error_message = f"Unexpected error: {e}"
-            self.logger.error(f"[{req_id}] [FC] Unexpected error in FC prepare: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{req_id}] [FC] Unexpected error in FC prepare: {e}"
+                )
 
             if state.mode == FunctionCallingMode.AUTO and self._config.native_fallback:
                 state.fallback_used = True
@@ -578,9 +610,10 @@ class FunctionCallingOrchestrator:
         except asyncio.CancelledError:
             pass  # Cancelled, skip cleanup
         except Exception as e:
-            self.logger.warning(
-                f"[{req_id}] [FC] Failed to clear function declarations: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{req_id}] [FC] Failed to clear function declarations: {e}"
+                )
 
     def format_function_calls_for_response(
         self,

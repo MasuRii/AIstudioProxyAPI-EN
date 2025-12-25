@@ -17,6 +17,7 @@ from config import (
 )
 from logging_utils import set_request_id
 from models import ClientDisconnectedError
+from config.settings import FUNCTION_CALLING_DEBUG
 
 from .base import BaseController
 
@@ -174,7 +175,10 @@ class ResponseController(BaseController):
             return await parser.detect_function_calls(check_client_disconnected)
 
         except Exception as e:
-            self.logger.debug(f"[{self.req_id}] Error detecting function calls: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error detecting function calls: {e}"
+                )
             return False
 
     async def parse_function_calls(
@@ -219,7 +223,8 @@ class ResponseController(BaseController):
             return result.has_function_calls, function_calls, result.text_content
 
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] Error parsing function calls: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(f"[{self.req_id}] Error parsing function calls: {e}")
             return False, [], ""
 
     async def get_response_with_function_calls(
@@ -247,7 +252,10 @@ class ResponseController(BaseController):
             - raw_content: The raw content string
         """
         set_request_id(self.req_id)
-        self.logger.debug("[Response] Getting response with function call detection...")
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(
+                "[Response] Getting response with function call detection..."
+            )
 
         result: Dict[str, Any] = {
             "content": "",
@@ -271,9 +279,10 @@ class ResponseController(BaseController):
             )
 
             if has_fc:
-                self.logger.info(
-                    f"[{self.req_id}] Detected {len(function_calls)} function call(s) in response"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.info(
+                        f"[{self.req_id}] Detected {len(function_calls)} function call(s) in response"
+                    )
                 result["has_function_calls"] = True
                 result["function_calls"] = function_calls
                 result["content"] = text_content
@@ -283,7 +292,10 @@ class ResponseController(BaseController):
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
-            self.logger.error(f"[{self.req_id}] Error getting response with FC: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] Error getting response with FC: {e}"
+                )
             if not isinstance(e, ClientDisconnectedError):
                 await save_error_snapshot(f"get_response_fc_error_{self.req_id}")
             raise

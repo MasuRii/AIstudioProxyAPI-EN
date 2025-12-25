@@ -28,7 +28,7 @@ from config import (
     FUNCTION_DECLARATIONS_TEXTAREA_SELECTOR,
     SELECTOR_VISIBILITY_TIMEOUT_MS,
 )
-from config.settings import FUNCTION_CALLING_UI_TIMEOUT
+from config.settings import FUNCTION_CALLING_DEBUG, FUNCTION_CALLING_UI_TIMEOUT
 from models import ClientDisconnectedError
 
 from .base import BaseController
@@ -95,10 +95,11 @@ class FunctionCallingController(BaseController):
         """
         # Check instance-level cache first for fast path
         if use_cache and self._fc_toggle_cached is not None:
-            self.logger.debug(
-                f"[{self.req_id}] [FC:Cache] Toggle state from instance cache: "
-                f"{'enabled' if self._fc_toggle_cached else 'disabled'}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] [FC:Cache] Toggle state from instance cache: "
+                    f"{'enabled' if self._fc_toggle_cached else 'disabled'}"
+                )
             return self._fc_toggle_cached
 
         await self._check_disconnect(
@@ -116,9 +117,10 @@ class FunctionCallingController(BaseController):
                     timeout=FUNCTION_CALLING_UI_TIMEOUT
                 )
             except Exception:
-                self.logger.debug(
-                    f"[{self.req_id}] [FC:UI] Toggle not visible, assuming disabled"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] [FC:UI] Toggle not visible, assuming disabled"
+                    )
                 self._fc_toggle_cached = False
                 return False
 
@@ -127,16 +129,18 @@ class FunctionCallingController(BaseController):
             is_enabled = is_checked_str == "true"
 
             elapsed = time.perf_counter() - start_time
-            self.logger.debug(
-                f"[{self.req_id}] [FC:UI] Toggle check complete in {elapsed:.3f}s: "
-                f"{'enabled' if is_enabled else 'disabled'}"
-            )
-            fc_logger.log_ui_action(
-                self.req_id,
-                "check",
-                "fc_toggle",
-                elapsed_ms=elapsed * 1000,
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] [FC:UI] Toggle check complete in {elapsed:.3f}s: "
+                    f"{'enabled' if is_enabled else 'disabled'}"
+                )
+            if FUNCTION_CALLING_DEBUG:
+                fc_logger.log_ui_action(
+                    self.req_id,
+                    "check",
+                    "fc_toggle",
+                    elapsed_ms=elapsed * 1000,
+                )
 
             # Update instance cache
             self._fc_toggle_cached = is_enabled
@@ -148,9 +152,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.warning(
-                f"[{self.req_id}] [FC] Error checking function calling state: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{self.req_id}] [FC] Error checking function calling state: {e}"
+                )
             return False
 
     async def _set_function_calling_toggle(
@@ -169,9 +174,10 @@ class FunctionCallingController(BaseController):
             True if toggle was set successfully, False otherwise.
         """
         action = "enable" if enable else "disable"
-        self.logger.debug(
-            f"[{self.req_id}] [FC:UI] Attempting to {action} function calling"
-        )
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(
+                f"[{self.req_id}] [FC:UI] Attempting to {action} function calling"
+            )
 
         await self._check_disconnect(
             check_client_disconnected, f"Function calling - {action}"
@@ -193,10 +199,11 @@ class FunctionCallingController(BaseController):
 
             if is_currently_enabled == enable:
                 elapsed = time.perf_counter() - start_time
-                self.logger.debug(
-                    f"[{self.req_id}] [FC:UI] Toggle already {'enabled' if enable else 'disabled'} "
-                    f"(checked in {elapsed:.3f}s)"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] [FC:UI] Toggle already {'enabled' if enable else 'disabled'} "
+                        f"(checked in {elapsed:.3f}s)"
+                    )
                 self._fc_toggle_cached = enable
                 return True
 
@@ -223,15 +230,17 @@ class FunctionCallingController(BaseController):
             elapsed = time.perf_counter() - start_time
 
             if new_state == enable:
-                self.logger.info(
-                    f"[{self.req_id}] [FC:UI] Toggle {action}d successfully in {elapsed:.2f}s"
-                )
-                fc_logger.log_ui_action(
-                    self.req_id,
-                    action,
-                    "fc_toggle",
-                    elapsed_ms=elapsed * 1000,
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.info(
+                        f"[{self.req_id}] [FC:UI] Toggle {action}d successfully in {elapsed:.2f}s"
+                    )
+                if FUNCTION_CALLING_DEBUG:
+                    fc_logger.log_ui_action(
+                        self.req_id,
+                        action,
+                        "fc_toggle",
+                        elapsed_ms=elapsed * 1000,
+                    )
                 # Update instance cache
                 self._fc_toggle_cached = enable
                 # Update global cache
@@ -240,10 +249,11 @@ class FunctionCallingController(BaseController):
                     cache.update_toggle_state(enable, req_id=self.req_id)
                 return True
             else:
-                self.logger.warning(
-                    f"[{self.req_id}] [FC:UI] Toggle state change failed. "
-                    f"Expected: {enable}, Actual: {new_state}"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.warning(
+                        f"[{self.req_id}] [FC:UI] Toggle state change failed. "
+                        f"Expected: {enable}, Actual: {new_state}"
+                    )
                 return False
 
         except asyncio.CancelledError:
@@ -251,9 +261,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(
-                f"[{self.req_id}] [FC] Error {action}ing function calling: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] [FC] Error {action}ing function calling: {e}"
+                )
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"function_calling_{action}_error_{self.req_id}")
@@ -305,9 +316,10 @@ class FunctionCallingController(BaseController):
         Returns:
             True if dialog opened successfully, False otherwise.
         """
-        self.logger.debug(
-            f"[{self.req_id}] [FC:UI] Opening function declarations dialog"
-        )
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(
+                f"[{self.req_id}] [FC:UI] Opening function declarations dialog"
+            )
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - opening dialog"
@@ -338,15 +350,16 @@ class FunctionCallingController(BaseController):
             )
 
             elapsed = time.perf_counter() - start_time
-            self.logger.debug(
-                f"[{self.req_id}] [FC:Perf] Dialog opened in {elapsed:.2f}s"
-            )
-            fc_logger.log_ui_action(
-                self.req_id,
-                "open",
-                "declarations_dialog",
-                elapsed_ms=elapsed * 1000,
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] [FC:Perf] Dialog opened in {elapsed:.2f}s"
+                )
+                fc_logger.log_ui_action(
+                    self.req_id,
+                    "open",
+                    "declarations_dialog",
+                    elapsed_ms=elapsed * 1000,
+                )
             return True
 
         except asyncio.CancelledError:
@@ -354,9 +367,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(
-                f"[{self.req_id}] [FC:UI] Failed to open function declarations dialog: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] [FC:UI] Failed to open function declarations dialog: {e}"
+                )
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"function_dialog_open_error_{self.req_id}")
@@ -372,7 +386,8 @@ class FunctionCallingController(BaseController):
         Returns:
             True if switched successfully or already on Code Editor tab, False otherwise.
         """
-        self.logger.debug(f"[{self.req_id}] UI: Clicking Code Editor tab")
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(f"[{self.req_id}] UI: Clicking Code Editor tab")
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - switch to code editor"
@@ -386,22 +401,25 @@ class FunctionCallingController(BaseController):
             # Check if tab exists
             if await code_editor_tab.count() == 0:
                 # Might already be in Code Editor mode or single-mode dialog
-                self.logger.debug(
-                    f"[{self.req_id}] UI: Code Editor tab not found, assuming single-mode"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] UI: Code Editor tab not found, assuming single-mode"
+                    )
                 return True
 
             # Check if already selected
             is_selected = await code_editor_tab.first.get_attribute("aria-selected")
             if is_selected == "true":
-                self.logger.debug(f"[{self.req_id}] UI: Already on Code Editor tab")
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(f"[{self.req_id}] UI: Already on Code Editor tab")
                 return True
 
             # Click to switch
             await code_editor_tab.first.click(timeout=CLICK_TIMEOUT_MS)
             await asyncio.sleep(0.3)
 
-            self.logger.debug(f"[{self.req_id}] UI: Switched to Code Editor tab")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] UI: Switched to Code Editor tab")
             return True
 
         except asyncio.CancelledError:
@@ -409,9 +427,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.warning(
-                f"[{self.req_id}] UI: Error switching to Code Editor tab: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{self.req_id}] UI: Error switching to Code Editor tab: {e}"
+                )
             return True  # Continue anyway, might work
 
     async def _input_function_declarations_json(
@@ -429,9 +448,10 @@ class FunctionCallingController(BaseController):
         Returns:
             True if input was successful, False otherwise.
         """
-        self.logger.debug(
-            f"[{self.req_id}] UI: Pasting JSON ({len(declarations_json)} chars)"
-        )
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(
+                f"[{self.req_id}] UI: Pasting JSON ({len(declarations_json)} chars)"
+            )
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - input JSON"
@@ -457,7 +477,8 @@ class FunctionCallingController(BaseController):
 
             await asyncio.sleep(0.2)
 
-            self.logger.debug(f"[{self.req_id}] UI: JSON input complete")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(f"[{self.req_id}] UI: JSON input complete")
             return True
 
         except asyncio.CancelledError:
@@ -465,9 +486,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(
-                f"[{self.req_id}] UI: Error inputting function declarations: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] UI: Error inputting function declarations: {e}"
+                )
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"function_input_error_{self.req_id}")
@@ -483,7 +505,8 @@ class FunctionCallingController(BaseController):
         Returns:
             True if saved and closed successfully, False otherwise.
         """
-        self.logger.debug(f"[{self.req_id}] UI: Saving and closing dialog")
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(f"[{self.req_id}] UI: Saving and closing dialog")
 
         await self._check_disconnect(
             check_client_disconnected, "Function declarations - save and close"
@@ -506,13 +529,15 @@ class FunctionCallingController(BaseController):
             dialog = self.page.locator(FUNCTION_DECLARATIONS_DIALOG_SELECTOR)
             try:
                 await expect_async(dialog.first).not_to_be_visible(timeout=3000)
-                self.logger.debug(f"[{self.req_id}] UI: Dialog closed successfully")
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(f"[{self.req_id}] UI: Dialog closed successfully")
                 return True
             except Exception:
                 # Dialog might still be open, try close button
-                self.logger.debug(
-                    f"[{self.req_id}] UI: Dialog still visible, trying close button"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] UI: Dialog still visible, trying close button"
+                    )
                 close_button = self.page.locator(
                     FUNCTION_DECLARATIONS_CLOSE_BUTTON_SELECTOR
                 )
@@ -527,7 +552,8 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(f"[{self.req_id}] UI: Error saving declarations: {e}")
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(f"[{self.req_id}] UI: Error saving declarations: {e}")
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"function_save_error_{self.req_id}")
@@ -571,24 +597,27 @@ class FunctionCallingController(BaseController):
                 cached_state = cache.get_cached_state()
                 if cached_state and cached_state.declarations_set:
                     elapsed = time.perf_counter() - total_start
-                    self.logger.info(
-                        f"[{self.req_id}] [FC:Cache] HIT - skipping UI configuration "
-                        f"(saved ~2-4s, check took {elapsed:.3f}s)"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.info(
+                            f"[{self.req_id}] [FC:Cache] HIT - skipping UI configuration "
+                            f"(saved ~2-4s, check took {elapsed:.3f}s)"
+                        )
                     return True
                 else:
-                    self.logger.debug(
-                        f"[{self.req_id}] [FC:Cache] Valid digest but declarations not set"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] [FC:Cache] Valid digest but declarations not set"
+                        )
 
-        self.logger.info(
-            f"[{self.req_id}] [FC:UI] Setting {len(declarations)} function declaration(s)"
-        )
-        fc_logger.info(
-            FCModule.UI,
-            f"Setting {len(declarations)} function declaration(s)",
-            req_id=self.req_id,
-        )
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.info(
+                f"[{self.req_id}] [FC:UI] Setting {len(declarations)} function declaration(s)"
+            )
+            fc_logger.info(
+                FCModule.UI,
+                f"Setting {len(declarations)} function declaration(s)",
+                req_id=self.req_id,
+            )
 
         try:
             # Step 0: Disable Google Search and URL Context if enabled (blocks FC)
@@ -606,9 +635,10 @@ class FunctionCallingController(BaseController):
                     if await search_toggle.is_visible(timeout=2000):
                         is_checked = await search_toggle.get_attribute("aria-checked")
                         if is_checked == "true":
-                            self.logger.info(
-                                f"[{self.req_id}] [FC:UI] Disabling Google Search (blocks FC)"
-                            )
+                            if FUNCTION_CALLING_DEBUG:
+                                self.logger.info(
+                                    f"[{self.req_id}] [FC:UI] Disabling Google Search (blocks FC)"
+                                )
                             await search_toggle.click(timeout=CLICK_TIMEOUT_MS)
                             await asyncio.sleep(0.5)
                 except Exception:
@@ -621,9 +651,10 @@ class FunctionCallingController(BaseController):
                     if await url_toggle.is_visible(timeout=2000):
                         is_checked = await url_toggle.get_attribute("aria-checked")
                         if is_checked == "true":
-                            self.logger.info(
-                                f"[{self.req_id}] [FC:UI] Disabling URL Context (blocks FC)"
-                            )
+                            if FUNCTION_CALLING_DEBUG:
+                                self.logger.info(
+                                    f"[{self.req_id}] [FC:UI] Disabling URL Context (blocks FC)"
+                                )
                             await url_toggle.click(timeout=CLICK_TIMEOUT_MS)
                             await asyncio.sleep(0.5)
                 except Exception:
@@ -633,9 +664,10 @@ class FunctionCallingController(BaseController):
             toggle_start = time.perf_counter()
             if not await self.is_function_calling_enabled(check_client_disconnected):
                 if not await self.enable_function_calling(check_client_disconnected):
-                    self.logger.error(
-                        f"[{self.req_id}] [FC] Failed to enable function calling"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.error(
+                            f"[{self.req_id}] [FC] Failed to enable function calling"
+                        )
                     return False
             toggle_elapsed = time.perf_counter() - toggle_start
 
@@ -648,9 +680,10 @@ class FunctionCallingController(BaseController):
             if not await self._open_function_declarations_dialog(
                 check_client_disconnected
             ):
-                self.logger.error(
-                    f"[{self.req_id}] [FC] Failed to open function declarations dialog"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.error(
+                        f"[{self.req_id}] [FC] Failed to open function declarations dialog"
+                    )
                 return False
             dialog_elapsed = time.perf_counter() - dialog_start
 
@@ -660,9 +693,10 @@ class FunctionCallingController(BaseController):
 
             # Step 3: Switch to Code Editor tab
             if not await self._switch_to_code_editor_tab(check_client_disconnected):
-                self.logger.warning(
-                    f"[{self.req_id}] [FC:UI] Could not switch to Code Editor tab, continuing"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.warning(
+                        f"[{self.req_id}] [FC:UI] Could not switch to Code Editor tab, continuing"
+                    )
 
             await self._check_disconnect(
                 check_client_disconnected, "Function declarations - after tab switch"
@@ -674,9 +708,10 @@ class FunctionCallingController(BaseController):
             if not await self._input_function_declarations_json(
                 declarations_json, check_client_disconnected
             ):
-                self.logger.error(
-                    f"[{self.req_id}] [FC] Failed to input function declarations JSON"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.error(
+                        f"[{self.req_id}] [FC] Failed to input function declarations JSON"
+                    )
                 return False
             input_elapsed = time.perf_counter() - input_start
 
@@ -687,9 +722,10 @@ class FunctionCallingController(BaseController):
             # Step 5: Save and close
             save_start = time.perf_counter()
             if not await self._save_and_close_dialog(check_client_disconnected):
-                self.logger.error(
-                    f"[{self.req_id}] [FC] Failed to save function declarations"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.error(
+                        f"[{self.req_id}] [FC] Failed to save function declarations"
+                    )
                 return False
             save_elapsed = time.perf_counter() - save_start
 
@@ -706,16 +742,17 @@ class FunctionCallingController(BaseController):
                 )
             self._fc_toggle_cached = True
 
-            self.logger.info(
-                f"[{self.req_id}] [FC:Perf] Function declarations set successfully "
-                f"(total={total_elapsed:.2f}s, toggle={toggle_elapsed:.2f}s, "
-                f"dialog={dialog_elapsed:.2f}s, input={input_elapsed:.2f}s, save={save_elapsed:.2f}s)"
-            )
-            fc_logger.info(
-                FCModule.UI,
-                f"Declarations set successfully in {total_elapsed:.2f}s",
-                req_id=self.req_id,
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.info(
+                    f"[{self.req_id}] [FC:Perf] Function declarations set successfully "
+                    f"(total={total_elapsed:.2f}s, toggle={toggle_elapsed:.2f}s, "
+                    f"dialog={dialog_elapsed:.2f}s, input={input_elapsed:.2f}s, save={save_elapsed:.2f}s)"
+                )
+                fc_logger.info(
+                    FCModule.UI,
+                    f"Declarations set successfully in {total_elapsed:.2f}s",
+                    req_id=self.req_id,
+                )
             return True
 
         except asyncio.CancelledError:
@@ -723,9 +760,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(
-                f"[{self.req_id}] [FC] Error setting function declarations: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] [FC] Error setting function declarations: {e}"
+                )
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(f"set_function_declarations_error_{self.req_id}")
@@ -749,16 +787,18 @@ class FunctionCallingController(BaseController):
         Returns:
             True if declarations were cleared successfully, False otherwise.
         """
-        self.logger.info(f"[{self.req_id}] [FC:UI] Clearing function declarations")
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.info(f"[{self.req_id}] [FC:UI] Clearing function declarations")
 
         start_time = time.perf_counter()
 
         try:
             # Check if function calling is enabled
             if not await self.is_function_calling_enabled(check_client_disconnected):
-                self.logger.debug(
-                    f"[{self.req_id}] [FC] Function calling not enabled, nothing to clear"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] [FC] Function calling not enabled, nothing to clear"
+                    )
                 if invalidate_cache:
                     self.invalidate_fc_cache("clear - not enabled")
                 return True
@@ -771,9 +811,10 @@ class FunctionCallingController(BaseController):
             if not await self._open_function_declarations_dialog(
                 check_client_disconnected
             ):
-                self.logger.error(
-                    f"[{self.req_id}] [FC] Failed to open dialog for clearing"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.error(
+                        f"[{self.req_id}] [FC] Failed to open dialog for clearing"
+                    )
                 return False
 
             await self._check_disconnect(
@@ -789,9 +830,10 @@ class FunctionCallingController(BaseController):
                 try:
                     await reset_button.first.click(timeout=CLICK_TIMEOUT_MS)
                     await asyncio.sleep(0.3)
-                    self.logger.debug(
-                        f"[{self.req_id}] [FC:UI] Used reset button to clear declarations"
-                    )
+                    if FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] [FC:UI] Used reset button to clear declarations"
+                        )
                 except Exception:
                     # Fall back to clearing textarea
                     pass
@@ -803,15 +845,17 @@ class FunctionCallingController(BaseController):
             if not await self._input_function_declarations_json(
                 "[]", check_client_disconnected
             ):
-                self.logger.warning(
-                    f"[{self.req_id}] [FC:UI] Failed to input empty declarations"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.warning(
+                        f"[{self.req_id}] [FC:UI] Failed to input empty declarations"
+                    )
 
             # Save and close
             if not await self._save_and_close_dialog(check_client_disconnected):
-                self.logger.error(
-                    f"[{self.req_id}] [FC] Failed to save cleared declarations"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.error(
+                        f"[{self.req_id}] [FC] Failed to save cleared declarations"
+                    )
                 return False
 
             # Optionally disable function calling toggle
@@ -825,9 +869,10 @@ class FunctionCallingController(BaseController):
                 self.invalidate_fc_cache("declarations cleared")
 
             elapsed = time.perf_counter() - start_time
-            self.logger.info(
-                f"[{self.req_id}] [FC:Perf] Declarations cleared in {elapsed:.2f}s"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.info(
+                    f"[{self.req_id}] [FC:Perf] Declarations cleared in {elapsed:.2f}s"
+                )
             return True
 
         except asyncio.CancelledError:
@@ -835,9 +880,10 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.error(
-                f"[{self.req_id}] [FC] Error clearing function declarations: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] [FC] Error clearing function declarations: {e}"
+                )
             from browser_utils.operations import save_error_snapshot
 
             await save_error_snapshot(
@@ -876,15 +922,17 @@ class FunctionCallingController(BaseController):
                     timeout=FUNCTION_CALLING_UI_TIMEOUT // 2
                 )
                 elapsed = time.perf_counter() - start_time
-                self.logger.debug(
-                    f"[{self.req_id}] [FC:UI] Function calling available (checked in {elapsed:.3f}s)"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] [FC:UI] Function calling available (checked in {elapsed:.3f}s)"
+                    )
                 return True
             except Exception:
                 elapsed = time.perf_counter() - start_time
-                self.logger.debug(
-                    f"[{self.req_id}] [FC:UI] Function calling not available (checked in {elapsed:.3f}s)"
-                )
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.debug(
+                        f"[{self.req_id}] [FC:UI] Function calling not available (checked in {elapsed:.3f}s)"
+                    )
                 return False
 
         except asyncio.CancelledError:
@@ -892,7 +940,8 @@ class FunctionCallingController(BaseController):
         except ClientDisconnectedError:
             raise
         except Exception as e:
-            self.logger.warning(
-                f"[{self.req_id}] [FC] Error checking function calling availability: {e}"
-            )
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.warning(
+                    f"[{self.req_id}] [FC] Error checking function calling availability: {e}"
+                )
             return False

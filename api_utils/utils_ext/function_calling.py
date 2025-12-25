@@ -18,7 +18,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
+from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils.fc_debug import FCModule, get_fc_logger
+
 
 logger = logging.getLogger("AIStudioProxyServer")
 
@@ -231,7 +233,8 @@ class SchemaConverter:
 
         tool_type = openai_tool.get("type")
         if tool_type != "function":
-            logger.debug(f"Ignoring non-function tool type: {tool_type}")
+            if FUNCTION_CALLING_DEBUG:
+                logger.debug(f"Ignoring non-function tool type: {tool_type}")
             return None
 
         # Try to find function definition (nested or flat)
@@ -249,8 +252,9 @@ class SchemaConverter:
                 "Function 'name' is required and must be a string"
             )
 
-        logger.debug(f"Converting OpenAI tool to Gemini: {name}")
-        fc_logger.debug(FCModule.SCHEMA, f"Converting tool: {name}")
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"Converting OpenAI tool to Gemini: {name}")
+            fc_logger.debug(FCModule.SCHEMA, f"Converting tool: {name}")
 
         # Build Gemini FunctionDeclaration
         gemini_declaration: Dict[str, Any] = {"name": name}
@@ -267,9 +271,10 @@ class SchemaConverter:
             clean_params = self._clean_parameters(parameters)
             gemini_declaration["parameters"] = clean_params
 
-        logger.debug(
-            f"Converted tool '{name}' to Gemini format: {json.dumps(gemini_declaration, ensure_ascii=False)}"
-        )
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(
+                f"Converted tool '{name}' to Gemini format: {json.dumps(gemini_declaration, ensure_ascii=False)}"
+            )
 
         return gemini_declaration
 
@@ -299,10 +304,11 @@ class SchemaConverter:
             except SchemaConversionError as e:
                 raise SchemaConversionError(f"Error converting tool at index {i}: {e}")
 
-        fc_logger.info(
-            FCModule.SCHEMA,
-            f"Converted {len(declarations)} tools to Gemini format",
-        )
+        if FUNCTION_CALLING_DEBUG:
+            fc_logger.info(
+                FCModule.SCHEMA,
+                f"Converted {len(declarations)} tools to Gemini format",
+            )
         return declarations
 
     def to_json_string(
@@ -486,7 +492,8 @@ class CallIdManager:
             arguments=arguments,
         )
         self._pending_calls[call_id] = pending
-        logger.debug(f"Registered pending call: {call_id} -> {function_name}")
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"Registered pending call: {call_id} -> {function_name}")
         return pending
 
     def get_pending_call(self, call_id: str) -> Optional[PendingCall]:
@@ -634,9 +641,11 @@ class ResponseFormatter:
         if call_id is None:
             call_id = self._id_manager.generate_id()
 
-        logger.debug(f"Formatting tool call: {call_id} ({parsed_call.name})")
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"Formatting tool call: {call_id} ({parsed_call.name})")
 
         # Register the call for tracking
+
         self._id_manager.register_call(
             call_id=call_id,
             function_name=parsed_call.name,
@@ -669,11 +678,12 @@ class ResponseFormatter:
         Returns:
             List of OpenAI tool_call dicts.
         """
-        logger.debug(f"Formatting {len(parsed_calls)} tool call(s)")
-        fc_logger.debug(
-            FCModule.RESPONSE,
-            f"Formatting {len(parsed_calls)} tool call(s) for OpenAI response",
-        )
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"Formatting {len(parsed_calls)} tool call(s)")
+            fc_logger.debug(
+                FCModule.RESPONSE,
+                f"Formatting {len(parsed_calls)} tool call(s) for OpenAI response",
+            )
         return [self.format_tool_call(call) for call in parsed_calls]
 
     def format_tool_call_delta(

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import unquote
 
 from config.global_state import GlobalState
+from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils.fc_debug import FCModule, get_fc_logger
 from logging_utils.grid_logger import GridFormatter
 
@@ -151,7 +152,7 @@ class HttpInterceptor:
             matches = list(re.finditer(pattern, buffer_bytes))
 
             # Debug: Log match count when processing is done
-            if is_done and matches:
+            if is_done and matches and FUNCTION_CALLING_DEBUG:
                 self.logger.debug(
                     f"[FC:Wire] Found {len(matches)} wire format matches in buffer"
                 )
@@ -164,7 +165,7 @@ class HttpInterceptor:
                         payload = json_data[0][0]
 
                         # Debug: Log payload structure for function call detection
-                        if len(payload) >= 10:
+                        if len(payload) >= 10 and FUNCTION_CALLING_DEBUG:
                             self.logger.debug(
                                 f"[FC:Wire] Payload len={len(payload)}, [1]={payload[1]}, "
                                 f"has [10]={len(payload) > 10 and isinstance(payload[10], list)}"
@@ -181,29 +182,32 @@ class HttpInterceptor:
                             func_name = array_tool_calls[0]
                             raw_args = array_tool_calls[1]
                             # Log raw wire format for debugging
-                            self.logger.debug(
-                                f"[FC:Wire] Raw args for '{func_name}': {json.dumps(raw_args)[:500]}"
-                            )
+                            if FUNCTION_CALLING_DEBUG:
+                                self.logger.debug(
+                                    f"[FC:Wire] Raw args for '{func_name}': {json.dumps(raw_args)[:500]}"
+                                )
                             params = self.parse_toolcall_params(raw_args)
                             # Log warning if params are empty for tracking potential parse failures
                             if not params:
-                                self.logger.warning(
-                                    f"[FC:Wire] Function '{func_name}' parsed with empty args - "
-                                    f"may indicate wire format parsing failure. Raw: {array_tool_calls[1][:200] if array_tool_calls[1] else 'None'}..."
-                                )
-                                fc_logger.log_wire_parse(
-                                    req_id="",
-                                    func_name=func_name,
-                                    params=params,
-                                    success=False,
-                                )
+                                if FUNCTION_CALLING_DEBUG:
+                                    self.logger.warning(
+                                        f"[FC:Wire] Function '{func_name}' parsed with empty args - "
+                                        f"may indicate wire format parsing failure. Raw: {array_tool_calls[1][:200] if array_tool_calls[1] else 'None'}..."
+                                    )
+                                    fc_logger.log_wire_parse(
+                                        req_id="",
+                                        func_name=func_name,
+                                        params=params,
+                                        success=False,
+                                    )
                             else:
-                                fc_logger.log_wire_parse(
-                                    req_id="",
-                                    func_name=func_name,
-                                    params=params,
-                                    success=True,
-                                )
+                                if FUNCTION_CALLING_DEBUG:
+                                    fc_logger.log_wire_parse(
+                                        req_id="",
+                                        func_name=func_name,
+                                        params=params,
+                                        success=True,
+                                    )
                             resp["function"].append(
                                 {"name": func_name, "params": params}
                             )
