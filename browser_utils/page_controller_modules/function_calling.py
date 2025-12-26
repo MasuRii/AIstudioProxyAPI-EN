@@ -12,15 +12,14 @@ import json
 import time
 from typing import Callable, List, Optional
 
-from logging_utils.fc_debug import FCModule, get_fc_logger
 from playwright.async_api import expect as expect_async
 
 from config import (
     CLICK_TIMEOUT_MS,
     FUNCTION_CALLING_CONTAINER_SELECTOR,
     FUNCTION_CALLING_TOGGLE_SELECTOR,
-    FUNCTION_DECLARATIONS_CODE_EDITOR_TAB_SELECTOR,
     FUNCTION_DECLARATIONS_CLOSE_BUTTON_SELECTOR,
+    FUNCTION_DECLARATIONS_CODE_EDITOR_TAB_SELECTOR,
     FUNCTION_DECLARATIONS_DIALOG_SELECTOR,
     FUNCTION_DECLARATIONS_EDIT_BUTTON_SELECTOR,
     FUNCTION_DECLARATIONS_RESET_BUTTON_SELECTOR,
@@ -29,6 +28,7 @@ from config import (
     SELECTOR_VISIBILITY_TIMEOUT_MS,
 )
 from config.settings import FUNCTION_CALLING_DEBUG, FUNCTION_CALLING_UI_TIMEOUT
+from logging_utils.fc_debug import FCModule, get_fc_logger
 from models import ClientDisconnectedError
 
 from .base import BaseController

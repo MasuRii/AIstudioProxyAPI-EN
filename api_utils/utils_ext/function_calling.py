@@ -14,13 +14,12 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils.fc_debug import FCModule, get_fc_logger
-
 
 logger = logging.getLogger("AIStudioProxyServer")
 

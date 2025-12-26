@@ -15,7 +15,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Generator
+from typing import Dict, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,13 +27,12 @@ from logging_utils.fc_debug.handlers import (
     create_rotating_file_handler,
     ensure_log_directory,
 )
-from logging_utils.fc_debug.logger import FunctionCallingDebugLogger, ModuleLogger
+from logging_utils.fc_debug.logger import FunctionCallingDebugLogger
 from logging_utils.fc_debug.truncation import (
     TruncationConfig,
     summarize_tools,
     truncate_payload,
 )
-
 
 # =============================================================================
 # Fixtures

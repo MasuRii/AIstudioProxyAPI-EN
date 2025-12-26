@@ -11,7 +11,7 @@ function calls like:
 """
 
 import pytest
-import re
+
 from api_utils.utils_ext.function_call_response_parser import FunctionCallResponseParser
 
 
@@ -87,7 +87,7 @@ Parameters:
         assert len(calls) == 1
         assert calls[0].name == "list_files"
         assert calls[0].arguments.get("path") == "."
-        assert calls[0].arguments.get("recursive") == False
+        assert calls[0].arguments.get("recursive") is False
 
     def test_parse_multiple_emulated_calls(self):
         """Test parsing multiple function calls in one response."""

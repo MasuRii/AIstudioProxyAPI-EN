@@ -28,12 +28,10 @@ class FCDebugConfig:
     def from_env(cls) -> "FCDebugConfig":
         """Load configuration from environment variables."""
         # Master switch: FUNCTION_CALLING_DEBUG is the primary control
-        master = os.environ.get("FUNCTION_CALLING_DEBUG", "false").lower() in (
-            "true",
-            "1",
-            "yes",
-        )
+        fc_debug_env = os.environ.get("FUNCTION_CALLING_DEBUG", "false").lower()
+        legacy_master = fc_debug_env in ("true", "1", "yes")
 
+        master = legacy_master
         # Allow FC_DEBUG_ENABLED as an alias for granular control
         if not master:
             master = os.environ.get("FC_DEBUG_ENABLED", "false").lower() in (
@@ -48,10 +46,12 @@ class FCDebugConfig:
             env_val = os.environ.get(module.env_enabled_key, "").lower()
             if env_val:
                 module_enabled[module] = env_val in ("true", "1", "yes")
-            else:
-                # Default to True if master is enabled, to ensure FUNCTION_CALLING_DEBUG=true
-                # enables all logs by default unless specifically disabled.
+            elif module == FCModule.ORCHESTRATOR and legacy_master:
+                # Legacy mode: FUNCTION_CALLING_DEBUG=true enables ORCHESTRATOR by default
                 module_enabled[module] = True
+            else:
+                # Default to False to ensure granular control
+                module_enabled[module] = False
 
         # Per-module levels
         module_levels: Dict[FCModule, int] = {}

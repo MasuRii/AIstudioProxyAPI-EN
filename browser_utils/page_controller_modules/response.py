@@ -15,9 +15,9 @@ from config import (
     RESPONSE_TEXT_SELECTOR,
     SUBMIT_BUTTON_SELECTOR,
 )
+from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils import set_request_id
 from models import ClientDisconnectedError
-from config.settings import FUNCTION_CALLING_DEBUG
 
 from .base import BaseController
 

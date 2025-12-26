@@ -19,29 +19,25 @@ from logging_utils.fc_debug import FCModule, get_fc_logger
 
 # FC debug logger for orchestrator-level events
 fc_logger = get_fc_logger()
-from config.settings import (
-    FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS,
-    FUNCTION_CALLING_DEBUG,
-    FUNCTION_CALLING_MODE,
-    FUNCTION_CALLING_NATIVE_FALLBACK,
-    FUNCTION_CALLING_NATIVE_RETRY_COUNT,
-)
-from models import ClientDisconnectedError
-
 # Import directly from the module file to avoid circular imports through __init__.py
 # fmt: off
 from api_utils.utils_ext.function_calling import (  # noqa: E501
-    CallIdManager,
     FunctionCallingConfig,
     FunctionCallingMode,
     ParsedFunctionCall,
     ResponseFormatter,
     SchemaConversionError,
     SchemaConverter,
-    build_assistant_message_with_tool_calls,
     get_finish_reason,
 )
 from api_utils.utils_ext.function_calling_cache import FunctionCallingCache
+from config.settings import (
+    FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS,
+    FUNCTION_CALLING_DEBUG,
+    FUNCTION_CALLING_MODE,
+)
+from models import ClientDisconnectedError
+
 # fmt: on
 
 
@@ -762,10 +758,9 @@ def should_skip_tool_injection(
     if mode_str == "emulated":
         return False
 
-    # In native or auto mode, skip injection (tools configured via UI)
-    if mode_str in ("native", "auto"):
-        return True
-
+    # In native or auto mode, ONLY skip if we're sure native mode is being used.
+    # If fc_state is None, we don't know the dynamic state, so we default to
+    # injecting tools into the prompt for safety (backwards compatibility).
     return False
 
 

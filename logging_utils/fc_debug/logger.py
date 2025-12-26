@@ -14,7 +14,6 @@ from threading import Lock
 from typing import Any, Dict, Optional
 
 from .config import FCDebugConfig
-from .formatters import FCDebugFormatter
 from .handlers import create_rotating_file_handler, ensure_log_directory
 from .modules import FCModule
 from .truncation import TruncationConfig, truncate_payload

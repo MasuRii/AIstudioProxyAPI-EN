@@ -17,9 +17,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from playwright.async_api import Locator, Page as AsyncPage
+from playwright.async_api import Locator
+from playwright.async_api import Page as AsyncPage
 
-from config.settings import FUNCTION_CALLING_DEBUG
 from config.selectors import (
     FUNCTION_CALL_ARGS_SELECTOR,
     FUNCTION_CALL_CODE_BLOCK_SELECTOR,
@@ -29,7 +29,7 @@ from config.selectors import (
     NATIVE_FUNCTION_CALL_CHUNK_SELECTOR,
     NATIVE_FUNCTION_CALL_NAME_SELECTOR,
 )
-
+from config.settings import FUNCTION_CALLING_DEBUG
 
 logger = logging.getLogger("AIStudioProxyServer")
 

@@ -90,7 +90,6 @@ from .utils_ext.files import collect_and_validate_attachments
 from .utils_ext.function_calling_orchestrator import (
     FunctionCallingState,
     get_function_calling_orchestrator,
-    should_skip_tool_injection,
 )
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats

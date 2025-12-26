@@ -2,9 +2,10 @@
 Tests for FunctionCallingCache - specifically for tool name extraction and validation.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
 import time
+from unittest.mock import MagicMock
+
+import pytest
 
 from api_utils.utils_ext.function_calling_cache import (
     FunctionCallingCache,

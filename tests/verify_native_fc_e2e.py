@@ -1,7 +1,6 @@
-import requests
-import json
-import sys
 import time
+
+import requests
 
 
 def verify_native_fc_e2e():
@@ -15,7 +14,7 @@ def verify_native_fc_e2e():
     chat_url = f"{base_url}/v1/chat/completions"
     health_url = f"{base_url}/health"
 
-    print(f"--- Native Function Calling E2E Verification ---")
+    print("--- Native Function Calling E2E Verification ---")
 
     # 1. Check if proxy is running
     print(f"Checking proxy health at {health_url}...")
@@ -109,7 +108,7 @@ def verify_native_fc_e2e():
             print(f"Response: {response.text}")
 
     except requests.exceptions.Timeout:
-        print(f"\n❌ ERROR: Request timed out after 60s.")
+        print("\n❌ ERROR: Request timed out after 60s.")
     except Exception as e:
         print(f"\n❌ ERROR: An unexpected error occurred: {e}")
 

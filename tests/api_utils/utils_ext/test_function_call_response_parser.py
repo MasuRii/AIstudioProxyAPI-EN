@@ -3,15 +3,16 @@ Tests for Function Call Response Parser.
 """
 
 import json
-import pytest
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from api_utils.utils_ext.function_call_response_parser import (
     FunctionCallParseResult,
     FunctionCallResponseParser,
-    format_function_calls_to_openai,
     _validate_function_names,
+    format_function_calls_to_openai,
 )
 from api_utils.utils_ext.function_calling import ParsedFunctionCall
 from api_utils.utils_ext.function_calling_cache import (

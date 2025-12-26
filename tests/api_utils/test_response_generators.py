@@ -198,7 +198,16 @@ class TestGenSSEFromAuxStream:
         tool = tool_chunk["choices"][0]["delta"]["tool_calls"][0]
         assert tool["function"]["name"] == "get_weather"
         assert "New York" in tool["function"]["arguments"]
-        assert tool_chunk["choices"][0]["finish_reason"] == "tool_calls"
+
+        # Verify finish reason is set in the final chunk
+        finish_reasons = [
+            json.loads(c.replace("data: ", "").strip())["choices"][0].get(
+                "finish_reason"
+            )
+            for c in chunks
+            if "[DONE]" not in c and "data: " in c
+        ]
+        assert "tool_calls" in finish_reasons
 
     @pytest.mark.asyncio
     async def test_client_disconnect_handling(self, make_chat_request):
@@ -360,7 +369,9 @@ class TestGenSSEFromPlaywright:
             ),
         ):
             controller = MockPC.return_value
-            controller.get_response = AsyncMock(return_value="This is the response.")
+            controller.get_response_with_function_calls = AsyncMock(
+                return_value={"content": "This is the response.", "function_calls": []}
+            )
 
             chunks = []
             async for chunk in gen_sse_from_playwright(
@@ -410,7 +421,9 @@ class TestGenSSEFromPlaywright:
             ),
         ):
             controller = MockPC.return_value
-            controller.get_response = AsyncMock(return_value=multiline_response)
+            controller.get_response_with_function_calls = AsyncMock(
+                return_value={"content": multiline_response, "function_calls": []}
+            )
 
             chunks = []
             async for chunk in gen_sse_from_playwright(
@@ -459,7 +472,7 @@ class TestGenSSEFromPlaywright:
 
         with patch("browser_utils.page_controller.PageController") as MockPC:
             controller = MockPC.return_value
-            controller.get_response = AsyncMock(
+            controller.get_response_with_function_calls = AsyncMock(
                 side_effect=Exception("Browser crashed")
             )
 
@@ -501,7 +514,9 @@ class TestGenSSEFromPlaywright:
             ),
         ):
             controller = MockPC.return_value
-            controller.get_response = AsyncMock(return_value="")
+            controller.get_response_with_function_calls = AsyncMock(
+                return_value={"content": "", "function_calls": []}
+            )
 
             chunks = []
             async for chunk in gen_sse_from_playwright(
@@ -735,8 +750,6 @@ async def test_gen_sse_from_aux_stream_body_with_tool_calls(
             # Check for chunk with tool_calls
             if "tool_calls" in delta:
                 found_combined = True
-                # Should have finish_reason="tool_calls"
-                assert data["choices"][0]["finish_reason"] == "tool_calls"
                 # Content should be None when tool_calls present
                 assert delta["content"] is None
                 # Tool call should be present
@@ -746,6 +759,14 @@ async def test_gen_sse_from_aux_stream_body_with_tool_calls(
             continue
 
     assert found_combined, "Should find chunk with tool_calls"
+
+    # Verify finish reason is set in the final chunk
+    finish_reasons = [
+        json.loads(c.replace("data: ", "").strip())["choices"][0].get("finish_reason")
+        for c in chunks
+        if "[DONE]" not in c and "data: " in c
+    ]
+    assert "tool_calls" in finish_reasons
 
 
 @pytest.mark.asyncio
@@ -801,12 +822,18 @@ async def test_gen_sse_from_aux_stream_tool_calls_only_in_final_chunk(
                 assert len(delta["tool_calls"]) == 2
                 assert delta["tool_calls"][0]["function"]["name"] == "get_time"
                 assert delta["tool_calls"][1]["function"]["name"] == "get_weather"
-                # finish_reason should be tool_calls
-                assert data["choices"][0]["finish_reason"] == "tool_calls"
         except (json.JSONDecodeError, KeyError):
             continue
 
     assert found_tools
+
+    # Verify finish reason is set in the final chunk
+    finish_reasons = [
+        json.loads(c.replace("data: ", "").strip())["choices"][0].get("finish_reason")
+        for c in chunks
+        if "[DONE]" not in c and "data: " in c
+    ]
+    assert "tool_calls" in finish_reasons
 
 
 # ==================== ERROR HANDLING TESTS ====================
@@ -934,7 +961,9 @@ async def test_gen_sse_from_playwright_client_disconnect_during_streaming(
     ):
         instance = MockPC.return_value
         # Long response to trigger multiple chunk iterations
-        instance.get_response = AsyncMock(return_value="A" * 100)
+        instance.get_response_with_function_calls = AsyncMock(
+            return_value={"content": "A" * 100, "function_calls": []}
+        )
 
         chunks = []
         async for chunk in gen_sse_from_playwright(
@@ -968,7 +997,9 @@ async def test_gen_sse_from_playwright_cancelled_error(
     with patch("browser_utils.page_controller.PageController") as MockPC:
         instance = MockPC.return_value
         # Raise CancelledError during get_response
-        instance.get_response = AsyncMock(side_effect=asyncio.CancelledError())
+        instance.get_response_with_function_calls = AsyncMock(
+            side_effect=asyncio.CancelledError()
+        )
 
         chunks = []
         with pytest.raises(asyncio.CancelledError):
@@ -1000,7 +1031,9 @@ async def test_gen_sse_from_playwright_exception_in_error_handling(
 
     with patch("browser_utils.page_controller.PageController") as MockPC:
         instance = MockPC.return_value
-        instance.get_response = AsyncMock(side_effect=ValueError("Original error"))
+        instance.get_response_with_function_calls = AsyncMock(
+            side_effect=ValueError("Original error")
+        )
 
         # Should catch the exception and yield error chunk
         chunks = []
@@ -1040,7 +1073,9 @@ async def test_gen_sse_from_playwright_empty_response(
         ),
     ):
         instance = MockPC.return_value
-        instance.get_response = AsyncMock(return_value="")
+        instance.get_response_with_function_calls = AsyncMock(
+            return_value={"content": "", "function_calls": []}
+        )
 
         chunks = []
         async for chunk in gen_sse_from_playwright(

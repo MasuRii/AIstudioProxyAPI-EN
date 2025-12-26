@@ -8,7 +8,7 @@ from urllib.parse import unquote
 
 from config.global_state import GlobalState
 from config.settings import FUNCTION_CALLING_DEBUG
-from logging_utils.fc_debug import FCModule, get_fc_logger
+from logging_utils.fc_debug import get_fc_logger
 from logging_utils.grid_logger import GridFormatter
 
 # FC debug logger for wire format parsing
