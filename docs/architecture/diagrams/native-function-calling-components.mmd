@@ -1,0 +1,64 @@
+%% Native Function Calling - Component Architecture Diagram
+%% Use with Mermaid renderer
+
+flowchart TB
+    subgraph API_LAYER [API Layer]
+        REQ[API Request<br/>OpenAI Format]
+        RESP[API Response<br/>OpenAI Format]
+    end
+
+    subgraph ORCHESTRATION [Function Calling Orchestration]
+        ORCH[Orchestrator<br/>fc_orchestrator.py]
+        CFG[Config<br/>Mode Selection]
+    end
+
+    subgraph EMULATED_PATH [Emulated Mode Path]
+        EMU_PROMPT[Text Injection<br/>prompts.py]
+        EMU_PARSE[Text Parser<br/>Legacy Pattern Matching]
+    end
+
+    subgraph NATIVE_PATH [Native Mode Path]
+        SCHEMA[Schema Converter<br/>OpenAI to Gemini]
+        UI_AUTO[UI Automation<br/>FunctionController]
+        DOM_PARSE[DOM Parser<br/>Widget Extraction]
+    end
+
+    subgraph COMMON [Common Components]
+        ID_MGR[ID Manager<br/>call_uuid Generation]
+        FORMATTER[Response Formatter<br/>tool_calls Structure]
+    end
+
+    subgraph BROWSER [Browser Layer]
+        PAGE[PageController]
+        AISTUDIO[AI Studio UI]
+    end
+
+    REQ --> ORCH
+    ORCH --> CFG
+    
+    CFG -->|mode=emulated| EMU_PROMPT
+    CFG -->|mode=native| SCHEMA
+    
+    EMU_PROMPT --> PAGE
+    SCHEMA --> UI_AUTO
+    UI_AUTO --> PAGE
+    
+    PAGE --> AISTUDIO
+    AISTUDIO --> PAGE
+    
+    PAGE -->|emulated| EMU_PARSE
+    PAGE -->|native| DOM_PARSE
+    
+    EMU_PARSE --> ID_MGR
+    DOM_PARSE --> ID_MGR
+    
+    ID_MGR --> FORMATTER
+    FORMATTER --> RESP
+
+    style ORCH fill:#4a90d9,color:#fff
+    style SCHEMA fill:#50c878,color:#fff
+    style UI_AUTO fill:#50c878,color:#fff
+    style DOM_PARSE fill:#50c878,color:#fff
+    style EMU_PROMPT fill:#f0ad4e,color:#000
+    style EMU_PARSE fill:#f0ad4e,color:#000
+    style AISTUDIO fill:#9b59b6,color:#fff

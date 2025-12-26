@@ -49,11 +49,12 @@ At the same time, we sincerely thank every friend who has silently contributed t
 ## Main Features
 
 - **OpenAI Compatible API**: Supports `/v1/chat/completions` endpoint, fully compatible with OpenAI clients and third-party tools
+- **Native Function Calling**: Full OpenAI-compatible `tools`/`tool_calls` support via AI Studio's built-in function calling UI, with automatic fallback to text-based emulation 🆕
 - **Three-Layer Streaming Response Mechanism**: Integrated streaming proxy → external Helper service → Playwright page interaction multiple guarantees
 - **Smart Model Switching**: Dynamically switch models in AI Studio through the `model` field in API requests
 - **Complete Parameter Control**: Supports all major parameters like `temperature`, `max_output_tokens`, `top_p`, `stop`, `reasoning_effort`
 - **Anti-Fingerprinting Detection**: Uses Camoufox browser to reduce the risk of being detected as automated scripts
-- **Script Injection Feature v3.0**: Uses Playwright native network interception, supports Tampermonkey script dynamic mounting, 100% reliable 🆕
+- **Script Injection Feature v3.0**: Uses Playwright native network interception, supports Tampermonkey script dynamic mounting, 100% reliable
 - **Modern Web UI**: Built-in testing interface, supports real-time chat, status monitoring, hierarchical API key management
 - **Graphical Interface Launcher**: Provides feature-rich GUI launcher, simplifying configuration and process management
 - **Flexible Authentication System**: Supports optional API key authentication, fully compatible with OpenAI standard Bearer token format
@@ -309,10 +310,11 @@ nano .env  # or use other editor
 #### 🔧 Feature Usage
 
 - [API Usage Guide](docs/guides/api-usage.md) - API endpoints and client configuration
+- **[Native Function Calling Guide](docs/guides/native-function-calling.md)** - Complete guide for OpenAI-compatible tool calls 🆕
 - **[OpenAI Compatibility Guide](docs/guides/openai-compatibility.md)** - Differences and limitations with OpenAI API 🔄
 - **[Client Integration Examples](docs/guides/client-examples.md)** - Python, JavaScript, cURL and other example code 💻
 - [Web UI Usage Guide](docs/guides/webui-guide.md) - Web interface feature description
-- [Script Injection Guide](docs/guides/script_injection_guide.md) - Tampermonkey script dynamic mounting feature usage guide (v3.0) 🆕
+- [Script Injection Guide](docs/guides/script_injection_guide.md) - Tampermonkey script dynamic mounting feature usage guide (v3.0)
 
 #### 🌍 Platform & Deployment
 

@@ -86,3 +86,4 @@ class ChatCompletionRequest(BaseModel):
     attachments: Optional[List[Any]] = None
     # MCP per-request endpoint (optional), used for tool calling fallback to MCP service
     mcp_endpoint: Optional[str] = None
+    parallel_tool_calls: Optional[bool] = True

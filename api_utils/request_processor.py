@@ -87,6 +87,10 @@ from .utils import (
     prepare_combined_prompt,
 )
 from .utils_ext.files import collect_and_validate_attachments
+from .utils_ext.function_calling_orchestrator import (
+    FunctionCallingState,
+    get_function_calling_orchestrator,
+)
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
 from .utils_ext.usage_tracker import increment_profile_usage
@@ -157,8 +161,9 @@ async def _prepare_and_validate_request(
     req_id: str,
     request: ChatCompletionRequest,
     check_client_disconnected: Callable,
-) -> Tuple[str, List[str]]:
-    """Prepare and validate request, return (combined prompt, attachment path list)."""
+    fc_state: Optional[FunctionCallingState] = None,
+) -> Tuple[str, List[str], Optional[List[Dict[str, Any]]]]:
+    """Prepare and validate request, return (combined prompt, attachment path list, tool_exec_results)."""
     try:
         validate_chat_request(request.messages, req_id)
     except ValueError as e:
@@ -169,6 +174,7 @@ async def _prepare_and_validate_request(
         req_id,
         getattr(request, "tools", None),
         getattr(request, "tool_choice", None),
+        fc_state=fc_state,
     )
     # Active function execution based on tools/tool_choice (supports per-request MCP endpoints)
     try:
@@ -205,7 +211,7 @@ async def _prepare_and_validate_request(
         request, req_id, attachments_list
     )
 
-    return prepared_prompt, final_attachments
+    return prepared_prompt, final_attachments, tool_exec_results
 
 
 async def _handle_response_processing(
@@ -578,8 +584,22 @@ async def _handle_playwright_response(
             await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
         model_name_for_json = current_ai_studio_model_id or MODEL_NAME
-        message_payload = {"role": "assistant", "content": consolidated_content}
-        finish_reason_val = "stop"
+
+        # Handle function calls if detected
+        if response_data.get("has_function_calls"):
+            from api_utils.utils_ext.function_calling_orchestrator import (
+                get_function_calling_orchestrator,
+            )
+
+            orchestrator = get_function_calling_orchestrator()
+            message_payload, finish_reason_val = (
+                orchestrator.format_function_calls_for_response(
+                    response_data.get("function_calls", []), consolidated_content
+                )
+            )
+        else:
+            message_payload = {"role": "assistant", "content": consolidated_content}
+            finish_reason_val = "stop"
 
         response_payload = build_chat_completion_response_json(
             req_id,
@@ -776,9 +796,82 @@ async def _process_request_refactored(
         await _handle_model_switching(req_id, context, check_client_disconnected)
         await _handle_parameter_cache(req_id, context)
 
-        prepared_prompt, attachments_list = await _prepare_and_validate_request(
-            req_id, request, check_client_disconnected
+        # --- Native Function Calling Setup (Phase 3) ---
+        # Configure native function calling if mode is native/auto and tools are present
+        fc_orchestrator = get_function_calling_orchestrator()
+        fc_state: Optional[FunctionCallingState] = None
+
+        if getattr(request, "tools", None):
+            try:
+                fc_state = await fc_orchestrator.prepare_request(
+                    tools=request.tools,
+                    tool_choice=getattr(request, "tool_choice", None),
+                    page_controller=page_controller,
+                    check_client_disconnected=check_client_disconnected,
+                    req_id=req_id,
+                )
+            except Exception as fc_err:
+                logger.warning(
+                    f"[{req_id}] Function calling setup failed: {fc_err}, continuing with emulated mode"
+                )
+                # Continue with request - fallback to emulated mode happens in prepare_combined_prompt
+
+        (
+            prepared_prompt,
+            attachments_list,
+            tool_exec_results,
+        ) = await _prepare_and_validate_request(
+            req_id, request, check_client_disconnected, fc_state=fc_state
         )
+
+        # [TOOL-FORCED] If tool was executed locally (forced), return immediately bypassing AI Studio flow
+        if tool_exec_results:
+            logger.info(
+                f"[{req_id}] Active tool execution detected, returning results immediately."
+            )
+            tool_calls_list = []
+            for res in tool_exec_results:
+                tool_calls_list.append(
+                    {
+                        "id": f"call_{_random_id()}",
+                        "type": "function",
+                        "function": {
+                            "name": res["name"],
+                            "arguments": res["arguments"],
+                        },
+                    }
+                )
+
+            message_payload = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": tool_calls_list,
+            }
+
+            usage_stats = calculate_usage_stats(
+                [msg.model_dump() for msg in request.messages],
+                "",
+                "",
+            )
+
+            response_payload = build_chat_completion_response_json(
+                req_id,
+                request.model or MODEL_NAME,
+                message_payload,
+                "tool_calls",
+                usage_stats,
+                seed=request.seed
+                if hasattr(request, "seed") and request.seed is not None
+                else 0,
+            )
+
+            if not result_future.done():
+                result_future.set_result(JSONResponse(content=response_payload))
+
+            # Return dummy event for forced tool execution to satisfy type requirement
+            dummy_event = Event()
+            dummy_event.set()
+            return dummy_event, submit_button_locator, check_client_disconnected
 
         request_params = request.model_dump(exclude_none=True)
         if "stop" in request.model_fields_set and request.stop is None:

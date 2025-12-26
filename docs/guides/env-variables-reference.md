@@ -568,6 +568,147 @@ All timeout configurations are in milliseconds (ms) unless otherwise specified.
 
 ---
 
+## Function Calling Configuration
+
+### FUNCTION_CALLING_MODE
+
+- **Usage**: Function calling operation mode
+- **Type**: String
+- **Default**: `emulated`
+- **Allowed Values**: `emulated`, `native`, `auto`
+- **Description**:
+  - `emulated`: Legacy text-based function calling (tools injected in prompt)
+  - `native`: Uses AI Studio's native UI for function declarations
+  - `auto`: Tries native, falls back to emulated on failure
+
+### FUNCTION_CALLING_CACHE_ENABLED
+
+- **Usage**: Enable function calling state caching
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: When enabled, skips UI configuration if tool definitions haven't changed since the last request. Significantly improves performance.
+
+### FUNCTION_CALLING_CACHE_TTL
+
+- **Usage**: Cache Time-To-Live
+- **Type**: Integer (seconds)
+- **Default**: `0`
+- **Description**: How long to keep the cache valid. `0` means no expiration (valid until session changes).
+
+### FUNCTION_CALLING_NATIVE_FALLBACK
+
+- **Usage**: Fallback behavior for AUTO mode
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: If true, automatically switches to emulated mode if native UI automation fails.
+
+### FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS
+
+- **Usage**: Force clear function declarations
+- **Type**: Boolean
+- **Default**: `true`
+- **Description**: If true, clears function declarations after every request. **Recommended to set to `false` when using caching.**
+
+### FUNCTION_CALLING_DEBUG
+
+- **Usage**: Master switch for function calling debug logging
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: When enabled, activates the modular FC debug logging system. All FC-related console logs and file logging are controlled by this flag.
+
+### FUNCTION_CALLING_UI_TIMEOUT
+
+- **Usage**: UI operation timeout
+- **Type**: Integer (milliseconds)
+- **Default**: `5000`
+- **Description**: Maximum time to wait for UI operations (toggle, dialog, paste) during native function calling setup.
+
+### FUNCTION_CALLING_NATIVE_RETRY_COUNT
+
+- **Usage**: Native mode retry attempts
+- **Type**: Integer
+- **Default**: `2`
+- **Description**: Number of retry attempts for native mode UI automation before falling back to emulated mode.
+
+---
+
+## Function Calling Debug Logging
+
+These variables control the modular debug logging system for function calling. All require `FUNCTION_CALLING_DEBUG=true` to be effective. Logs are written to `logs/fc_debug/`.
+
+### Module Enable Flags
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FC_DEBUG_ORCHESTRATOR` | `false` | High-level flow, mode selection, fallback logic |
+| `FC_DEBUG_UI` | `false` | Browser UI automation (toggles, dialogs, clicks) |
+| `FC_DEBUG_CACHE` | `false` | Cache hits, misses, digest validation |
+| `FC_DEBUG_WIRE` | `false` | Network response parsing (wire format) |
+| `FC_DEBUG_DOM` | `false` | HTML DOM extraction of function calls |
+| `FC_DEBUG_SCHEMA` | `false` | Tool schema conversion and validation |
+| `FC_DEBUG_RESPONSE` | `false` | Response formatting for OpenAI compatibility |
+
+### Per-Module Log Levels
+
+| Variable | Default | Allowed Values |
+|----------|---------|----------------|
+| `FC_DEBUG_LEVEL_ORCHESTRATOR` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `FC_DEBUG_LEVEL_UI` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `FC_DEBUG_LEVEL_CACHE` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `FC_DEBUG_LEVEL_WIRE` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `FC_DEBUG_LEVEL_DOM` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `FC_DEBUG_LEVEL_SCHEMA` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `FC_DEBUG_LEVEL_RESPONSE` | `DEBUG` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+
+### Log File Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FC_DEBUG_LOG_MAX_BYTES` | `5242880` (5MB) | Maximum size per log file before rotation |
+| `FC_DEBUG_LOG_BACKUP_COUNT` | `3` | Number of backup files to keep |
+| `FC_DEBUG_COMBINED_LOG` | `false` | Write all FC logs to a single combined file |
+
+### Payload Truncation
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FC_DEBUG_TRUNCATE_ENABLED` | `true` | Enable truncation of large payloads |
+| `FC_DEBUG_TRUNCATE_MAX_TOOL_DEF` | `500` | Max chars for tool definitions |
+| `FC_DEBUG_TRUNCATE_MAX_ARGS` | `1000` | Max chars for function arguments |
+| `FC_DEBUG_TRUNCATE_MAX_RESPONSE` | `2000` | Max chars for response bodies |
+
+### Quick Start Examples
+
+**Debug cache issues only:**
+```env
+FUNCTION_CALLING_DEBUG=true
+FC_DEBUG_CACHE=true
+```
+
+**Full FC debugging with combined log:**
+```env
+FUNCTION_CALLING_DEBUG=true
+FC_DEBUG_ORCHESTRATOR=true
+FC_DEBUG_UI=true
+FC_DEBUG_CACHE=true
+FC_DEBUG_WIRE=true
+FC_DEBUG_DOM=true
+FC_DEBUG_SCHEMA=true
+FC_DEBUG_RESPONSE=true
+FC_DEBUG_COMBINED_LOG=true
+```
+
+**Production monitoring (errors only):**
+```env
+FUNCTION_CALLING_DEBUG=true
+FC_DEBUG_ORCHESTRATOR=true
+FC_DEBUG_LEVEL_ORCHESTRATOR=ERROR
+```
+
+For detailed documentation, see the [Native Function Calling Guide](./native-function-calling.md).
+
+---
+
 ## Stream State Configuration
 
 ### STREAM_MAX_INITIAL_ERRORS
@@ -656,6 +797,7 @@ SILENCE_TIMEOUT_MS=120000
 - [Installation Guide](installation-guide.md) - Installation and initial setup
 - [Troubleshooting Guide](troubleshooting.md) - Common configuration issue solutions
 - [Advanced Configuration Guide](advanced-configuration.md) - Advanced configuration options
+- [Native Function Calling Guide](native-function-calling.md) - Complete function calling setup guide
 
 ---
 

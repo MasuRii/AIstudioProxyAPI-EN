@@ -140,3 +140,40 @@ THINKING_BUDGET_MEDIUM = _get_thinking_budget_value(
 THINKING_BUDGET_HIGH = _get_thinking_budget_value("THINKING_BUDGET_HIGH", 32000, "HIGH")
 
 DEFAULT_THINKING_LEVEL = os.environ.get("DEFAULT_THINKING_LEVEL", "low")
+
+# --- Function Calling Configuration ---
+# Mode: "emulated" | "native" | "auto"
+# - "emulated": Current text-based approach (default, backwards compatible)
+# - "native": AI Studio UI-driven function calling
+# - "auto": Native with automatic fallback to emulated on failure
+FUNCTION_CALLING_MODE = os.environ.get("FUNCTION_CALLING_MODE", "emulated").lower()
+
+# Enable automatic fallback to emulated mode when native mode fails
+FUNCTION_CALLING_NATIVE_FALLBACK = get_boolean_env(
+    "FUNCTION_CALLING_NATIVE_FALLBACK", True
+)
+
+# Timeout for function calling UI operations (milliseconds)
+FUNCTION_CALLING_UI_TIMEOUT = get_int_env("FUNCTION_CALLING_UI_TIMEOUT", 5000)
+
+# Native mode retry attempts before fallback
+FUNCTION_CALLING_NATIVE_RETRY_COUNT = get_int_env(
+    "FUNCTION_CALLING_NATIVE_RETRY_COUNT", 2
+)
+
+# Clear function definitions between requests (stateless behavior)
+FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS = get_boolean_env(
+    "FUNCTION_CALLING_CLEAR_BETWEEN_REQUESTS", True
+)
+
+# Enable detailed function calling debug logs
+FUNCTION_CALLING_DEBUG = get_boolean_env("FUNCTION_CALLING_DEBUG", False)
+
+# --- Function Calling Cache Configuration ---
+# Enable caching of function calling toggle state and tool declarations
+# Skips redundant UI operations when same tools are used in subsequent requests
+FUNCTION_CALLING_CACHE_ENABLED = get_boolean_env("FUNCTION_CALLING_CACHE_ENABLED", True)
+
+# Cache TTL in seconds (0 = no expiration within session)
+# Cache is automatically invalidated on model switch or new chat
+FUNCTION_CALLING_CACHE_TTL = get_int_env("FUNCTION_CALLING_CACHE_TTL", 0)

@@ -36,6 +36,7 @@ from .operations import (
 )
 from .page_controller_modules.base import BaseController
 from .page_controller_modules.chat import ChatController
+from .page_controller_modules.function_calling import FunctionCallingController
 from .page_controller_modules.input import InputController
 from .page_controller_modules.parameters import ParameterController
 from .page_controller_modules.response import ResponseController
@@ -48,6 +49,7 @@ class PageController(
     ChatController,
     ResponseController,
     ThinkingController,
+    FunctionCallingController,
     BaseController,
 ):
     """Encapsulates all operations for interacting with the AI Studio page."""
@@ -97,8 +99,16 @@ class PageController(
         top_p = request_params.get("top_p", DEFAULT_TOP_P)
         await self._adjust_top_p(top_p, check_client_disconnected)
         await self._ensure_tools_panel_expanded(check_client_disconnected)
-        if ENABLE_URL_CONTEXT:
-            await self._open_url_content(check_client_disconnected)
+
+        # Force disable URL context if function calling is active
+        is_fc_enabled = await self.is_function_calling_enabled(
+            check_client_disconnected
+        )
+        if is_fc_enabled:
+            await self._adjust_url_context(False, check_client_disconnected)
+        elif ENABLE_URL_CONTEXT:
+            await self._adjust_url_context(True, check_client_disconnected)
+
         await self._handle_thinking_budget(
             request_params,
             page_params_cache,
@@ -112,8 +122,12 @@ class PageController(
         )
 
     async def clear_chat_history(self, check_client_disconnected: Callable):
-        """Clear chat history."""
+        """Clear chat history and invalidate function calling cache."""
         self.logger.info(f"[{self.req_id}] Clearing chat history...")
+
+        # Invalidate FC cache since we're starting a new chat
+        self.invalidate_fc_cache("new_chat")
+
         btn = self.page.locator(CLEAR_CHAT_BUTTON_SELECTOR)
         if await btn.is_enabled(timeout=5000):
             await btn.click(timeout=CLICK_TIMEOUT_MS)
@@ -286,12 +300,36 @@ class PageController(
         prompt_length: int = 0,
         timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Retrieve response content with full integrity check."""
+        """Retrieve response content with full integrity check and function calls."""
         content = await self.get_response(
             check_client_disconnected, prompt_length, timeout
         )
+
+        # Parse function calls from DOM as well
+        has_fc, function_calls, text_content = await self.parse_function_calls(
+            check_client_disconnected
+        )
+
         c, r = self._separate_thinking_and_response(content)
-        return {"content": c, "reasoning_content": r, "recovery_method": "direct"}
+
+        result = {
+            "content": c,
+            "reasoning_content": r,
+            "recovery_method": "direct",
+            "has_function_calls": has_fc,
+            "function_calls": function_calls,
+        }
+
+        if has_fc:
+            # If function calls found, use the text content (with calls removed) as content
+            # But we need to separate thinking from it too
+            c_fc, r_fc = self._separate_thinking_and_response(text_content)
+            result["content"] = c_fc
+            # Keep original reasoning if not found in text_content
+            if r_fc:
+                result["reasoning_content"] = r_fc
+
+        return result
 
     def _separate_thinking_and_response(self, content: str) -> Tuple[str, str]:
         """Separate thinking and response."""

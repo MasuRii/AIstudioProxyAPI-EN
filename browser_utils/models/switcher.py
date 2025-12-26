@@ -195,6 +195,21 @@ async def switch_ai_studio_model(page: AsyncPage, model_id: str, req_id: str) ->
                     logger.warning(
                         f"Failed to re-enable temporary chat mode after model switching: {e}"
                     )
+
+                # Invalidate function calling cache on model switch
+                try:
+                    from api_utils.utils_ext.function_calling_cache import (
+                        FunctionCallingCache,
+                    )
+
+                    FunctionCallingCache.get_instance().invalidate(
+                        reason=f"model_switch:{model_id}", req_id=req_id
+                    )
+                except ImportError:
+                    pass  # Cache module not available
+                except Exception as e_cache:
+                    logger.debug(f"[Model] Failed to invalidate FC cache: {e_cache}")
+
                 return True
             else:
                 logger.error(

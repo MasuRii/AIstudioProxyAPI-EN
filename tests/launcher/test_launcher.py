@@ -16,16 +16,18 @@ from launcher.utils import (
 # --- Test launcher.config ---
 
 
-def test_parse_args_defaults(clean_launcher_env):
+def test_parse_args_defaults():
     """Test argument parsing with default values."""
     with (
-        patch.dict(os.environ, {"STREAM_PORT": "3120"}),
+        patch.dict(os.environ, {"STREAM_PORT": "3120"}, clear=True),
         patch.object(sys, "argv", ["launcher"]),
     ):
-        # Patch constants to ensure we test against known defaults
+        os.environ["LAUNCH_MODE"] = "test"
+        # Patch constants in launcher.config where they are used by parse_args
         with (
             patch("launcher.config.DEFAULT_STREAM_PORT", 3120),
             patch("launcher.config.DEFAULT_CAMOUFOX_PORT", 9222),
+            patch("launcher.config.DEFAULT_SERVER_PORT", 2048),
         ):
             args = parse_args()
             assert args.server_port == 2048

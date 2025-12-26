@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import time
 from asyncio import Event
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, cast
@@ -23,6 +24,25 @@ from .common_utils import random_id
 from .sse import generate_sse_chunk, generate_sse_stop_chunk
 from .utils_ext.stream import use_stream_response
 from .utils_ext.tokens import calculate_usage_stats
+
+# Pattern to strip emulated function call text from body content
+# This prevents "Request function call: ..." from being sent as text content
+_FUNCTION_CALL_TEXT_PATTERN = re.compile(
+    r"Request\s+function\s+call:\s*[^\n]+(?:\n(?:Parameters:\s*)?\s*\{[\s\S]*?\})?",
+    re.IGNORECASE,
+)
+
+# Pattern to strip control characters like <ctrl46> from body content
+# These appear in AI Studio's wire format as string delimiters
+# Also captures trailing } or { that may follow control chars (JSON leak artifacts)
+_CONTROL_CHAR_PATTERN = re.compile(r"<ctrl\d+>[\}\{]?")
+
+
+def _clean_body_text(body: str) -> str:
+    """Clean body text by removing control characters and JSON artifacts."""
+    if not body:
+        return body
+    return _CONTROL_CHAR_PATTERN.sub("", body)
 
 
 async def resilient_stream_generator(
@@ -127,6 +147,7 @@ async def gen_sse_from_aux_stream(
     full_body_content = ""
     data_receiving = False
     is_response_finalized = False
+    finish_reason = "stop"
 
     has_started_body = False
 
@@ -222,7 +243,7 @@ async def gen_sse_from_aux_stream(
 
             typed_data: Dict[str, Any] = cast(Dict[str, Any], data)
             reason = str(typed_data.get("reason", ""))
-            body = str(typed_data.get("body", ""))
+            body = _clean_body_text(str(typed_data.get("body", "")))
             done = bool(typed_data.get("done", False))
             function = cast(List[Any], typed_data.get("function", []))
 
@@ -256,27 +277,52 @@ async def gen_sse_from_aux_stream(
                 last_reason_pos = len(reason)
 
             # The Latch: Body Handling
+            # ALWAYS strip "Request function call:..." text from body
+            # This prevents emulated FC text from appearing as content to clients
+            # even when function call detection fails (race condition protection)
+            original_body = body
+            if body:
+                body = _FUNCTION_CALL_TEXT_PATTERN.sub("", body).strip()
+                if body != original_body:
+                    full_body_content = body
+                    # If we stripped FC text but function is empty, try parsing from the original
+                    if not function:
+                        from api_utils.utils_ext.function_call_response_parser import (
+                            parse_emulated_function_calls_static,
+                        )
+
+                        parsed_fc = parse_emulated_function_calls_static(original_body)
+                        if parsed_fc:
+                            function = parsed_fc
+                            # Demoted from INFO to DEBUG - this is normal fallback behavior
+                            # when model outputs text format instead of native FC
+                            logger.debug(
+                                f"[{req_id}] Recovered function calls from emulated text"
+                            )
+
             if len(body) > last_body_pos:
                 body_delta = body[last_body_pos:]
-                has_started_body = True
-                output = {
-                    "id": chat_completion_id,
-                    "object": "chat.completion.chunk",
-                    "model": model_name_for_stream,
-                    "created": created_timestamp,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {
-                                "role": "assistant",
-                                "content": body_delta,
-                            },
-                            "finish_reason": None,
-                        }
-                    ],
-                }
+                # Only stream body content if there's actual content after stripping
+                if body_delta.strip():
+                    has_started_body = True
+                    output = {
+                        "id": chat_completion_id,
+                        "object": "chat.completion.chunk",
+                        "model": model_name_for_stream,
+                        "created": created_timestamp,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {
+                                    "role": "assistant",
+                                    "content": body_delta,
+                                },
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
                 last_body_pos = len(body)
-                yield f"data: {json.dumps(output, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
             if done:
                 is_recovering = GlobalState.IS_RECOVERING
@@ -299,7 +345,14 @@ async def gen_sse_from_aux_stream(
                     is_quota_exceeded = GlobalState.IS_QUOTA_EXCEEDED
                     is_recovering = GlobalState.IS_RECOVERING
 
-                if not has_started_body and not is_recovering and not is_quota_exceeded:
+                if (
+                    not has_started_body
+                    and not is_recovering
+                    and not is_quota_exceeded
+                    and not function
+                ):
+                    # Only show synthetic message when there's truly no content AND no function calls
+                    # In native FC mode, empty body with function calls is expected
                     fallback_text = (
                         "\n\n*(Model finished thinking but generated no output.)*"
                     )
@@ -328,6 +381,7 @@ async def gen_sse_from_aux_stream(
                         await asyncio.sleep(1.0)
 
                 if function:
+                    finish_reason = "tool_calls"
                     tool_calls_list = []
                     for func_idx, function_call_data in enumerate(function):
                         if isinstance(function_call_data, dict):
@@ -347,17 +401,16 @@ async def gen_sse_from_aux_stream(
                     choice_item = {
                         "index": 0,
                         "delta": {
-                            "role": "assistant",
-                            "content": None,
                             "tool_calls": tool_calls_list,
                         },
-                        "finish_reason": "tool_calls",
+                        "finish_reason": None,
                     }
                 else:
+                    finish_reason = "stop"
                     choice_item = {
                         "index": 0,
-                        "delta": {"role": "assistant"},
-                        "finish_reason": "stop",
+                        "delta": {},
+                        "finish_reason": None,
                     }
 
                 output = {
@@ -427,7 +480,7 @@ async def gen_sse_from_aux_stream(
                 "object": "chat.completion.chunk",
                 "model": model_name_for_stream,
                 "created": created_timestamp,
-                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
                 "usage": usage_stats,
             }
             yield f"data: {json.dumps(final_chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
@@ -463,9 +516,13 @@ async def gen_sse_from_playwright(
     data_receiving = False
     try:
         page_controller = PageController(page, logger, req_id)
-        final_content = await page_controller.get_response(
+        # Use get_response_with_function_calls which handles both content and functions
+        response_data = await page_controller.get_response_with_function_calls(
             check_client_disconnected, prompt_length=prompt_length, timeout=timeout
         )
+        final_content = response_data.get("content", "")
+        function_calls = response_data.get("function_calls", [])
+
         data_receiving = True
         lines = final_content.split("\n")
         for line_idx, line in enumerate(lines):
@@ -501,9 +558,36 @@ async def gen_sse_from_playwright(
         ):
             await increment_profile_usage(state.current_auth_profile_path, total_tokens)
 
-        yield generate_sse_stop_chunk(
-            req_id, model_name_for_stream, "stop", usage_stats
-        )
+        if function_calls:
+            from api_utils.utils_ext.function_calling_orchestrator import (
+                get_function_calling_orchestrator,
+            )
+
+            orchestrator = get_function_calling_orchestrator()
+            tool_calls_deltas = orchestrator.format_streaming_tool_calls(function_calls)
+            for delta in tool_calls_deltas:
+                chunk = {
+                    "id": f"chatcmpl-{req_id}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name_for_stream,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"tool_calls": [delta]},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(chunk, ensure_ascii=False, separators=(',', ':'))}\n\n"
+
+            yield generate_sse_stop_chunk(
+                req_id, model_name_for_stream, "tool_calls", usage_stats
+            )
+        else:
+            yield generate_sse_stop_chunk(
+                req_id, model_name_for_stream, "stop", usage_stats
+            )
     except (QuotaExceededError, QuotaExceededRetry):
         raise
     except ClientDisconnectedError:

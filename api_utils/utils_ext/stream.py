@@ -3,8 +3,9 @@ import json
 import queue
 import re
 import time
-from typing import Any, AsyncGenerator, Callable, Optional
+from typing import Any, AsyncGenerator, Callable, List, Optional, Tuple
 
+from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils import set_request_id
 
 # [REFAC-01] Structural Boundary Pattern
@@ -68,6 +69,7 @@ async def use_stream_response(
 
     _data_received = False
     has_content = False
+    has_seen_functions = False
     received_items_count = 0
     stale_done_ignored = False
     last_ui_check_time = 0
@@ -265,6 +267,19 @@ async def use_stream_response(
                     if parsed_data.get("body") or parsed_data.get("reason"):
                         has_content = True
 
+                    if parsed_data.get("function"):
+                        has_seen_functions = True
+                        # Track if any function call has empty arguments (potential parse failure)
+                        for fc in parsed_data.get("function", []):
+                            fc_params = fc.get("params") or fc.get("arguments") or {}
+                            if not fc_params:
+                                if FUNCTION_CALLING_DEBUG:
+                                    logger.warning(
+                                        f"[{req_id}] ⚠️ Wire format returned '{fc.get('name')}' with empty args - will try DOM fallback"
+                                    )
+                                has_seen_functions = False  # Force DOM fallback
+                                break
+
                     if parsed_data.get("done") is True:
                         if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.IS_RECOVERING:
                             logger.info(
@@ -289,9 +304,51 @@ async def use_stream_response(
                             )
                             stale_done_ignored = True
                             continue
+                    if (
+                        parsed_data.get("done") is True
+                        and not has_seen_functions
+                        and page
+                    ):
+                        # Retry loop for DOM function call detection - UI elements may not render immediately
+                        # Similar to body text retry loop below, but shorter timeout for function calls
+                        dom_functions = []
+                        dom_text = ""
+                        max_fc_retries = 10  # 10 retries * 0.3s = 3 seconds max wait
+                        for fc_retry in range(max_fc_retries):
+                            (
+                                dom_functions,
+                                dom_text,
+                            ) = await detect_function_calls_from_dom(
+                                page, req_id, logger
+                            )
+                            if dom_functions:
+                                if FUNCTION_CALLING_DEBUG:
+                                    logger.info(
+                                        f"[{req_id}] ✅ DOM captured function calls after {fc_retry + 1} attempts"
+                                    )
+                                break
+                            # Only retry if we haven't found functions and body is also empty
+                            # (indicates potential race condition with UI rendering)
+                            if accumulated_body:
+                                break  # We have body text, no need to wait for functions
+                            await asyncio.sleep(0.3)
+
+                        if dom_functions:
+                            parsed_data["function"] = dom_functions
+                            has_seen_functions = True
+
+                        # If we have DOM text and accumulated body is empty, inject it to final chunk
+                        if dom_text and not accumulated_body:
+                            parsed_data["body"] = dom_text
+                            accumulated_body = dom_text
+
                     yield parsed_data
                     if parsed_data.get("done") is True:
-                        if accumulated_reason_len > 0 and len(accumulated_body) == 0:
+                        if (
+                            accumulated_reason_len > 0
+                            and len(accumulated_body) == 0
+                            and not has_seen_functions
+                        ):
                             logger.info(
                                 f"[{req_id}] ⚠️ Thinking-Only response detected. Waiting for DOM..."
                             )
@@ -428,3 +485,52 @@ async def clear_stream_queue():
             break
     if cleared_count > 0:
         logger.info(f"Stream queue cleared. Items: {cleared_count}")
+
+
+async def detect_function_calls_from_dom(
+    page: Any,
+    req_id: str,
+    logger: Any,
+) -> Tuple[List[dict], str]:
+    """Fallback function call detection using DOM parsing.
+
+    This is used when the network interceptor doesn't capture function calls
+    (e.g., due to timing issues or format changes).
+
+    Args:
+        page: Playwright page instance.
+        req_id: Request ID for logging.
+        logger: Logger instance.
+
+    Returns:
+        Tuple of (List of function call dicts, text content).
+    """
+    if not page:
+        return [], ""
+
+    try:
+        from api_utils.utils_ext.function_call_response_parser import (
+            FunctionCallResponseParser,
+        )
+
+        parser = FunctionCallResponseParser(page, logger, req_id)
+        result = await parser.parse_function_calls()
+
+        function_calls: List[dict] = []
+        if result.has_function_calls and result.function_calls:
+            # Convert ParsedFunctionCall objects to dict format expected by stream
+            for fc in result.function_calls:
+                function_calls.append({"name": fc.name, "params": fc.arguments})
+
+            if FUNCTION_CALLING_DEBUG:
+                logger.info(
+                    f"[{req_id}] DOM fallback detected {len(function_calls)} function call(s)"
+                )
+
+        return function_calls, result.text_content
+
+    except Exception as e:
+        if FUNCTION_CALLING_DEBUG:
+            logger.debug(f"[{req_id}] DOM function call detection failed: {e}")
+
+    return [], ""

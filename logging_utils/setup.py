@@ -129,6 +129,7 @@ def setup_server_logging(
         mode="w",
     )
     file_handler.setFormatter(file_log_formatter)
+    file_handler.setLevel(log_level)
     logger_instance.addHandler(file_handler)
 
     # Add WebSocket handler
@@ -152,6 +153,7 @@ def setup_server_logging(
 
     # Add AbortError filter (benign errors from Playwright navigation cancellations)
     from logging_utils import AbortErrorFilter
+
     logger_instance.addFilter(AbortErrorFilter())
 
     # Save original streams
@@ -188,7 +190,9 @@ def setup_server_logging(
 
     # Log initialization info
     logger_instance.info(
-        "=" * 5 + " AIStudioProxyServer Logging System Initialized in lifespan " + "=" * 5
+        "=" * 5
+        + " AIStudioProxyServer Logging System Initialized in lifespan "
+        + "=" * 5
     )
     logger_instance.info(f"Log level set to: {logging.getLevelName(log_level)}")
     logger_instance.debug(f"Log file path: {APP_LOG_FILE_PATH}")

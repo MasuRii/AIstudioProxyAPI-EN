@@ -74,13 +74,17 @@ def test_proxy_connector_init_with_mixed_case_proxy_type():
 
 def test_setup_connector_with_no_proxy_url():
     """Test scenario: set TCPConnector when proxy_url is None"""
-    connector = ProxyConnector()
-    # Manually call _setup_connector with proxy_url=None
-    connector._setup_connector()
-    # Should set TCPConnector
     from aiohttp import TCPConnector
 
-    assert isinstance(connector.connector, TCPConnector)
+    connector = ProxyConnector()
+    # Mock TCPConnector to avoid requiring event loop
+    with patch("stream.proxy_connector.TCPConnector") as mock_tcp:
+        mock_tcp.return_value = MagicMock(spec=TCPConnector)
+        # Manually call _setup_connector with proxy_url=None
+        connector._setup_connector()
+        # Should call TCPConnector
+        mock_tcp.assert_called_once()
+        assert connector.connector is mock_tcp.return_value
 
 
 def test_setup_connector_with_socks_proxy():

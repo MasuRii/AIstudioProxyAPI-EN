@@ -85,9 +85,18 @@ class ParameterController(BaseController):
         # Ensure tools panel is expanded
         await self._ensure_tools_panel_expanded(check_client_disconnected)
 
-        # Adjust URL CONTEXT
-        if ENABLE_URL_CONTEXT:
-            await self._open_url_content(check_client_disconnected)
+        # Determine if function calling is active to disable conflicting features
+        # Grounding (Google Search) and URL Context MUST be disabled for Function Calling
+        is_fc_active = False
+        is_fc_enabled_fn = getattr(self, "is_function_calling_enabled", None)
+        if is_fc_enabled_fn:
+            is_fc_active = await is_fc_enabled_fn(check_client_disconnected)
+
+        # Adjust URL CONTEXT - Force disable if function calling is active
+        if is_fc_active:
+            await self._adjust_url_context(False, check_client_disconnected)
+        elif ENABLE_URL_CONTEXT:
+            await self._adjust_url_context(True, check_client_disconnected)
         else:
             self.logger.debug(
                 "[Param] URL Context feature disabled, skipping adjustment"
@@ -541,29 +550,50 @@ class ParameterController(BaseController):
             if isinstance(e, ClientDisconnectedError):
                 raise
 
-    async def _open_url_content(self, check_client_disconnected: Callable):
-        """Enable URL Context."""
+    async def _adjust_url_context(
+        self, enable: bool, check_client_disconnected: Callable
+    ):
+        """Enable or disable URL Context."""
+        action = "enabling" if enable else "disabling"
         try:
-            self.logger.info("Checking and enabling URL Context...")
+            self.logger.info(f"Checking and {action} URL Context...")
             use_url_content_selector = self.page.locator(USE_URL_CONTEXT_SELECTOR)
-            await expect_async(use_url_content_selector).to_be_visible(timeout=5000)
+
+            # Use a shorter timeout to check visibility
+            if await use_url_content_selector.count() == 0:
+                self.logger.debug(
+                    f"[Param] URL Context toggle not found, skipping {action}"
+                )
+                return
+
+            await expect_async(use_url_content_selector).to_be_visible(timeout=2000)
 
             is_checked = await use_url_content_selector.get_attribute("aria-checked")
-            if "false" == is_checked:
-                self.logger.info("URL Context not enabled, enabling...")
+            is_currently_enabled = is_checked == "true"
+
+            if is_currently_enabled != enable:
+                self.logger.info(
+                    f"URL Context {'not enabled' if enable else 'enabled'}, {action}..."
+                )
                 await use_url_content_selector.click(timeout=CLICK_TIMEOUT_MS)
                 await self._check_disconnect(
-                    check_client_disconnected, "After enabling URL Context"
+                    check_client_disconnected, f"After {action} URL Context"
                 )
-                self.logger.info("URL Context enabled.")
+                self.logger.info(f"URL Context {action[:-3]}ed.")
             else:
-                self.logger.info("URL Context already enabled.")
+                self.logger.info(
+                    f"URL Context already {'enabled' if enable else 'disabled'}."
+                )
         except Exception as e:
             if isinstance(e, asyncio.CancelledError):
                 raise
             self.logger.error(f"Error operating URL Context: {e}")
             if isinstance(e, ClientDisconnectedError):
                 raise
+
+    async def _open_url_content(self, check_client_disconnected: Callable):
+        """Enable URL Context (legacy wrapper)."""
+        await self._adjust_url_context(True, check_client_disconnected)
 
     def _should_enable_google_search(self, request_params: Dict[str, Any]) -> bool:
         """Determine if Google Search should be enabled."""

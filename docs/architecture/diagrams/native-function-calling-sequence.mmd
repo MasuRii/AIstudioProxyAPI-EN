@@ -1,0 +1,59 @@
+%% Native Function Calling - Request/Response Sequence Diagram
+%% Use with Mermaid renderer
+
+sequenceDiagram
+    autonumber
+    participant Client as API Client
+    participant API as /v1/chat/completions
+    participant ORCH as Orchestrator
+    participant CONV as SchemaConverter
+    participant FC as FunctionController
+    participant PC as PageController
+    participant UI as AI Studio UI
+    participant PARSE as ResponseParser
+    participant FMT as ResponseFormatter
+
+    Note over Client,FMT: NATIVE MODE - Request Phase
+    
+    Client->>API: POST request with tools[]
+    API->>ORCH: prepare_request(tools, prompt)
+    ORCH->>CONV: convert_tools(openai_tools)
+    CONV-->>ORCH: gemini_declarations_json
+    
+    ORCH->>FC: enable_function_calling()
+    FC->>UI: Click function toggle
+    UI-->>FC: Toggle enabled
+    
+    ORCH->>FC: set_function_declarations(json)
+    FC->>UI: Click Edit button
+    FC->>UI: Paste JSON to textarea
+    FC->>UI: Click Save button
+    UI-->>FC: Declarations saved
+    
+    ORCH->>PC: submit_prompt(clean_prompt)
+    PC->>UI: Enter prompt, click Run
+    
+    Note over Client,FMT: NATIVE MODE - Response Phase
+    
+    UI-->>PC: Response complete
+    PC->>PARSE: parse_native_response(page, text)
+    PARSE->>UI: Query function call widgets
+    UI-->>PARSE: Widget elements
+    PARSE-->>ORCH: ParsedFunctionCall[]
+    
+    ORCH->>FMT: format_tool_calls(parsed_calls)
+    Note over FMT: Generate call IDs<br/>json.dumps(arguments)
+    FMT-->>ORCH: tool_calls[]
+    
+    ORCH-->>API: ProcessedResponse
+    API-->>Client: OpenAI-compatible response
+
+    Note over Client,FMT: TOOL RESULT SUBMISSION
+    
+    Client->>API: POST with tool result message
+    API->>ORCH: detect tool result in messages
+    ORCH->>PC: submit_prompt(with result)
+    PC->>UI: Enter result, click Run
+    UI-->>PC: Final response
+    PC-->>API: Text response
+    API-->>Client: Completion response

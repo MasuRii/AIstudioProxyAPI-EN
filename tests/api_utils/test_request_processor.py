@@ -191,7 +191,7 @@ class TestPrepareAndValidateRequest:
                 return_value=None,
             ),
         ):
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, tool_results = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -204,6 +204,7 @@ class TestPrepareAndValidateRequest:
             # Check results
             assert prompt == "Hello AI"
             assert images == []
+            assert tool_results is None
             check_disco.assert_called_once_with("After Prompt Prep")
 
     @pytest.mark.asyncio
@@ -233,7 +234,7 @@ class TestPrepareAndValidateRequest:
                 return_value=tool_results,
             ),
         ):
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, _ = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -279,7 +280,7 @@ class TestPrepareAndValidateRequest:
                 True,
             ),
         ):
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, _ = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -331,7 +332,7 @@ class TestPrepareAndValidateRequest:
             ),
         ):
             # Should not raise - exception is caught and tool_exec_results becomes None
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, _ = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -368,7 +369,7 @@ class TestPrepareAndValidateRequest:
             ),
         ):
             # Should not raise - exception during result appending is caught
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, _ = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -416,7 +417,7 @@ class TestPrepareAndValidateRequest:
                 True,
             ),
         ):
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, _ = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -462,7 +463,7 @@ class TestPrepareAndValidateRequest:
                 True,
             ),
         ):
-            prompt, images = await _prepare_and_validate_request(
+            prompt, images, _ = await _prepare_and_validate_request(
                 req_id, request, check_disco
             )
 
@@ -1181,7 +1182,7 @@ async def test_prepare_and_validate_request_basic(
     ):
         mock_tools.return_value = None
 
-        prompt, images = await _prepare_and_validate_request(
+        prompt, images, _ = await _prepare_and_validate_request(
             "req1", mock_request, mock_check_disconnected
         )
 
@@ -1215,7 +1216,7 @@ async def test_prepare_and_validate_request_with_tools(
     ):
         mock_tools.return_value = tool_results
 
-        prompt, _ = await _prepare_and_validate_request(
+        prompt, _, _ = await _prepare_and_validate_request(
             "req1", mock_request, mock_check_disconnected
         )
 
@@ -1257,7 +1258,7 @@ async def test_prepare_and_validate_request_attachments(
 
         mock_request.messages = [msg_mock]
 
-        _, images = await _prepare_and_validate_request(
+        _, images, _ = await _prepare_and_validate_request(
             "req1", mock_request, mock_check_disconnected
         )
 
@@ -1625,7 +1626,7 @@ async def test_process_request_refactored_success(
         "PageController": MagicMock(autospec=True),
         "_handle_model_switching": AsyncMock(),
         "_handle_parameter_cache": AsyncMock(),
-        "_prepare_and_validate_request": AsyncMock(return_value=("prompt", [])),
+        "_prepare_and_validate_request": AsyncMock(return_value=("prompt", [], None)),
         "_handle_response_processing": AsyncMock(),
         "_cleanup_request_resources": AsyncMock(),
         "save_error_snapshot": AsyncMock(),

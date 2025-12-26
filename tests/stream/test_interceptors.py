@@ -361,19 +361,20 @@ class TestHttpInterceptorEdgeCases:
 
     def test_parse_toolcall_params_with_invalid_structure(self, interceptor):
         """
-        Test scenario: parse_toolcall_params encounters invalid parameter structure
-        Expected: raises exception (lines 139-140)
+        Test scenario: invalid args format passed to parse_toolcall_params
+        Expected: gracefully returns empty dict (resilient to malformed input)
         """
         # 传入格式错误的 args (期望是嵌套列表,但只给字符串)
         invalid_args = "not a list"
 
-        with pytest.raises(Exception):
-            interceptor.parse_toolcall_params(invalid_args)
+        # Should return empty dict instead of raising exception
+        result = interceptor.parse_toolcall_params(invalid_args)
+        assert result == {}
 
     def test_parse_toolcall_params_with_malformed_nested_structure(self, interceptor):
         """
         Test scenario: nested object parameter format error
-        Expected: raises exception during recursive call (lines 139-140)
+        Expected: gracefully handles malformed structure
         """
         # 外层格式正确,但嵌套对象的参数格式错误
         malformed_args = [
@@ -385,19 +386,22 @@ class TestHttpInterceptorEdgeCases:
             ]
         ]
 
-        with pytest.raises(Exception):
-            interceptor.parse_toolcall_params(malformed_args)
+        # Should handle gracefully - either return parsed data or empty dict
+        result = interceptor.parse_toolcall_params(malformed_args)
+        # The parser will try to parse, may return partial result or empty
+        assert isinstance(result, dict)
 
     def test_parse_toolcall_params_with_index_error(self, interceptor):
         """
         Test scenario: parameter list index out of bounds
-        Expected: IndexError is raised (lines 139-140)
+        Expected: gracefully returns empty dict
         """
         # args[0] 期望是参数列表,但 args 为空
         invalid_args = []
 
-        with pytest.raises(Exception):
-            interceptor.parse_toolcall_params(invalid_args)
+        # Should return empty dict instead of raising exception
+        result = interceptor.parse_toolcall_params(invalid_args)
+        assert result == {}
 
     def test_decode_chunked_edge_case_truncated_end(self):
         """
@@ -597,16 +601,14 @@ class TestInterceptorExceptionPaths:
 
     def test_parse_toolcall_params_exception(self, interceptor):
         """
-        Test scenario: parse_toolcall_params raises exception during parameter parsing
-        Expected: exception is re-raised (lines 139-140)
+        Test scenario: parse_toolcall_params handles None input gracefully
+        Expected: returns empty dict (graceful degradation)
         """
-        # Pass malformed args that cause exception during parsing
-        # Expected structure: [[param1, param2, ...]]
-        # Malformed: missing nested list
-        malformed_args = None  # This will cause args[0] to raise TypeError
+        # Pass None - previously caused TypeError, now handled gracefully
+        malformed_args = None
 
-        with pytest.raises(TypeError):
-            interceptor.parse_toolcall_params(malformed_args)
+        result = interceptor.parse_toolcall_params(malformed_args)
+        assert result == {}
 
     def test_decode_chunked_final_break(self):
         """
@@ -657,9 +659,476 @@ class TestInterceptorEdgeCases:
 
     def test_parse_toolcall_params_index_error(self, interceptor):
         """
-        Test scenario: parse_toolcall_params encounters IndexError accessing args[0]
-        Expected: exception is re-raised (lines 139-140)
+        Test scenario: parse_toolcall_params handles empty list gracefully
+        Expected: returns empty dict (graceful degradation)
         """
-        # Pass empty list (args[0] will raise IndexError)
-        with pytest.raises(IndexError):
-            interceptor.parse_toolcall_params([])
+        # Pass empty list - previously caused IndexError, now handled gracefully
+        result = interceptor.parse_toolcall_params([])
+        assert result == {}
+
+
+class TestWireFormatParsingRobustness:
+    """Test suite for wire format parsing edge cases.
+
+    These tests ensure robustness across different coding tools:
+    - OpenCode CLI
+    - Kilo Code
+    - Roo Code
+    - Cline
+    - Copilot
+    - Codex CLI
+    - Claude Code CLI
+    """
+
+    @pytest.fixture
+    def interceptor(self):
+        return HttpInterceptor()
+
+    def test_string_array_basic(self, interceptor):
+        """Test basic string array parsing (language filter)."""
+        args = [
+            [
+                [
+                    "language",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [[None, None, "TypeScript"], [None, None, "TSX"]],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"language": ["TypeScript", "TSX"]}
+
+    def test_array_of_objects_standard(self, interceptor):
+        """Test array of objects with standard nesting (todowrite)."""
+        args = [
+            [
+                [
+                    "todos",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            [
+                                None,
+                                None,
+                                None,
+                                None,
+                                [
+                                    [
+                                        ["content", [None, None, "Task 1"]],
+                                        ["id", [None, None, "1"]],
+                                        ["priority", [None, None, "high"]],
+                                        ["status", [None, None, "pending"]],
+                                    ]
+                                ],
+                            ],
+                            [
+                                None,
+                                None,
+                                None,
+                                None,
+                                [
+                                    [
+                                        ["content", [None, None, "Task 2"]],
+                                        ["id", [None, None, "2"]],
+                                        ["priority", [None, None, "medium"]],
+                                        ["status", [None, None, "in_progress"]],
+                                    ]
+                                ],
+                            ],
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {
+            "todos": [
+                {
+                    "content": "Task 1",
+                    "id": "1",
+                    "priority": "high",
+                    "status": "pending",
+                },
+                {
+                    "content": "Task 2",
+                    "id": "2",
+                    "priority": "medium",
+                    "status": "in_progress",
+                },
+            ]
+        }
+
+    def test_array_of_objects_extra_nesting(self, interceptor):
+        """Test array of objects with extra wrapper nesting (OpenCode CLI format)."""
+        # This is the exact format seen in production logs that was failing
+        args = [
+            [
+                [
+                    "todos",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            [
+                                [
+                                    [
+                                        [
+                                            "content",
+                                            [None, None, "Analyze wire format"],
+                                        ],
+                                        ["id", [None, None, "1"]],
+                                        ["priority", [None, None, "high"]],
+                                        ["status", [None, None, "in_progress"]],
+                                    ]
+                                ]
+                            ],
+                            [
+                                [
+                                    [
+                                        ["content", [None, None, "Fix parsing"]],
+                                        ["id", [None, None, "2"]],
+                                        ["priority", [None, None, "high"]],
+                                        ["status", [None, None, "pending"]],
+                                    ]
+                                ]
+                            ],
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert isinstance(result.get("todos"), list)
+        assert len(result["todos"]) == 2
+        assert result["todos"][0]["content"] == "Analyze wire format"
+        assert result["todos"][1]["status"] == "pending"
+
+    def test_deeply_nested_object(self, interceptor):
+        """Test deeply nested object structures (complex tool schemas)."""
+        args = [
+            [
+                [
+                    "config",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            [
+                                [
+                                    "database",
+                                    [
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        [
+                                            [
+                                                ["host", [None, None, "localhost"]],
+                                                ["port", [None, 2, 5432]],
+                                                ["ssl", [None, None, None, 1]],
+                                            ]
+                                        ],
+                                    ],
+                                ],
+                                [
+                                    "options",
+                                    [
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        [
+                                            [None, None, "option1"],
+                                            [None, None, "option2"],
+                                        ],
+                                    ],
+                                ],
+                            ]
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result["config"]["database"]["host"] == "localhost"
+        assert result["config"]["database"]["port"] == 5432
+        assert result["config"]["database"]["ssl"] is True
+        assert result["config"]["options"] == ["option1", "option2"]
+
+    def test_mixed_array_types(self, interceptor):
+        """Test array with mixed types (strings, numbers, booleans, null)."""
+        args = [
+            [
+                [
+                    "items",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            [None, None, "text"],
+                            [None, 2, 42],
+                            [None, None, None, 0],
+                            [None],
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"items": ["text", 42, False, None]}
+
+    def test_empty_object(self, interceptor):
+        """Test empty object parameter."""
+        args = [[["metadata", [None, None, None, None, []]]]]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"metadata": {}}
+
+    def test_empty_array(self, interceptor):
+        """Test empty array parameter."""
+        args = [[["tags", [None, None, None, None, None, []]]]]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"tags": []}
+
+    def test_single_string_value(self, interceptor):
+        """Test single string parameter (filePath)."""
+        args = [[["filePath", [None, None, "/path/to/file.ts"]]]]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"filePath": "/path/to/file.ts"}
+
+    def test_boolean_values(self, interceptor):
+        """Test boolean parameters (true and false)."""
+        args = [[["dryRun", [None, None, None, 1]], ["verbose", [None, None, None, 0]]]]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"dryRun": True, "verbose": False}
+
+    def test_null_value(self, interceptor):
+        """Test null parameter value."""
+        args = [[["optionalParam", [None]]]]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"optionalParam": None}
+
+    def test_numeric_values(self, interceptor):
+        """Test integer and float parameters."""
+        args = [
+            [
+                ["count", [None, 2, 100]],
+                ["temperature", [None, 2, 0.7]],
+                ["max_tokens", [None, 2, 4096]],
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"count": 100, "temperature": 0.7, "max_tokens": 4096}
+
+    def test_gh_grep_format(self, interceptor):
+        """Test gh_grep_searchGitHub tool format."""
+        args = [
+            [
+                ["query", [None, None, "useState("]],
+                [
+                    "language",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [[None, None, "TypeScript"], [None, None, "TSX"]],
+                    ],
+                ],
+                ["useRegexp", [None, None, None, 0]],
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {
+            "query": "useState(",
+            "language": ["TypeScript", "TSX"],
+            "useRegexp": False,
+        }
+
+    def test_tavily_search_format(self, interceptor):
+        """Test tavily_tavily-search tool format with optional params."""
+        args = [
+            [
+                ["query", [None, None, "Python async patterns"]],
+                ["max_results", [None, 2, 5]],
+                ["search_depth", [None, None, "advanced"]],
+                [
+                    "include_domains",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [[None, None, "stackoverflow.com"], [None, None, "github.com"]],
+                    ],
+                ],
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result["query"] == "Python async patterns"
+        assert result["max_results"] == 5
+        assert result["search_depth"] == "advanced"
+        assert result["include_domains"] == ["stackoverflow.com", "github.com"]
+
+    def test_chrome_devtools_fill_form(self, interceptor):
+        """Test chrome_devtools_fill_form tool format (array of objects)."""
+        args = [
+            [
+                [
+                    "elements",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            [
+                                None,
+                                None,
+                                None,
+                                None,
+                                [
+                                    [
+                                        ["uid", [None, None, "input-1"]],
+                                        ["value", [None, None, "test@example.com"]],
+                                    ]
+                                ],
+                            ],
+                            [
+                                None,
+                                None,
+                                None,
+                                None,
+                                [
+                                    [
+                                        ["uid", [None, None, "input-2"]],
+                                        ["value", [None, None, "password123"]],
+                                    ]
+                                ],
+                            ],
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {
+            "elements": [
+                {"uid": "input-1", "value": "test@example.com"},
+                {"uid": "input-2", "value": "password123"},
+            ]
+        }
+
+    def test_prune_tool_ids_format(self, interceptor):
+        """Test prune tool with array of string IDs."""
+        args = [
+            [
+                [
+                    "ids",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            [None, None, "consolidation"],
+                            [None, None, "5"],
+                            [None, None, "6"],
+                            [None, None, "7"],
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert result == {"ids": ["consolidation", "5", "6", "7"]}
+
+    def test_wrapper_with_single_element(self, interceptor):
+        """Test wrapper list containing single nested element."""
+        # Edge case: single-element wrapper that should be unwrapped
+        args = [
+            [
+                [
+                    "data",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [[[[["name", [None, None, "test"]]]]]],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert isinstance(result.get("data"), list)
+        assert len(result["data"]) == 1
+        assert result["data"][0]["name"] == "test"
+
+    def test_direct_param_list_inside_array(self, interceptor):
+        """Test direct param list inside array without length-5 wrapper.
+
+        This is the critical edge case where AI Studio sends objects inside
+        arrays without the standard length-5 object wrapper. Previously this
+        caused values to be wrapped in arrays: {"id": ["1"]} instead of {"id": "1"}.
+        """
+        args = [
+            [
+                [
+                    "todos",
+                    [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        [
+                            # Direct param list (no length-5 wrapper)
+                            [
+                                ["content", [None, None, "Analyze wire format"]],
+                                ["id", [None, None, "1"]],
+                                ["priority", [None, None, "high"]],
+                                ["status", [None, None, "in_progress"]],
+                            ],
+                            [
+                                ["content", [None, None, "Fix parsing bug"]],
+                                ["id", [None, None, "2"]],
+                                ["priority", [None, None, "high"]],
+                                ["status", [None, None, "pending"]],
+                            ],
+                        ],
+                    ],
+                ]
+            ]
+        ]
+        result = interceptor.parse_toolcall_params(args)
+        assert isinstance(result.get("todos"), list)
+        assert len(result["todos"]) == 2
+        # Values must be strings, NOT arrays
+        assert result["todos"][0]["id"] == "1"
+        assert result["todos"][0]["content"] == "Analyze wire format"
+        assert result["todos"][1]["status"] == "pending"
+        assert not isinstance(result["todos"][0]["id"], list)  # Must NOT be ["1"]

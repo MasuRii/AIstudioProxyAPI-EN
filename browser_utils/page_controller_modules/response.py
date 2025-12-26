@@ -1,5 +1,5 @@
 import asyncio
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from playwright.async_api import expect as expect_async
 
@@ -15,6 +15,7 @@ from config import (
     RESPONSE_TEXT_SELECTOR,
     SUBMIT_BUTTON_SELECTOR,
 )
+from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils import set_request_id
 from models import ClientDisconnectedError
 
@@ -143,3 +144,160 @@ class ResponseController(BaseController):
                 raise
             self.logger.warning(f"Timeout or error ensuring generation stopped: {e}")
             # Do not raise even on timeout as this is just a cleanup step
+
+    async def detect_function_calls(
+        self,
+        check_client_disconnected: Callable,
+    ) -> bool:
+        """
+        Detect if the current response contains function calls.
+
+        This is a fast check without full parsing. Uses the
+        FunctionCallResponseParser for DOM-based detection.
+
+        Args:
+            check_client_disconnected: Callback to check client connection.
+
+        Returns:
+            True if function calls are detected, False otherwise.
+        """
+        try:
+            from api_utils.utils_ext.function_call_response_parser import (
+                FunctionCallResponseParser,
+            )
+
+            parser = FunctionCallResponseParser(
+                page=self.page,
+                logger=self.logger,
+                req_id=self.req_id,
+            )
+
+            return await parser.detect_function_calls(check_client_disconnected)
+
+        except Exception as e:
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.debug(
+                    f"[{self.req_id}] Error detecting function calls: {e}"
+                )
+            return False
+
+    async def parse_function_calls(
+        self,
+        check_client_disconnected: Callable,
+    ) -> Tuple[bool, List[Dict[str, Any]], str]:
+        """
+        Parse function calls from the current response.
+
+        Args:
+            check_client_disconnected: Callback to check client connection.
+
+        Returns:
+            Tuple of:
+            - has_function_calls: Whether any function calls were found
+            - function_calls: List of function call dicts with 'name' and 'params'
+            - text_content: Any remaining text content
+        """
+        try:
+            from api_utils.utils_ext.function_call_response_parser import (
+                FunctionCallResponseParser,
+            )
+
+            parser = FunctionCallResponseParser(
+                page=self.page,
+                logger=self.logger,
+                req_id=self.req_id,
+            )
+
+            result = await parser.parse_function_calls(check_client_disconnected)
+
+            # Convert ParsedFunctionCall to dict format
+            function_calls: List[Dict[str, Any]] = []
+            for fc in result.function_calls:
+                function_calls.append(
+                    {
+                        "name": fc.name,
+                        "params": fc.arguments,
+                    }
+                )
+
+            return result.has_function_calls, function_calls, result.text_content
+
+        except Exception as e:
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(f"[{self.req_id}] Error parsing function calls: {e}")
+            return False, [], ""
+
+    async def get_response_with_function_calls(
+        self,
+        check_client_disconnected: Callable,
+        prompt_length: int = 0,
+        timeout: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve response content with function call detection.
+
+        This method extends get_response by also checking for function calls
+        in the response and returning them in a structured format.
+
+        Args:
+            check_client_disconnected: Callback to check client connection.
+            prompt_length: Length of the prompt for timeout calculation.
+            timeout: Optional explicit timeout.
+
+        Returns:
+            Dict with:
+            - content: Text content of the response
+            - has_function_calls: Whether function calls were detected
+            - function_calls: List of function call dicts
+            - raw_content: The raw content string
+        """
+        set_request_id(self.req_id)
+        if FUNCTION_CALLING_DEBUG:
+            self.logger.debug(
+                "[Response] Getting response with function call detection..."
+            )
+
+        result: Dict[str, Any] = {
+            "content": "",
+            "has_function_calls": False,
+            "function_calls": [],
+            "raw_content": "",
+        }
+
+        try:
+            # Get the raw response content first
+            raw_content = await self.get_response(
+                check_client_disconnected,
+                prompt_length=prompt_length,
+                timeout=timeout,
+            )
+            result["raw_content"] = raw_content
+
+            # Check for function calls
+            has_fc, function_calls, text_content = await self.parse_function_calls(
+                check_client_disconnected
+            )
+
+            if has_fc:
+                if FUNCTION_CALLING_DEBUG:
+                    self.logger.info(
+                        f"[{self.req_id}] Detected {len(function_calls)} function call(s) in response"
+                    )
+                result["has_function_calls"] = True
+                result["function_calls"] = function_calls
+                result["content"] = text_content
+            else:
+                result["content"] = raw_content
+
+        except Exception as e:
+            if isinstance(e, asyncio.CancelledError):
+                raise
+            if FUNCTION_CALLING_DEBUG:
+                self.logger.error(
+                    f"[{self.req_id}] Error getting response with FC: {e}"
+                )
+            if not isinstance(e, ClientDisconnectedError):
+                await save_error_snapshot(f"get_response_fc_error_{self.req_id}")
+            raise
+
+        return result

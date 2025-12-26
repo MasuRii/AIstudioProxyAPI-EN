@@ -317,6 +317,9 @@ class ProxyServer:
                         if "GenerateContent" in path or "generateContent" in path:
                             should_sniff = True
                             request_context["request_ts"] = time.time()
+                            # Reset interceptor state for new request to prevent
+                            # state leakage from previous requests
+                            self.interceptor.reset_for_new_request()
                             self.logger.debug(
                                 f"[Proxy] Detected GenerateContent request: {path[:60]}..."
                             )

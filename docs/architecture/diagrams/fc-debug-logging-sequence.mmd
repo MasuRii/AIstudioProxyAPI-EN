@@ -1,0 +1,97 @@
+sequenceDiagram
+    autonumber
+    participant Client as API Client
+    participant Orch as FunctionCallingOrchestrator
+    participant Cache as FunctionCallingCache
+    participant UI as PageController FC Module
+    participant Wire as StreamInterceptor
+    participant DOM as FunctionCallResponseParser
+    participant Schema as SchemaConverter
+    participant Response as ResponseFormatter
+    participant FCLog as FunctionCallingDebugLogger
+    participant Files as Log Files
+
+    Note over Client,Files: Request with tools parameter
+
+    Client->>Orch: prepare_request with tools
+    
+    rect rgb(230, 245, 255)
+        Note right of Orch: ORCHESTRATOR Module
+        Orch->>FCLog: log_mode_selection req_id mode reason
+        FCLog->>Files: fc_orchestrator.log
+    end
+
+    Orch->>Cache: is_valid tools_digest model_id
+    
+    alt Cache Hit
+        rect rgb(255, 248, 225)
+            Note right of Cache: CACHE Module
+            Cache->>FCLog: log_cache_hit req_id digest age
+            FCLog->>Files: fc_cache.log
+        end
+        Cache-->>Orch: True - skip UI ops
+    else Cache Miss
+        rect rgb(255, 248, 225)
+            Cache->>FCLog: log_cache_miss req_id reason
+            FCLog->>Files: fc_cache.log
+        end
+        Cache-->>Orch: False - need UI ops
+
+        Orch->>Schema: convert_tools openai_tools
+        rect rgb(243, 229, 245)
+            Note right of Schema: SCHEMA Module
+            Schema->>FCLog: log_schema_conversion req_id count elapsed
+            FCLog->>Files: fc_schema.log
+        end
+        Schema-->>Orch: gemini_declarations
+
+        Orch->>UI: set_function_declarations declarations
+        rect rgb(232, 245, 233)
+            Note right of UI: UI Module
+            UI->>FCLog: log_ui_action req_id open dialog
+            FCLog->>Files: fc_ui.log
+            UI->>FCLog: log_ui_action req_id paste declarations
+            FCLog->>Files: fc_ui.log
+            UI->>FCLog: log_ui_action req_id close dialog elapsed
+            FCLog->>Files: fc_ui.log
+        end
+        UI-->>Orch: success
+
+        Orch->>Cache: update tools_digest model_id
+        rect rgb(255, 248, 225)
+            Cache->>FCLog: debug CACHE Updated digest
+            FCLog->>Files: fc_cache.log
+        end
+    end
+
+    Orch-->>Client: state ready
+
+    Note over Client,Files: AI generates response with tool calls
+
+    Client->>Wire: parse_response_buffer
+    rect rgb(255, 235, 238)
+        Note right of Wire: WIRE Module
+        Wire->>FCLog: log_wire_parse req_id func_name params
+        FCLog->>Files: fc_wire.log
+    end
+    Wire-->>Client: wire_parsed_calls
+
+    alt Wire parsing missed some calls
+        Client->>DOM: parse_function_calls
+        rect rgb(225, 245, 254)
+            Note right of DOM: DOM Module
+            DOM->>FCLog: log_dom_extraction req_id count strategy
+            FCLog->>Files: fc_dom.log
+        end
+        DOM-->>Client: dom_parsed_calls
+    end
+
+    Client->>Response: format_tool_calls parsed_calls
+    rect rgb(252, 228, 236)
+        Note right of Response: RESPONSE Module
+        Response->>FCLog: log_response_format req_id count finish_reason
+        FCLog->>Files: fc_response.log
+    end
+    Response-->>Client: openai_format_response
+
+    Note over Client,Files: All logs include request_id for correlation

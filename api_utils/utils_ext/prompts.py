@@ -2,12 +2,16 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 from urllib.parse import unquote, urlparse
 
 from api_utils.utils_ext.files import extract_data_url_to_local, save_blob_to_local
+from api_utils.utils_ext.function_calling_orchestrator import should_skip_tool_injection
 from logging_utils import set_request_id
 from models import Message
+
+if TYPE_CHECKING:
+    from api_utils.utils_ext.function_calling_orchestrator import FunctionCallingState
 
 
 def prepare_combined_prompt(
@@ -15,6 +19,7 @@ def prepare_combined_prompt(
     req_id: str,
     tools: Optional[List[Dict[str, Any]]] = None,
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
+    fc_state: Optional["FunctionCallingState"] = None,
 ) -> Tuple[str, List[str]]:
     """Prepare combined prompt"""
     logger = logging.getLogger("AIStudioProxyServer")
@@ -34,64 +39,76 @@ def prepare_combined_prompt(
     ] = []  # Collect local file paths to be uploaded (images, videos, PDFs, etc.)
 
     # If available tools are declared, inject the tool catalog before the prompt to help the model know available functions
+    # Skip injection when using native function calling mode (tools configured via UI)
+    # Pass fc_state to handle AUTO mode fallback correctly
     if isinstance(tools, list) and len(tools) > 0:
-        try:
-            tool_lines: List[str] = ["Available Tools Catalog:"]
-            for t in tools:
-                name: Optional[str] = None
-                params_schema: Optional[Dict[str, Any]] = None
-                # t is Dict[str, Any] from List[Dict[str, Any]]
-                fn_val: Any = t.get("function") if "function" in t else t
-                if isinstance(fn_val, dict):
-                    # Type narrowed: fn_val is dict
-                    typed_fn: Dict[str, Any] = cast(Dict[str, Any], fn_val)
-                    name_raw: Any = typed_fn.get("name") or t.get("name")
-                    if isinstance(name_raw, str):
-                        name = name_raw
-                    params_raw: Any = typed_fn.get("parameters")
-                    if isinstance(params_raw, dict):
-                        params_schema = cast(Dict[str, Any], params_raw)
-                else:
-                    # fn_val is not dict, get name directly from t
-                    name_raw: Any = t.get("name")
-                    if isinstance(name_raw, str):
-                        name = name_raw
-                if name:
-                    tool_lines.append(f"- Function: {name}")
-                    if params_schema:
-                        try:
-                            tool_lines.append(
-                                f"  Parameter Schema: {json.dumps(params_schema, ensure_ascii=False)}"
-                            )
-                        except Exception:
-                            pass
-            if tool_choice:
-                # Explicitly request or suggest callable function name
-                chosen_name: Optional[str] = None
-                if isinstance(tool_choice, dict):
-                    # Type narrowed to dict by isinstance
-                    typed_tool_choice: Dict[str, Any] = tool_choice
-                    fn_val: Any = typed_tool_choice.get("function")
+        if should_skip_tool_injection(tools, fc_state=fc_state):
+            logger.debug(
+                f"[{req_id}] Skipping tool catalog injection - native mode active and configured"
+            )
+        else:
+            try:
+                tool_lines: List[str] = ["Available Tools Catalog:"]
+                for t in tools:
+                    name: Optional[str] = None
+                    params_schema: Optional[Dict[str, Any]] = None
+                    # t is Dict[str, Any] from List[Dict[str, Any]]
+                    fn_val: Any = t.get("function") if "function" in t else t
                     if isinstance(fn_val, dict):
-                        # Type narrowed to dict
+                        # Type narrowed: fn_val is dict
                         typed_fn: Dict[str, Any] = cast(Dict[str, Any], fn_val)
-                        name_raw: Any = typed_fn.get("name")
+                        name_raw: Any = typed_fn.get("name") or t.get("name")
                         if isinstance(name_raw, str):
-                            chosen_name = name_raw
-                elif tool_choice.lower() not in (
-                    "auto",
-                    "none",
-                    "no",
-                    "off",
-                    "required",
-                    "any",
-                ):
-                    chosen_name = tool_choice
-                if chosen_name:
-                    tool_lines.append(f"Recommended function to use: {chosen_name}")
-            combined_parts.append("\n".join(tool_lines) + "\n---\n")
-        except Exception:
-            pass
+                            name = name_raw
+                        params_raw: Any = typed_fn.get("parameters")
+                        if isinstance(params_raw, dict):
+                            params_schema = cast(Dict[str, Any], params_raw)
+                    else:
+                        # fn_val is not dict, get name directly from t
+                        name_raw: Any = t.get("name")
+                        if isinstance(name_raw, str):
+                            name = name_raw
+                    if name:
+                        tool_lines.append(f"- Function: {name}")
+                        if params_schema:
+                            try:
+                                tool_lines.append(
+                                    f"  Parameter Schema: {json.dumps(params_schema, ensure_ascii=False)}"
+                                )
+                            except Exception:
+                                pass
+                if tool_choice:
+                    # Explicitly request or suggest callable function name
+                    chosen_name: Optional[str] = None
+                    if isinstance(tool_choice, dict):
+                        # Type narrowed to dict by isinstance
+                        typed_tool_choice: Dict[str, Any] = tool_choice
+                        fn_val: Any = typed_tool_choice.get("function")
+                        if isinstance(fn_val, dict):
+                            # Standard format: {"type": "function", "function": {"name": "..."}}
+                            typed_fn: Dict[str, Any] = cast(Dict[str, Any], fn_val)
+                            name_raw: Any = typed_fn.get("name")
+                            if isinstance(name_raw, str):
+                                chosen_name = name_raw
+                        elif "name" in typed_tool_choice:
+                            # Flat format: {"type": "function", "name": "..."}
+                            name_raw = typed_tool_choice.get("name")
+                            if isinstance(name_raw, str):
+                                chosen_name = name_raw
+                    elif tool_choice.lower() not in (
+                        "auto",
+                        "none",
+                        "no",
+                        "off",
+                        "required",
+                        "any",
+                    ):
+                        chosen_name = tool_choice
+                    if chosen_name:
+                        tool_lines.append(f"Recommended function to use: {chosen_name}")
+                combined_parts.append("\n".join(tool_lines) + "\n---\n")
+            except Exception:
+                pass
 
     # Process system messages
     for i, msg in enumerate(messages):
