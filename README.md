@@ -24,7 +24,7 @@ At the same time, we sincerely thank every friend who has silently contributed t
 
 ---
 
-**This is the currently maintained Python version. The deprecated JavaScript version can be found in [`deprecated_javascript_version/README.md`](deprecated_javascript_version/README.md).**
+**This is the currently maintained Python version.**
 
 ## 📊 Compatibility Matrix
 

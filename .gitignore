@@ -272,6 +272,13 @@ docker/my_*.json
 
 monkeytype.sqlite3
 
+# Pyright output
+baseline_pyright.txt
+pyright_*.txt
+
+# Ruff cache (explicit)
+.ruff_cache/
+
 # Temporary debug/output files
 pyright_output.txt
 pyright_utils_full.txt
