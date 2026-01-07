@@ -470,9 +470,7 @@ def find_pids_on_port(port: int) -> list[int]:
             elif process.returncode != 0 and (
                 "command not found" in stderr.lower() or "未找到命令" in stderr
             ):
-                logger.error(
-                    "Command 'lsof' not found. Please ensure it is installed."
-                )
+                logger.error("Command 'lsof' not found. Please ensure it is installed.")
             elif process.returncode not in [0, 1]:  # lsof returns 1 when not found
                 logger.warning(
                     f"Failed to execute lsof command (return code {process.returncode}): {stderr.strip()}"
@@ -908,6 +906,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    # Mark if --server-redirect-print was explicitly provided via CLI
+    args.server_redirect_print_from_cli = "--server-redirect-print" in sys.argv
 
     # --- Auto-detect current system and set Camoufox OS simulation ---
     # This variable will be used for internal Camoufox launch and HOST_OS_FOR_SHORTCUT
@@ -1662,10 +1663,16 @@ if __name__ == "__main__":
 
     os.environ["LAUNCH_MODE"] = final_launch_mode
     os.environ["SERVER_LOG_LEVEL"] = args.server_log_level.upper()
-    os.environ["SERVER_REDIRECT_PRINT"] = str(args.server_redirect_print).lower()
 
     # Fix: If command-line argument is not provided, keep the original value from environment variable
     # This respects the .env file configuration
+    if (
+        hasattr(args, "server_redirect_print_from_cli")
+        and args.server_redirect_print_from_cli
+    ):
+        os.environ["SERVER_REDIRECT_PRINT"] = str(args.server_redirect_print).lower()
+    # Otherwise keep existing environment variable value (loaded from .env)
+
     if hasattr(args, "debug_logs_from_cli") and args.debug_logs_from_cli:
         os.environ["DEBUG_LOGS_ENABLED"] = str(args.debug_logs).lower()
     # Otherwise keep existing environment variable value (loaded from .env)

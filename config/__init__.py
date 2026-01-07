@@ -143,6 +143,12 @@ __all__ = [
     "DEFAULT_THINKING_LEVEL_FLASH",
     "ENABLE_GOOGLE_SEARCH",
     "ENABLE_URL_CONTEXT",
+    # Cookie Refresh Settings
+    "COOKIE_REFRESH_ENABLED",
+    "COOKIE_REFRESH_INTERVAL_SECONDS",
+    "COOKIE_REFRESH_ON_REQUEST_ENABLED",
+    "COOKIE_REFRESH_REQUEST_INTERVAL",
+    "COOKIE_REFRESH_ON_SHUTDOWN",
     # Utility Functions
     "get_environment_variable",
     "get_boolean_env",

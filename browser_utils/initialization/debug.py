@@ -43,6 +43,15 @@ def setup_debug_listeners(page: AsyncPage) -> None:
 
             # Log errors to our logger as well
             if msg.type == "error":
+                # Filter out known benign browser warnings - log at DEBUG level
+                text_lower = msg.text.lower()
+                if "cookie" in text_lower and "rejected" in text_lower:
+                    # Known Google cookie warning (SIDCC, etc.) - benign but may indicate stale auth profile
+                    # Log at DEBUG to reduce noise but preserve for troubleshooting
+                    logger.debug(
+                        f"[Browser Cookie Warning] {msg.text} - This may indicate the auth profile needs refresh"
+                    )
+                    return
                 logger.warning(f"[Browser Console Error] {msg.text}")
 
         except Exception as e:

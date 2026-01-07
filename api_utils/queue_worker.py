@@ -396,6 +396,20 @@ async def queue_worker() -> None:
             # [CLEANUP]
             try:
                 await clear_stream_queue()
+
+                # [COOKIE-REFRESH] Save cookies after successful requests
+                if not client_disconnected_early and not GlobalState.IS_QUOTA_EXCEEDED:
+                    try:
+                        from browser_utils.cookie_refresh import (
+                            maybe_refresh_on_request,
+                        )
+
+                        await maybe_refresh_on_request()
+                    except Exception as cookie_err:
+                        logger.debug(
+                            f"[{req_id}] Cookie refresh error (non-critical): {cookie_err}"
+                        )
+
                 if (
                     not GlobalState.IS_QUOTA_EXCEEDED
                     and not just_rotated

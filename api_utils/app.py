@@ -299,6 +299,16 @@ async def lifespan(app: FastAPI):
                 "[WATCHDOG] Quota Watchdog function not found, task not started."
             )
 
+        # Start periodic cookie refresh task
+        try:
+            from browser_utils.cookie_refresh import start_periodic_refresh
+
+            cookie_refresh_task = start_periodic_refresh()
+            if cookie_refresh_task:
+                app.state.cookie_refresh_task = cookie_refresh_task
+        except Exception as e:
+            logger.warning(f"[COOKIE-REFRESH] Failed to start periodic refresh: {e}")
+
         startup_duration = time.time() - startup_start_time
         logger.info(f"Server startup complete. (Took: {startup_duration:.2f}s)")
         state.is_initializing = False
@@ -309,6 +319,22 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(f"Application startup failed: {e}") from e
     finally:
         logger.info("Shutting down server...")
+
+        # Stop periodic cookie refresh and save cookies before shutdown
+        if hasattr(app.state, "cookie_refresh_task"):
+            logger.info("[STOP] Stopping Cookie Refresh Task...")
+            try:
+                from browser_utils.cookie_refresh import (
+                    stop_periodic_refresh,
+                    save_cookies_on_shutdown,
+                )
+
+                await stop_periodic_refresh()
+                # Save cookies one final time before shutdown
+                await save_cookies_on_shutdown()
+            except Exception as e:
+                logger.warning(f"[COOKIE-REFRESH] Shutdown save error: {e}")
+
         if hasattr(app.state, "watchdog_task"):
             logger.info("[STOP] Stopping Quota Watchdog...")
             task = app.state.watchdog_task

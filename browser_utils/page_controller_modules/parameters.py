@@ -665,6 +665,16 @@ class ParameterController(BaseController):
             self.logger.debug(
                 f"[Param] Google Search: {'On' if is_currently_checked else 'Off'} -> {desired_state}"
             )
+
+            # Check if the toggle is disabled (e.g., when function calling is enabled)
+            is_disabled = await toggle_locator.get_attribute("disabled")
+            toggle_class = await toggle_locator.get_attribute("class") or ""
+            if is_disabled is not None or "mdc-switch--disabled" in toggle_class:
+                self.logger.debug(
+                    f"[Param] Google Search: Toggle is disabled (likely due to function calling being enabled), skipping"
+                )
+                return
+
             try:
                 await toggle_locator.scroll_into_view_if_needed()
             except asyncio.CancelledError:

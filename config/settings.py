@@ -177,3 +177,19 @@ FUNCTION_CALLING_CACHE_ENABLED = get_boolean_env("FUNCTION_CALLING_CACHE_ENABLED
 # Cache TTL in seconds (0 = no expiration within session)
 # Cache is automatically invalidated on model switch or new chat
 FUNCTION_CALLING_CACHE_TTL = get_int_env("FUNCTION_CALLING_CACHE_TTL", 0)
+
+# --- Cookie Refresh Configuration ---
+# Enable automatic cookie refresh to keep auth profiles fresh
+COOKIE_REFRESH_ENABLED = get_boolean_env("COOKIE_REFRESH_ENABLED", True)
+
+# Periodic refresh interval in seconds (default: 30 minutes)
+COOKIE_REFRESH_INTERVAL_SECONDS = get_int_env("COOKIE_REFRESH_INTERVAL_SECONDS", 1800)
+
+# Enable cookie save on successful API requests (saves after every N requests)
+COOKIE_REFRESH_ON_REQUEST_ENABLED = get_boolean_env(
+    "COOKIE_REFRESH_ON_REQUEST_ENABLED", True
+)
+COOKIE_REFRESH_REQUEST_INTERVAL = get_int_env("COOKIE_REFRESH_REQUEST_INTERVAL", 10)
+
+# Enable cookie save on graceful shutdown
+COOKIE_REFRESH_ON_SHUTDOWN = get_boolean_env("COOKIE_REFRESH_ON_SHUTDOWN", True)

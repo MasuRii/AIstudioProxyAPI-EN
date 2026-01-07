@@ -85,12 +85,23 @@ async def initialize_page_logic(  # pragma: no cover
                 )
                 try:
                     # Local import to avoid circular dependencies
-                    from browser_utils.auth_rotation import _get_next_profile
+                    from browser_utils.auth_rotation import (
+                        _get_next_profile,
+                        check_profile_cookie_health,
+                    )
 
                     next_profile = _get_next_profile()
                     if next_profile:
                         os.environ["ACTIVE_AUTH_JSON_PATH"] = next_profile
                         logger.info(f"   ✅ Auto-selected profile: {next_profile}")
+
+                        # Check cookie health of selected profile
+                        health = check_profile_cookie_health(next_profile)
+                        if health["health_status"] == "critical":
+                            logger.warning(
+                                f"   ⚠️ Selected profile has expired authentication cookies. "
+                                f"Consider refreshing by logging in again in debug mode."
+                            )
                     else:
                         logger.warning(
                             "   ⚠️ Auto-Auth Rotation: No available profiles found. Continuing with environment defaults."

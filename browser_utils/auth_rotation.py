@@ -115,6 +115,86 @@ def _calculate_smart_priority(
     return (-efficiency_score, usage, random.random())
 
 
+def check_profile_cookie_health(profile_path: str) -> dict:
+    """
+    Check the health of cookies in an auth profile.
+
+    Returns a dict with:
+    - total: total number of cookies
+    - expired: number of expired cookies
+    - valid: number of valid cookies
+    - critical_expired: list of critical expired cookie names (auth-related)
+    - health_status: 'healthy', 'warning', or 'critical'
+    """
+    result = {
+        "total": 0,
+        "expired": 0,
+        "valid": 0,
+        "session": 0,
+        "critical_expired": [],
+        "health_status": "healthy",
+    }
+
+    # Critical cookies that affect authentication
+    CRITICAL_COOKIES = {
+        "SID",
+        "HSID",
+        "SSID",
+        "APISID",
+        "SAPISID",
+        "SIDCC",
+        "__Secure-1PSID",
+        "__Secure-3PSID",
+    }
+
+    try:
+        with open(profile_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        cookies = data.get("cookies", [])
+        result["total"] = len(cookies)
+        now = time.time()
+
+        for cookie in cookies:
+            name = cookie.get("name", "")
+            expires = cookie.get("expires", -1)
+
+            if expires == -1:
+                # Session cookie (no expiry)
+                result["session"] += 1
+                result["valid"] += 1
+            elif expires < now:
+                # Expired
+                result["expired"] += 1
+                if name in CRITICAL_COOKIES:
+                    result["critical_expired"].append(name)
+            else:
+                # Valid
+                result["valid"] += 1
+
+        # Determine health status
+        if result["critical_expired"]:
+            result["health_status"] = "critical"
+            logger.warning(
+                f"🔴 Auth profile '{os.path.basename(profile_path)}' has expired critical cookies: {result['critical_expired']}"
+            )
+        elif result["expired"] > result["total"] * 0.3:  # More than 30% expired
+            result["health_status"] = "warning"
+            logger.warning(
+                f"🟡 Auth profile '{os.path.basename(profile_path)}' has {result['expired']}/{result['total']} expired cookies"
+            )
+        else:
+            logger.debug(
+                f"🟢 Auth profile '{os.path.basename(profile_path)}' cookie health: {result['valid']}/{result['total']} valid"
+            )
+
+    except (json.JSONDecodeError, OSError) as e:
+        logger.error(f"Failed to check cookie health for '{profile_path}': {e}")
+        result["health_status"] = "error"
+
+    return result
+
+
 def _find_best_profile_in_dirs(
     directories: list[str], target_model_id: str = None
 ) -> Optional[str]:
