@@ -10,6 +10,7 @@ from config.global_state import GlobalState
 from config.settings import FUNCTION_CALLING_DEBUG
 from logging_utils.fc_debug import get_fc_logger
 from logging_utils.grid_logger import GridFormatter
+from api_utils.utils_ext.json_helpers import clean_and_parse_json_string
 
 # FC debug logger for wire format parsing
 fc_logger = get_fc_logger()
@@ -368,7 +369,10 @@ class HttpInterceptor:
                     elif len(param_value) == 2:  # number and integer
                         func_params[param_name] = param_value[1]
                     elif len(param_value) == 3:  # string
-                        func_params[param_name] = param_value[2]
+                        # Apply robust cleaning to string values that might be malformed JSON
+                        func_params[param_name] = clean_and_parse_json_string(
+                            param_value[2], self.logger
+                        )
                     elif len(param_value) == 4:  # boolean
                         func_params[param_name] = param_value[3] == 1
                     elif len(param_value) == 5:  # object
@@ -463,11 +467,11 @@ class HttpInterceptor:
         # Length 3: string - [null, null, value]
         if len(item) == 3:
             if item[0] is None and item[1] is None:
-                return item[2]
+                return clean_and_parse_json_string(item[2], self.logger)
             # Could be wrapper
             if isinstance(item[0], list):
                 return self._parse_single_array_item(item[0])
-            return item[2]
+            return clean_and_parse_json_string(item[2], self.logger)
 
         # Length 4: boolean - [null, null, null, 0|1]
         if len(item) == 4:
