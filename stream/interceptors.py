@@ -227,27 +227,25 @@ class HttpInterceptor:
                             func_call_data = {"name": func_name, "params": params}
                             self._accumulated_function_calls[dedup_key] = func_call_data
 
-                            # Log warning if params are empty for tracking potential parse failures
-                            if not params:
-                                if FUNCTION_CALLING_DEBUG:
-                                    self.logger.warning(
-                                        f"[FC:Wire] Function '{func_name}' parsed with empty args - "
-                                        f"may indicate wire format parsing failure. Raw: {array_tool_calls[1][:200] if array_tool_calls[1] else 'None'}..."
+                            # Always log parsing result
+                            if FUNCTION_CALLING_DEBUG:
+                                is_empty = not params
+                                status_msg = (
+                                    "parsed with empty args" if is_empty else "parsed"
+                                )
+
+                                if is_empty:
+                                    self.logger.debug(
+                                        f"[FC:Wire] Function '{func_name}' {status_msg}. "
+                                        f"Raw: {array_tool_calls[1][:200] if array_tool_calls[1] else 'None'}..."
                                     )
-                                    fc_logger.log_wire_parse(
-                                        req_id="",
-                                        func_name=func_name,
-                                        params=params,
-                                        success=False,
-                                    )
-                            else:
-                                if FUNCTION_CALLING_DEBUG:
-                                    fc_logger.log_wire_parse(
-                                        req_id="",
-                                        func_name=func_name,
-                                        params=params,
-                                        success=True,
-                                    )
+
+                                fc_logger.log_wire_parse(
+                                    req_id="",
+                                    func_name=func_name,
+                                    params=params,
+                                    success=True,  # Empty args are valid JSON, so parsing succeeded
+                                )
                         elif len(payload) > 2:  # reason
                             resp["reason"] += payload[1]
 

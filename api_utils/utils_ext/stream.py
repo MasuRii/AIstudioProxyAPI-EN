@@ -269,16 +269,8 @@ async def use_stream_response(
 
                     if parsed_data.get("function"):
                         has_seen_functions = True
-                        # Track if any function call has empty arguments (potential parse failure)
-                        for fc in parsed_data.get("function", []):
-                            fc_params = fc.get("params") or fc.get("arguments") or {}
-                            if not fc_params:
-                                if FUNCTION_CALLING_DEBUG:
-                                    logger.warning(
-                                        f"[{req_id}] ⚠️ Wire format returned '{fc.get('name')}' with empty args - will try DOM fallback"
-                                    )
-                                has_seen_functions = False  # Force DOM fallback
-                                break
+                        # Note: We trust the wire format parsing even if args are empty.
+                        # Empty args are valid for some tools or if the model decides to call without args.
 
                     if parsed_data.get("done") is True:
                         if GlobalState.IS_QUOTA_EXCEEDED or GlobalState.IS_RECOVERING:
