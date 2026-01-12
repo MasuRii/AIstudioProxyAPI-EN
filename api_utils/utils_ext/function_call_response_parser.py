@@ -1161,6 +1161,17 @@ class FunctionCallResponseParser:
             if FUNCTION_CALLING_DEBUG:
                 self.logger.debug(f"[{self.req_id}] JSON parse failed: {e}")
 
+            # Handle "Extra data" (e.g. {"a":1}} or [1,2]] or {"a":1}garbage)
+            if e.msg.startswith("Extra data"):
+                try:
+                    cleaned = args_text[: e.pos]
+                    result = json.loads(cleaned)
+                    if isinstance(result, dict):
+                        return self._recursively_parse_json_strings(result)
+                    return {"value": result}
+                except Exception:
+                    pass
+
         # 5. Fallback: Try to extract key-value pairs manually
         kv_pattern = re.compile(r'"?(\w+)"?\s*[:=]\s*(".*?"|[^,}\]]+)')
         matches = kv_pattern.findall(args_text)
@@ -1189,19 +1200,95 @@ class FunctionCallResponseParser:
         return {}
 
     def _recursively_parse_json_strings(self, obj: Any) -> Any:
-        """Recursively parse JSON strings within a data structure."""
+        """Recursively parse JSON strings within a data structure.
+
+        Handles:
+        - Malformed double-encoded JSON (extra trailing '}' or ']')
+        - Escaped string content (\\n, \\t, etc.)
+        """
         if isinstance(obj, dict):
             return {k: self._recursively_parse_json_strings(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [self._recursively_parse_json_strings(i) for i in obj]
         elif isinstance(obj, str):
             stripped = obj.strip()
+
+            # Check if string contains control character escape sequences that need unescaping
+            # This handles cases where diff content has literal \n or \t instead of actual newlines/tabs
+            has_control_char_escapes = "\\n" in obj or "\\t" in obj
+            has_intentional_escapes = '\\"' in obj or "\\\\" in obj
+
+            if has_control_char_escapes and not has_intentional_escapes:
+                try:
+                    # Use json.loads with quotes to properly unescape the string
+                    unescaped = json.loads(f'"{obj}"')
+                    if FUNCTION_CALLING_DEBUG:
+                        snippet = obj[:80] + "..." if len(obj) > 80 else obj
+                        self.logger.debug(
+                            f"[{self.req_id}] Unescaped control chars in string: "
+                            f"{len(obj) - len(unescaped)} chars changed. Snippet: {snippet!r}"
+                        )
+                    return unescaped
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
             if stripped and stripped[0] in ("{", "["):
                 try:
                     parsed = json.loads(obj)
                     return self._recursively_parse_json_strings(parsed)
-                except (json.JSONDecodeError, ValueError):
+                except json.JSONDecodeError as e:
+                    # Handle "Extra data" (e.g. {"key": "value"}} or [1, 2]]garbage)
+                    if e.msg.startswith("Extra data"):
+                        try:
+                            cleaned = obj[: e.pos]
+                            parsed = json.loads(cleaned)
+                            if FUNCTION_CALLING_DEBUG:
+                                self.logger.warning(
+                                    f"[{self.req_id}] Auto-corrected malformed JSON string (Extra data): "
+                                    f"truncated at pos {e.pos}"
+                                )
+                            return self._recursively_parse_json_strings(parsed)
+                        except Exception:
+                            pass
+                except ValueError:
                     pass
+
+                # Handle malformed JSON: array that doesn't end with ]
+                # e.g., '[{"path": "..."}]}' instead of '[{"path": "..."}]'
+                # We check startswith but NOT endswith to allow recovery even if it ends with "incorrect" bracket
+                if stripped.startswith("["):
+                    try:
+                        last_bracket = stripped.rfind("]")
+                        if last_bracket > 0:
+                            cleaned = stripped[: last_bracket + 1]
+                            # Only try if we actually changed something
+                            if len(cleaned) < len(stripped):
+                                parsed = json.loads(cleaned)
+                                if FUNCTION_CALLING_DEBUG:
+                                    self.logger.warning(
+                                        f"[{self.req_id}] Auto-corrected malformed JSON string (Array): "
+                                        f"truncated {len(stripped) - len(cleaned)} extra chars"
+                                    )
+                                return self._recursively_parse_json_strings(parsed)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
+                # Handle malformed JSON: object that doesn't end with }
+                if stripped.startswith("{"):
+                    try:
+                        last_brace = stripped.rfind("}")
+                        if last_brace > 0:
+                            cleaned = stripped[: last_brace + 1]
+                            if len(cleaned) < len(stripped):
+                                parsed = json.loads(cleaned)
+                                if FUNCTION_CALLING_DEBUG:
+                                    self.logger.warning(
+                                        f"[{self.req_id}] Auto-corrected malformed JSON string (Object): "
+                                        f"truncated {len(stripped) - len(cleaned)} extra chars"
+                                    )
+                                return self._recursively_parse_json_strings(parsed)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
         return obj
 
     def _deduplicate_calls(self, calls: List[Any]) -> List[Any]:

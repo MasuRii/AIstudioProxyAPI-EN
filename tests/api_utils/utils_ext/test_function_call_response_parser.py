@@ -164,6 +164,56 @@ class TestFunctionCallResponseParser:
         result = parser._deduplicate_calls(calls)
         assert len(result) == 3
 
+    def test_parse_arguments_malformed_json_trailing_garbage_brace(self, parser):
+        """Test parsing JSON arguments with trailing garbage after closing brace."""
+        # Case: {"a": 1}}garbage
+        args = '{"a": 1}}garbage'
+        result = parser._parse_arguments(args)
+        assert result == {"a": 1}
+
+    def test_parse_arguments_malformed_json_trailing_garbage_bracket(self, parser):
+        """Test parsing JSON arguments with trailing garbage after closing bracket."""
+        # Case: [1, 2]]garbage - strictly speaking arguments usually return dict,
+        # but _parse_arguments wraps non-dict in {"value": ...} if it's a list/primitive
+        args = "[1, 2]]garbage"
+        result = parser._parse_arguments(args)
+        assert result == {"value": [1, 2]}
+
+    def test_parse_arguments_unescaped_control_chars(self, parser):
+        """Test parsing arguments with unescaped control characters."""
+        # Use raw string r"" to simulate actual literal backslash+n
+        args = r'{"text": "Line 1\nLine 2"}'
+        # The parser should unescape \n to actual newline
+        result = parser._parse_arguments(args)
+        assert result == {"text": "Line 1\nLine 2"}
+
+    def test_parse_arguments_nested_malformed_json(self, parser):
+        """Test parsing nested double-encoded JSON with malformed strings."""
+        # This simulates a common Gemini issue: {"config": "{\"key\": \"value\"}}"}
+        # The inner string has a trailing }
+        args = r'{"config": "{\"key\": \"value\"}}", "valid": true}'
+        result = parser._parse_arguments(args)
+
+        # Expect parser to fix the inner string and parse it
+        assert result["valid"] is True
+        # The robust parser should recursively parse the string "{\"key\": \"value\"}}"
+        # truncating the extra '}'
+        assert result["config"] == {"key": "value"}
+
+    def test_parse_arguments_double_encoded_json(self, parser):
+        """Test parsing double-encoded JSON."""
+        # Valid case: {"config": "{\"key\": \"value\"}"}
+        args = r'{"config": "{\"key\": \"value\"}"}'
+        result = parser._parse_arguments(args)
+        assert result["config"] == {"key": "value"}
+
+    def test_parse_arguments_malformed_list_in_string(self, parser):
+        """Test parsing a stringified list with trailing garbage."""
+        # {"items": "[1, 2]]"}
+        args = r'{"items": "[1, 2]]"}'
+        result = parser._parse_arguments(args)
+        assert result["items"] == [1, 2]
+
     @pytest.mark.asyncio
     async def test_detect_function_calls_widget_found(self, parser, mock_page):
         """Test detection when widget is found."""
