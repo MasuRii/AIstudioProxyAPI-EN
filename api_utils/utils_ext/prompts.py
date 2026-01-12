@@ -42,6 +42,11 @@ def prepare_combined_prompt(
     # Skip injection when using native function calling mode (tools configured via UI)
     # Pass fc_state to handle AUTO mode fallback correctly
     if isinstance(tools, list) and len(tools) > 0:
+        # Inject Meta-Prompt Guardrail (Suggestion 6)
+        from api_utils.utils_ext.function_calling import FC_SYSTEM_INSTRUCTION_GUARDRAIL
+
+        combined_parts.append(FC_SYSTEM_INSTRUCTION_GUARDRAIL + "\n---\n")
+
         if should_skip_tool_injection(tools, fc_state=fc_state):
             logger.debug(
                 f"[{req_id}] Skipping tool catalog injection - native mode active and configured"
@@ -573,8 +578,28 @@ def prepare_combined_prompt(
             tool_result_lines: List[str] = []
             # Standard OpenAI style: content is string, tool_call_id associates with previous call
             tool_call_id = getattr(msg, "tool_call_id", None)
+
+            # Suggestion 5: Recovery Logic
+            if (
+                (not tool_call_id or tool_call_id.startswith("recovered_"))
+                and fc_state
+                and fc_state.response_formatter
+            ):
+                # Try to find tool name in content if tool_call_id is missing
+                # Some clients send tool name in 'name' field for tool messages
+                msg_name = getattr(msg, "name", None)
+                if msg_name:
+                    id_manager = fc_state.response_formatter.id_manager
+                    pending = id_manager.find_call_by_name(msg_name)
+                    if pending:
+                        tool_call_id = pending.call_id
+                        logger.debug(
+                            f"[{req_id}] Recovered tool_call_id for {msg_name}: {tool_call_id}"
+                        )
+
             if tool_call_id:
                 tool_result_lines.append(f"Tool result (tool_call_id={tool_call_id}):")
+
             if isinstance(msg.content, str):
                 tool_result_lines.append(msg.content)
             elif isinstance(msg.content, list):

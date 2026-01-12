@@ -28,6 +28,37 @@ fc_logger = get_fc_logger()
 
 
 # =============================================================================
+# Tool Renaming Mapping (Suggestion 4)
+# =============================================================================
+
+# Map problematic tool names to safe alternatives for AI Studio
+# "batch" triggers internal Google behavior, rename it
+RENAMED_TOOLS: Dict[str, str] = {
+    "batch": "api_batch",
+}
+# Reverse mapping for response formatting
+REVERSE_RENAMED_TOOLS: Dict[str, str] = {v: k for k, v in RENAMED_TOOLS.items()}
+
+
+# =============================================================================
+# Meta-Prompt Guardrails (Suggestion 6)
+# =============================================================================
+
+# Injected into system instruction when function calling is enabled
+FC_SYSTEM_INSTRUCTION_GUARDRAIL = """
+<CRITICAL_TOOL_USAGE_INSTRUCTIONS>
+You are operating in a CUSTOM ENVIRONMENT where tool definitions COMPLETELY DIFFER from your training data.
+VIOLATION OF THESE RULES WILL CAUSE IMMEDIATE SYSTEM FAILURE.
+
+1. **SCHEMA IS LAW**: The JSON schema in each tool definition is the ONLY source of truth.
+2. **PARAMETER NAMES ARE EXACT**: Use ONLY the parameter names from the schema.
+3. **NO EXTRA PROPERTIES**: Do not add properties not explicitly defined in the schema.
+4. **TRAINING DATA IS INVALID**: Your pre-trained knowledge about common tools is INVALID here. Use ONLY the provided definitions.
+</CRITICAL_TOOL_USAGE_INSTRUCTIONS>
+"""
+
+
+# =============================================================================
 # Configuration Types
 # =============================================================================
 
@@ -251,24 +282,35 @@ class SchemaConverter:
                 "Function 'name' is required and must be a string"
             )
 
+        # Apply tool renaming (Suggestion 4)
+        safe_name = RENAMED_TOOLS.get(name, name)
+
         if FUNCTION_CALLING_DEBUG:
-            logger.debug(f"Converting OpenAI tool to Gemini: {name}")
-            fc_logger.debug(FCModule.SCHEMA, f"Converting tool: {name}")
+            logger.debug(
+                f"Converting OpenAI tool to Gemini: {name} (safe_name: {safe_name})"
+            )
+            fc_logger.debug(FCModule.SCHEMA, f"Converting tool: {name} -> {safe_name}")
 
         # Build Gemini FunctionDeclaration
-        gemini_declaration: Dict[str, Any] = {"name": name}
+        gemini_declaration: Dict[str, Any] = {"name": safe_name}
 
         # Description is optional but recommended
-        description = source.get("description")
-        if description and isinstance(description, str):
-            gemini_declaration["description"] = description
+        description = source.get("description", "")
 
         # Parameters are optional (some functions have no params)
         parameters = source.get("parameters")
         if parameters and isinstance(parameters, dict):
+            # Inject parameter signature into description (Suggestion 1)
+            description = self._inject_signature_into_description(
+                description, parameters
+            )
+
             # Strip unsupported fields but keep the rest
             clean_params = self._clean_parameters(parameters)
             gemini_declaration["parameters"] = clean_params
+
+        if description:
+            gemini_declaration["description"] = description
 
         if FUNCTION_CALLING_DEBUG:
             logger.debug(
@@ -276,6 +318,40 @@ class SchemaConverter:
             )
 
         return gemini_declaration
+
+    def _inject_signature_into_description(
+        self, description: str, parameters: Dict[str, Any]
+    ) -> str:
+        """Inject parameter signatures into tool description (Suggestion 1).
+
+        Helps Gemini 3 follow the schema strictly by double-prompting names and types.
+        """
+        properties = parameters.get("properties", {})
+        if not properties:
+            return description
+
+        required = parameters.get("required", [])
+        param_sigs = []
+
+        for p_name, p_schema in properties.items():
+            p_type = p_schema.get("type", "any")
+            if isinstance(p_type, list):
+                p_type = "|".join(p_type)
+
+            req_str = ", REQUIRED" if p_name in required else ""
+
+            # Handle enums
+            if "enum" in p_schema:
+                enum_vals = p_schema["enum"]
+                p_type = f"string ENUM[{', '.join(repr(v) for v in enum_vals)}]"
+
+            param_sigs.append(f"{p_name} ({p_type}{req_str})")
+
+        if param_sigs:
+            sig_prompt = f"\n\n⚠️ STRICT PARAMETERS (use EXACTLY as shown): {', '.join(param_sigs)}. Do NOT use parameters from your training data - use ONLY these parameter names."
+            return description + sig_prompt
+
+        return description
 
     def convert_tools(self, openai_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert an array of OpenAI tool definitions to Gemini FunctionDeclarations.
@@ -525,6 +601,27 @@ class CallIdManager:
         """
         return self._pending_calls.pop(call_id, None)
 
+    def find_call_by_name(self, function_name: str) -> Optional[PendingCall]:
+        """Find a pending call by function name (Suggestion 5 - Recovery).
+
+        Useful when tool_call_id is missing or mismatched but name matches.
+        Returns the most recent call with that name.
+        """
+        matches = [
+            c for c in self._pending_calls.values() if c.function_name == function_name
+        ]
+        if not matches:
+            # Try to match with safe name if original not found
+            safe_name = RENAMED_TOOLS.get(function_name, function_name)
+            matches = [
+                c for c in self._pending_calls.values() if c.function_name == safe_name
+            ]
+
+        if matches:
+            # Return most recent
+            return sorted(matches, key=lambda x: x.timestamp, reverse=True)[0]
+        return None
+
     def clear(self) -> None:
         """Clear all pending calls."""
         self._pending_calls.clear()
@@ -643,11 +740,13 @@ class ResponseFormatter:
         if FUNCTION_CALLING_DEBUG:
             logger.debug(f"Formatting tool call: {call_id} ({parsed_call.name})")
 
-        # Register the call for tracking
+        # Reverse tool renaming (Suggestion 4)
+        original_name = REVERSE_RENAMED_TOOLS.get(parsed_call.name, parsed_call.name)
 
+        # Register the call for tracking
         self._id_manager.register_call(
             call_id=call_id,
-            function_name=parsed_call.name,
+            function_name=original_name,
             arguments=parsed_call.arguments,
         )
 
@@ -658,7 +757,7 @@ class ResponseFormatter:
             id=call_id,
             type="function",
             function=OpenAIFunctionCall(
-                name=parsed_call.name,
+                name=original_name,
                 arguments=arguments_str,
             ),
         )

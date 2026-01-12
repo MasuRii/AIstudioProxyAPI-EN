@@ -44,10 +44,6 @@ _STATIC_EMULATED_PARAMS_PATTERN = re.compile(
     r"Parameters:\s*\n?\s*(\{[\s\S]*?\})\s*(?:\n\n|\Z|(?=Request\s+function\s+call:))",
     re.IGNORECASE,
 )
-_STATIC_EMULATED_PARAMS_PATTERN = re.compile(
-    r"Parameters:\s*\n?\s*(\{[\s\S]*?\})\s*(?:\n\n|\Z|(?=Request\s+function\s+call:))",
-    re.IGNORECASE,
-)
 
 
 def parse_emulated_function_calls_static(text: str) -> List[Any]:
@@ -1113,36 +1109,59 @@ class FunctionCallResponseParser:
         return None
 
     def _parse_arguments(self, args_text: str) -> Dict[str, Any]:
-        """Parse arguments from text.
+        """Parse arguments from text (Suggestion 3).
 
-        Args:
-            args_text: Arguments text (JSON or other format).
-
-        Returns:
-            Parsed arguments dict.
+        Handles:
+        - Control character unescaping (\n, \t)
+        - Malformed JSON recovery (trailing garbage)
+        - Double-encoded JSON
         """
         if not args_text:
             return {}
 
         args_text = args_text.strip()
 
+        # 1. Unescape control characters (\n, \t) - Critical for code/multi-line strings
+        # Only if it contains literal \n or \t
+        if "\\n" in args_text or "\\t" in args_text:
+            try:
+                # Use json.loads trick to unescape properly
+                unescaped = json.loads(f'"{args_text}"')
+                if isinstance(unescaped, str):
+                    args_text = unescaped
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # 2. Handle malformed JSON: Remove trailing garbage (extra braces/brackets)
+        # Gemini sometimes appends extra } or ] at the end
+        if args_text.startswith("{") and not args_text.endswith("}"):
+            last_brace = args_text.rfind("}")
+            if last_brace != -1:
+                args_text = args_text[: last_brace + 1]
+        elif args_text.startswith("[") and not args_text.endswith("]"):
+            last_bracket = args_text.rfind("]")
+            if last_bracket != -1:
+                args_text = args_text[: last_bracket + 1]
+
         # Debug log raw args_text
         if FUNCTION_CALLING_DEBUG:
             self.logger.debug(
-                f"[{self.req_id}] Raw args_text (len={len(args_text)}): {args_text[:500]}"
+                f"[{self.req_id}] Final args_text for parsing (len={len(args_text)}): {args_text[:500]}"
             )
 
-        # Try JSON parse
+        # 3. Try standard JSON parse
         try:
             result = json.loads(args_text)
             if isinstance(result, dict):
-                return result
+                # 4. Handle double-encoded JSON (Suggestion 3)
+                # If a value is a string that looks like JSON, parse it recursively
+                return self._recursively_parse_json_strings(result)
             return {"value": result}
         except json.JSONDecodeError as e:
             if FUNCTION_CALLING_DEBUG:
                 self.logger.debug(f"[{self.req_id}] JSON parse failed: {e}")
 
-        # Try to extract key-value pairs
+        # 5. Fallback: Try to extract key-value pairs manually
         kv_pattern = re.compile(r'"?(\w+)"?\s*[:=]\s*(".*?"|[^,}\]]+)')
         matches = kv_pattern.findall(args_text)
 
@@ -1168,6 +1187,22 @@ class FunctionCallResponseParser:
             return result
 
         return {}
+
+    def _recursively_parse_json_strings(self, obj: Any) -> Any:
+        """Recursively parse JSON strings within a data structure."""
+        if isinstance(obj, dict):
+            return {k: self._recursively_parse_json_strings(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._recursively_parse_json_strings(i) for i in obj]
+        elif isinstance(obj, str):
+            stripped = obj.strip()
+            if stripped and stripped[0] in ("{", "["):
+                try:
+                    parsed = json.loads(obj)
+                    return self._recursively_parse_json_strings(parsed)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        return obj
 
     def _deduplicate_calls(self, calls: List[Any]) -> List[Any]:
         """Remove duplicate function calls.

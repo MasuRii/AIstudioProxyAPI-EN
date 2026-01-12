@@ -68,6 +68,7 @@ class FunctionCallingState:
     error_message: Optional[str] = None
     tools_digest: Optional[str] = None
     cache_hit: bool = False
+    response_formatter: Optional[ResponseFormatter] = None
 
 
 class FunctionCallingOrchestrator:
@@ -255,29 +256,12 @@ class FunctionCallingOrchestrator:
         req_id: str,
         model_name: Optional[str] = None,
     ) -> FunctionCallingState:
-        """Prepare a request for function calling based on the configured mode.
-
-        This method:
-        1. Computes tool digest and checks cache for existing state
-        2. If cache valid: skips UI automation (cache hit)
-        3. If cache miss: converts tools and configures browser UI
-        4. Updates cache on success
-        5. Handles fallback if native mode fails and fallback is enabled
-        6. If no tools provided but FC was previously enabled, disables it
-
-        Args:
-            tools: List of OpenAI-format tool definitions.
-            tool_choice: Tool choice parameter (auto, none, required, or specific).
-            page_controller: PageController instance for browser automation.
-            check_client_disconnected: Callback to check client connection.
-            req_id: Request ID for logging.
-            model_name: Optional model name for cache validation.
-
-        Returns:
-            FunctionCallingState with the configuration result.
-        """
+        """Prepare a request for function calling based on the configured mode."""
         total_start = time.perf_counter()
-        state = FunctionCallingState(mode=self.get_effective_mode(tools))
+        state = FunctionCallingState(
+            mode=self.get_effective_mode(tools),
+            response_formatter=self._response_formatter,
+        )
 
         # No tools provided - ensure FC toggle is disabled if it was previously enabled
         if not tools or len(tools) == 0:
