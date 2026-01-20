@@ -289,3 +289,6 @@ utils_errors.txt
 static/frontend/node_modules/
 static/frontend/coverage/
 static/frontend/dist/
+
+# GUI Launcher user config (contains user-specific settings)
+gui/user_config.json
