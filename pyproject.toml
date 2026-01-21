@@ -25,6 +25,8 @@ aiosocks = "~=0.2.6"
 python-socks = "~=2.7.1"
 tzdata = "^2025.2"
 colorama = "^0.4.6"
+customtkinter = "^5.2.0"
+pillow = "^10.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
