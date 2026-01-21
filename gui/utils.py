@@ -5,11 +5,90 @@ Helper functions and widgets for the CustomTkinter GUI.
 """
 
 import customtkinter as ctk
-from typing import Callable, Optional, List
+from typing import Callable, Optional, List, Any
 import time
+import platform
 
 from .config import COLORS, FONTS, DIMENSIONS
 from .i18n import get_text
+
+
+# =============================================================================
+# Mouse Wheel Scrolling Support
+# =============================================================================
+
+
+def bind_mousewheel(widget: Any, target_scrollable: Optional[Any] = None) -> None:
+    """
+    Bind mouse wheel events to a widget for scrolling.
+
+    This enables scrolling with mouse wheel and trackpad gestures on all platforms.
+
+    Args:
+        widget: The widget to bind events to
+        target_scrollable: The scrollable frame to scroll (if None, uses widget)
+    """
+    target = target_scrollable or widget
+
+    def _on_mousewheel(event):
+        """Handle mouse wheel on Windows/macOS."""
+        if hasattr(target, "_parent_canvas"):
+            canvas = target._parent_canvas
+            if platform.system() == "Darwin":
+                # macOS - trackpad and mouse wheel
+                canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                # Windows
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_mousewheel_linux(event):
+        """Handle mouse wheel on Linux."""
+        if hasattr(target, "_parent_canvas"):
+            canvas = target._parent_canvas
+            if event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+
+    # Bind based on platform
+    if platform.system() == "Linux":
+        widget.bind("<Button-4>", _on_mousewheel_linux, add="+")
+        widget.bind("<Button-5>", _on_mousewheel_linux, add="+")
+    else:
+        widget.bind("<MouseWheel>", _on_mousewheel, add="+")
+
+    # Also bind to children
+    _bind_children_mousewheel(widget, target)
+
+
+def _bind_children_mousewheel(widget: Any, target: Any) -> None:
+    """Recursively bind mouse wheel events to all children."""
+    for child in widget.winfo_children():
+        if platform.system() == "Linux":
+            child.bind(
+                "<Button-4>", lambda e, t=target: _scroll_linux(e, t, -1), add="+"
+            )
+            child.bind(
+                "<Button-5>", lambda e, t=target: _scroll_linux(e, t, 1), add="+"
+            )
+        else:
+            child.bind("<MouseWheel>", lambda e, t=target: _scroll_other(e, t), add="+")
+        _bind_children_mousewheel(child, target)
+
+
+def _scroll_linux(event, target, direction):
+    """Scroll on Linux."""
+    if hasattr(target, "_parent_canvas"):
+        target._parent_canvas.yview_scroll(direction, "units")
+
+
+def _scroll_other(event, target):
+    """Scroll on Windows/macOS."""
+    if hasattr(target, "_parent_canvas"):
+        if platform.system() == "Darwin":
+            target._parent_canvas.yview_scroll(int(-1 * event.delta), "units")
+        else:
+            target._parent_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
 
 class CTkTooltip:
@@ -118,6 +197,9 @@ class CTkScrollableList(ctk.CTkScrollableFrame):
         self._on_select: Optional[Callable] = None
         self._on_double_click: Optional[Callable] = None
 
+        # Enable mouse wheel scrolling
+        self._bind_scroll_events()
+
     def add_item(self, text: str, icon: str = "") -> None:
         """Add an item to the list."""
         display_text = f"{icon}  {text}" if icon else text
@@ -136,7 +218,39 @@ class CTkScrollableList(ctk.CTkScrollableFrame):
         )
         item.pack(fill="x", padx=4, pady=2)
         item.bind("<Double-1>", lambda e, idx=len(self.items): self._double_click(idx))
+        # Bind scroll events to new item
+        self._bind_scroll_to_widget(item)
         self.items.append(item)
+
+    def _bind_scroll_events(self) -> None:
+        """Bind mouse wheel scroll events to this scrollable frame."""
+        self._bind_scroll_to_widget(self)
+
+    def _bind_scroll_to_widget(self, widget) -> None:
+        """Bind scroll events to a specific widget."""
+        if platform.system() == "Linux":
+            widget.bind("<Button-4>", self._on_scroll_up, add="+")
+            widget.bind("<Button-5>", self._on_scroll_down, add="+")
+        else:
+            widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
+
+    def _on_mousewheel(self, event) -> None:
+        """Handle mouse wheel on Windows/macOS."""
+        if hasattr(self, "_parent_canvas") and self._parent_canvas:
+            if platform.system() == "Darwin":
+                self._parent_canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                self._parent_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_scroll_up(self, event) -> None:
+        """Handle scroll up on Linux."""
+        if hasattr(self, "_parent_canvas") and self._parent_canvas:
+            self._parent_canvas.yview_scroll(-3, "units")
+
+    def _on_scroll_down(self, event) -> None:
+        """Handle scroll down on Linux."""
+        if hasattr(self, "_parent_canvas") and self._parent_canvas:
+            self._parent_canvas.yview_scroll(3, "units")
 
     def clear(self) -> None:
         """Clear all items."""

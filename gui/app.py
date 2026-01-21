@@ -26,6 +26,8 @@ from .config import (
     DEFAULT_CONFIG,
     DIMENSIONS,
     DOCS_URL,
+    ENV_EXAMPLE_FILE,
+    ENV_FILE,
     FONTS,
     GITHUB_URL,
     LAUNCH_SCRIPT,
@@ -35,6 +37,8 @@ from .config import (
     ACTIVE_AUTH_DIR,
     VERSION,
 )
+from .env_manager import EnvManager, get_env_manager
+from .widgets import CTkCollapsibleFrame, CTkEnvSettingsPanel
 from .i18n import get_language, get_text, set_language
 from .styles import apply_theme, get_button_colors
 from .theme import get_appearance_mode, set_appearance_mode, get_available_modes
@@ -58,6 +62,9 @@ class GUILauncher:
         # Apply theme with saved appearance mode
         appearance_mode = self.config.get("appearance_mode", "dark")
         apply_theme(appearance_mode=appearance_mode)
+
+        # Initialize EnvManager for advanced settings
+        self.env_manager = get_env_manager(ENV_FILE, ENV_EXAMPLE_FILE)
 
         # Create main window
         self.root = ctk.CTk()
@@ -119,6 +126,11 @@ class GUILauncher:
         self.appearance_mode_var = ctk.StringVar(
             value=self.config.get("appearance_mode", "dark")
         )
+        # Advanced settings state
+        self.advanced_settings_expanded = ctk.BooleanVar(
+            value=self.config.get("advanced_settings_expanded", False)
+        )
+        self.advanced_settings_dirty = ctk.BooleanVar(value=False)
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file."""
@@ -588,17 +600,32 @@ class GUILauncher:
         self.account_detail.pack(anchor="w", padx=20, pady=(0, 15))
 
     def _create_settings_tab(self):
-        """Create the Settings tab."""
+        """Create the Settings tab with basic and advanced settings."""
         tab = self.tabview.tab(get_text("tab_settings"))
         tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(0, weight=1)
+
+        # Create scrollable container for all settings
+        settings_scroll = ctk.CTkScrollableFrame(
+            tab,
+            fg_color=COLORS["bg_dark"],
+            scrollbar_fg_color=COLORS["bg_medium"],
+            scrollbar_button_color=COLORS["border"],
+            scrollbar_button_hover_color=COLORS["accent"],
+        )
+        settings_scroll.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        settings_scroll.grid_columnconfigure(0, weight=1)
+
+        # Store reference for scroll binding
+        self._settings_scroll = settings_scroll
 
         # Port settings card
         port_card = ctk.CTkFrame(
-            tab,
+            settings_scroll,
             fg_color=COLORS["bg_medium"],
             corner_radius=DIMENSIONS["corner_radius"],
         )
-        port_card.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 15))
+        port_card.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 10))
 
         ctk.CTkLabel(
             port_card,
@@ -639,11 +666,11 @@ class GUILauncher:
 
         # Proxy settings card
         proxy_card = ctk.CTkFrame(
-            tab,
+            settings_scroll,
             fg_color=COLORS["bg_medium"],
             corner_radius=DIMENSIONS["corner_radius"],
         )
-        proxy_card.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 15))
+        proxy_card.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 10))
 
         ctk.CTkLabel(
             proxy_card,
@@ -688,11 +715,11 @@ class GUILauncher:
 
         # Language settings card
         lang_card = ctk.CTkFrame(
-            tab,
+            settings_scroll,
             fg_color=COLORS["bg_medium"],
             corner_radius=DIMENSIONS["corner_radius"],
         )
-        lang_card.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 15))
+        lang_card.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 10))
 
         ctk.CTkLabel(
             lang_card,
@@ -726,11 +753,11 @@ class GUILauncher:
 
         # Theme settings card
         theme_card = ctk.CTkFrame(
-            tab,
+            settings_scroll,
             fg_color=COLORS["bg_medium"],
             corner_radius=DIMENSIONS["corner_radius"],
         )
-        theme_card.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 15))
+        theme_card.grid(row=3, column=0, sticky="ew", padx=5, pady=(0, 10))
 
         ctk.CTkLabel(
             theme_card,
@@ -776,9 +803,9 @@ class GUILauncher:
         )
         system_rb.pack(side="left")
 
-        # Save buttons
-        save_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        save_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(10, 0))
+        # Basic settings save buttons
+        save_frame = ctk.CTkFrame(settings_scroll, fg_color="transparent")
+        save_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=(5, 15))
 
         ctk.CTkButton(
             save_frame,
@@ -797,6 +824,251 @@ class GUILauncher:
             height=40,
             **get_button_colors("outline"),
         ).pack(side="left")
+
+        # =========================================================================
+        # Advanced Settings Section (Collapsible)
+        # =========================================================================
+        self._create_advanced_settings_section(settings_scroll, row=5)
+
+        # Bind mouse wheel scrolling AFTER all widgets are created
+        self._bind_settings_scroll_events(settings_scroll)
+
+    def _create_advanced_settings_section(self, parent, row: int):
+        """Create the collapsible advanced settings section."""
+        # Advanced settings toggle button
+        self.advanced_toggle_btn = ctk.CTkButton(
+            parent,
+            text=get_text("show_advanced"),
+            command=self._toggle_advanced_settings,
+            height=40,
+            fg_color=COLORS["bg_medium"],
+            hover_color=COLORS["bg_light"],
+            text_color=COLORS["accent"],
+            border_width=1,
+            border_color=COLORS["accent"],
+        )
+        self.advanced_toggle_btn.grid(
+            row=row, column=0, sticky="ew", padx=5, pady=(10, 5)
+        )
+
+        # Advanced settings container (hidden by default)
+        self.advanced_settings_frame = ctk.CTkFrame(
+            parent,
+            fg_color=COLORS["bg_dark"],
+            corner_radius=DIMENSIONS["corner_radius"],
+        )
+        # Don't grid initially - will be shown when toggled
+        self.advanced_settings_frame.grid_columnconfigure(0, weight=1)
+
+        # Header with hint text
+        header_frame = ctk.CTkFrame(
+            self.advanced_settings_frame,
+            fg_color=COLORS["bg_medium"],
+            corner_radius=DIMENSIONS["corner_radius"],
+        )
+        header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 10))
+
+        ctk.CTkLabel(
+            header_frame,
+            text=get_text("advanced_settings"),
+            font=ctk.CTkFont(size=FONTS["size_large"], weight="bold"),
+            text_color=COLORS["accent"],
+        ).pack(anchor="w", padx=20, pady=(15, 5))
+
+        ctk.CTkLabel(
+            header_frame,
+            text=get_text("advanced_settings_hint"),
+            font=ctk.CTkFont(size=FONTS["size_small"]),
+            text_color=COLORS["text_muted"],
+        ).pack(anchor="w", padx=20, pady=(0, 10))
+
+        # Status indicator for unsaved changes
+        self.advanced_status_label = ctk.CTkLabel(
+            header_frame,
+            text="",
+            font=ctk.CTkFont(size=FONTS["size_small"]),
+            text_color=COLORS["warning"],
+        )
+        self.advanced_status_label.pack(anchor="w", padx=20, pady=(0, 15))
+
+        # Action buttons for advanced settings
+        adv_btn_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        adv_btn_frame.pack(fill="x", padx=20, pady=(0, 15))
+
+        self.adv_save_btn = ctk.CTkButton(
+            adv_btn_frame,
+            text=get_text("btn_apply_env"),
+            command=self._save_advanced_settings,
+            height=36,
+            width=140,
+            fg_color=COLORS["success"],
+            hover_color=COLORS["success_hover"],
+            text_color=COLORS["text_on_color"],
+        )
+        self.adv_save_btn.pack(side="left", padx=(0, 10))
+
+        self.adv_hot_reload_btn = ctk.CTkButton(
+            adv_btn_frame,
+            text=get_text("btn_hot_reload"),
+            command=self._hot_reload_advanced_settings,
+            height=36,
+            width=140,
+            fg_color=COLORS["warning"],
+            hover_color=COLORS["warning_hover"],
+            text_color=COLORS["text_on_color"],
+        )
+        self.adv_hot_reload_btn.pack(side="left", padx=(0, 10))
+        CTkTooltip(self.adv_hot_reload_btn, "tooltip_env_hot_reload")
+
+        ctk.CTkButton(
+            adv_btn_frame,
+            text=get_text("btn_reload_env"),
+            command=self._reload_advanced_settings,
+            height=36,
+            width=140,
+            **get_button_colors("outline"),
+        ).pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(
+            adv_btn_frame,
+            text=get_text("btn_reset_env"),
+            command=self._reset_advanced_settings,
+            height=36,
+            width=140,
+            **get_button_colors("ghost"),
+        ).pack(side="left")
+
+        # Environment settings panel with all categories
+        self.env_settings_panel = CTkEnvSettingsPanel(
+            self.advanced_settings_frame,
+            env_manager=self.env_manager,
+            on_save=lambda: self._log(get_text("log_env_saved")),
+            on_change=self._on_advanced_settings_change,
+            height=400,
+        )
+        self.env_settings_panel.grid(
+            row=1, column=0, sticky="nsew", padx=5, pady=(0, 10)
+        )
+
+        # Store row for toggling
+        self._advanced_settings_row = row + 1
+        self._advanced_settings_parent = parent
+
+        # Initialize based on saved state
+        if self.advanced_settings_expanded.get():
+            self._show_advanced_settings()
+
+    def _toggle_advanced_settings(self):
+        """Toggle the advanced settings visibility."""
+        if self.advanced_settings_expanded.get():
+            self._hide_advanced_settings()
+        else:
+            self._show_advanced_settings()
+
+    def _show_advanced_settings(self):
+        """Show the advanced settings section."""
+        self.advanced_settings_expanded.set(True)
+        self.advanced_toggle_btn.configure(text=get_text("hide_advanced"))
+        self.advanced_settings_frame.grid(
+            row=self._advanced_settings_row,
+            column=0,
+            sticky="nsew",
+            padx=0,
+            pady=(0, 10),
+        )
+        # Save expanded state
+        self.config["advanced_settings_expanded"] = True
+        self._save_config()
+        self._log(get_text("log_env_loaded"))
+
+    def _hide_advanced_settings(self):
+        """Hide the advanced settings section."""
+        # Check for unsaved changes
+        if self.env_settings_panel.is_dirty():
+            if messagebox.askyesno(
+                get_text("confirm_title"),
+                get_text("env_unsaved_changes"),
+            ):
+                self._save_advanced_settings()
+
+        self.advanced_settings_expanded.set(False)
+        self.advanced_toggle_btn.configure(text=get_text("show_advanced"))
+        self.advanced_settings_frame.grid_forget()
+        # Save collapsed state
+        self.config["advanced_settings_expanded"] = False
+        self._save_config()
+
+    def _on_advanced_settings_change(self, is_dirty: bool):
+        """Handle advanced settings dirty state change."""
+        self.advanced_settings_dirty.set(is_dirty)
+        if is_dirty:
+            self.advanced_status_label.configure(
+                text=get_text("env_modified_indicator"),
+                text_color=COLORS["warning"],
+            )
+        else:
+            self.advanced_status_label.configure(text="")
+
+    def _save_advanced_settings(self):
+        """Save advanced settings to .env file."""
+        if self.env_settings_panel.save():
+            self._log(get_text("log_env_saved"))
+            messagebox.showinfo(
+                get_text("success_title"),
+                get_text("env_saved"),
+            )
+        else:
+            messagebox.showerror(
+                get_text("error_title"),
+                get_text("env_save_error"),
+            )
+
+    def _reload_advanced_settings(self):
+        """Reload advanced settings from .env file."""
+        self.env_settings_panel.reload()
+        self._log(get_text("env_reloaded"))
+
+    def _reset_advanced_settings(self):
+        """Reset advanced settings to defaults."""
+        if messagebox.askyesno(
+            get_text("confirm_title"),
+            get_text("env_reset_confirm"),
+        ):
+            self.env_settings_panel.reset_to_defaults()
+            self._log(get_text("log_env_reset"))
+
+    def _hot_reload_advanced_settings(self):
+        """Apply settings via hot reload to running proxy."""
+        if self.running:
+            # Warn user that proxy is running
+            if not messagebox.askyesno(
+                get_text("warning_title"),
+                get_text("env_hot_reload_confirm"),
+            ):
+                return
+
+        # Save first
+        if not self.env_settings_panel.save():
+            messagebox.showerror(
+                get_text("error_title"),
+                get_text("env_save_error"),
+            )
+            return
+
+        # Apply to environment
+        self.env_manager.apply_to_environment()
+
+        # Trigger hot reload callbacks
+        modified_count = len(self.env_settings_panel.get_modified_keys())
+        self.env_manager.trigger_hot_reload()
+
+        self._log(get_text("log_env_hot_reload", count=modified_count))
+
+        if self.running:
+            messagebox.showinfo(
+                get_text("success_title"),
+                get_text("env_hot_reload_warning"),
+            )
 
     def _create_logs_tab(self):
         """Create the Logs tab."""
@@ -1093,6 +1365,56 @@ class GUILauncher:
             set_appearance_mode(new_mode)
             self._save_config()
             self._log(get_text("log_theme_changed", mode=new_mode))
+
+    def _bind_settings_scroll_events(self, scrollable_frame):
+        """Bind mouse wheel scroll events to settings scrollable frame."""
+        self._bind_scroll_to_widget(scrollable_frame, scrollable_frame)
+
+    def _bind_scroll_to_widget(self, widget, target_scrollable):
+        """Recursively bind scroll events to widget and children.
+
+        Skips any nested CTkScrollableFrame widgets since they handle
+        their own scrolling independently.
+        """
+        # Skip if this is a nested scrollable frame (not the target itself)
+        # Let nested scrollable frames handle their own scrolling
+        if widget is not target_scrollable and isinstance(
+            widget, ctk.CTkScrollableFrame
+        ):
+            return
+
+        if platform.system() == "Linux":
+            widget.bind(
+                "<Button-4>", lambda e: self._on_scroll(target_scrollable, -3), add="+"
+            )
+            widget.bind(
+                "<Button-5>", lambda e: self._on_scroll(target_scrollable, 3), add="+"
+            )
+        else:
+            widget.bind(
+                "<MouseWheel>",
+                lambda e: self._on_mousewheel(e, target_scrollable),
+                add="+",
+            )
+
+        # Recursively bind to children
+        for child in widget.winfo_children():
+            self._bind_scroll_to_widget(child, target_scrollable)
+
+    def _on_mousewheel(self, event, target):
+        """Handle mouse wheel on Windows/macOS."""
+        if hasattr(target, "_parent_canvas") and target._parent_canvas:
+            if platform.system() == "Darwin":
+                target._parent_canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                target._parent_canvas.yview_scroll(
+                    int(-1 * (event.delta / 120)), "units"
+                )
+
+    def _on_scroll(self, target, delta):
+        """Handle scroll on Linux."""
+        if hasattr(target, "_parent_canvas") and target._parent_canvas:
+            target._parent_canvas.yview_scroll(delta, "units")
 
     def _save_and_notify(self):
         """Save settings and notify user."""

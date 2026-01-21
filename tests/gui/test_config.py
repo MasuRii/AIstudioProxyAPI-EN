@@ -270,3 +270,48 @@ class TestUrls:
 
         assert DOCS_URL.startswith(GITHUB_URL)
         assert "#readme" in DOCS_URL
+
+
+class TestColorUtilityFunctions:
+    """Tests for color utility functions."""
+
+    def test_get_color_returns_dark_mode_by_default(self):
+        """get_color should return dark mode color by default."""
+        from gui.config import get_color
+
+        # Test with accent color (same in both modes)
+        assert get_color("accent") == "#e94560"
+
+    def test_get_color_returns_light_mode(self):
+        """get_color should return light mode color when specified."""
+        from gui.config import get_color
+
+        # bg_dark is different in light vs dark mode
+        light_color = get_color("bg_dark", "light")
+        dark_color = get_color("bg_dark", "dark")
+
+        assert light_color == "#e8e8e8"
+        assert dark_color == "#1a1a2e"
+        assert light_color != dark_color
+
+    def test_get_color_with_plain_string(self):
+        """get_color should handle plain string colors."""
+        from gui.config import get_color
+
+        # text_on_color is a plain string, not a tuple
+        result = get_color("text_on_color")
+        assert result == "#ffffff"
+
+    def test_get_color_with_unknown_key(self):
+        """get_color should return default for unknown keys."""
+        from gui.config import get_color
+
+        result = get_color("nonexistent_color")
+        assert result == "#ffffff"  # default fallback
+
+    def test_get_current_color_function_exists(self):
+        """get_current_color function should exist."""
+        from gui.config import get_current_color
+
+        # Just verify it can be called (it uses ctk which may not be set up)
+        assert callable(get_current_color)

@@ -18,6 +18,8 @@ LAUNCH_SCRIPT = PROJECT_ROOT / "launch_camoufox.py"
 CONFIG_FILE = GUI_DIR / "user_config.json"
 LOG_FILE = PROJECT_ROOT / "logs" / "gui_launcher.log"
 CUSTOM_THEME_FILE = GUI_DIR / "theme.json"
+ENV_FILE = PROJECT_ROOT / ".env"
+ENV_EXAMPLE_FILE = PROJECT_ROOT / ".env.example"
 
 # =============================================================================
 # Version
@@ -111,3 +113,62 @@ DIMENSIONS = {
 # =============================================================================
 GITHUB_URL = "https://github.com/MasuRii/AIstudioProxyAPI-EN"
 DOCS_URL = f"{GITHUB_URL}#readme"
+
+# =============================================================================
+# Advanced Settings Category Icons
+# =============================================================================
+CATEGORY_ICONS = {
+    "server": "🖥️",
+    "logging": "📝",
+    "auth": "🔐",
+    "cookie": "🍪",
+    "browser": "🌐",
+    "api": "⚡",
+    "function_calling": "🔧",
+    "timeouts": "⏱️",
+    "misc": "📦",
+}
+
+
+# =============================================================================
+# Color Utility Functions
+# =============================================================================
+def get_color(color_key: str, mode: str = "dark") -> str:
+    """
+    Get the appropriate color value for the current mode.
+
+    Args:
+        color_key: Key from COLORS dictionary
+        mode: "light" or "dark" (default: "dark")
+
+    Returns:
+        Hex color string (e.g., "#e94560")
+    """
+    color = COLORS.get(color_key, "#ffffff")
+
+    # If it's a tuple (light, dark), extract the right one
+    if isinstance(color, tuple):
+        return color[0] if mode == "light" else color[1]
+
+    # If it's a plain string, return as-is
+    return color
+
+
+def get_current_color(color_key: str) -> str:
+    """
+    Get color value based on current CustomTkinter appearance mode.
+
+    Args:
+        color_key: Key from COLORS dictionary
+
+    Returns:
+        Hex color string for current mode
+    """
+    try:
+        import customtkinter as ctk
+
+        current_mode = ctk.get_appearance_mode().lower()
+    except Exception:
+        current_mode = "dark"
+
+    return get_color(color_key, current_mode)

@@ -373,4 +373,123 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "en": "Choose your preferred appearance mode",
         "zh": "选择您偏好的外观模式",
     },
+    # =========================================================================
+    # Advanced Settings
+    # =========================================================================
+    "advanced_settings": {"en": "🔧 Advanced Settings", "zh": "🔧 高级设置"},
+    "advanced_settings_hint": {
+        "en": "Configure .env file settings (click to expand/collapse)",
+        "zh": "配置 .env 文件设置（点击展开/折叠）",
+    },
+    "show_advanced": {"en": "▶ Show Advanced Settings", "zh": "▶ 显示高级设置"},
+    "hide_advanced": {"en": "▼ Hide Advanced Settings", "zh": "▼ 隐藏高级设置"},
+    # Category names
+    "cat_server": {"en": "🖥️ Server Configuration", "zh": "🖥️ 服务器配置"},
+    "cat_logging": {"en": "📝 Logging & Debugging", "zh": "📝 日志与调试"},
+    "cat_auth": {"en": "🔐 Authentication", "zh": "🔐 认证设置"},
+    "cat_cookie": {"en": "🍪 Cookie Refresh", "zh": "🍪 Cookie 刷新"},
+    "cat_browser": {"en": "🌐 Browser & Model", "zh": "🌐 浏览器与模型"},
+    "cat_api": {"en": "⚡ API Defaults", "zh": "⚡ API 默认参数"},
+    "cat_function_calling": {"en": "🔧 Function Calling", "zh": "🔧 函数调用"},
+    "cat_timeouts": {"en": "⏱️ Timeouts", "zh": "⏱️ 超时设置"},
+    "cat_misc": {"en": "📦 Miscellaneous", "zh": "📦 其他设置"},
+    # Action buttons
+    "btn_apply_env": {"en": "💾 Apply Changes", "zh": "💾 应用更改"},
+    "btn_reload_env": {"en": "🔄 Reload from File", "zh": "🔄 从文件重载"},
+    "btn_reset_env": {"en": "⚙️ Reset to Defaults", "zh": "⚙️ 恢复默认值"},
+    "btn_hot_reload": {"en": "🔥 Hot Reload", "zh": "🔥 热重载"},
+    # Status messages
+    "env_saved": {
+        "en": "Environment settings saved to .env",
+        "zh": "环境设置已保存到 .env",
+    },
+    "env_save_error": {"en": "Failed to save .env file", "zh": "保存 .env 文件失败"},
+    "env_reloaded": {
+        "en": "Settings reloaded from .env file",
+        "zh": "设置已从 .env 文件重新加载",
+    },
+    "env_reset_confirm": {
+        "en": "Reset all advanced settings to defaults? This cannot be undone.",
+        "zh": "将所有高级设置恢复为默认值？此操作不可撤销。",
+    },
+    "env_reset_done": {"en": "Settings reset to defaults", "zh": "设置已恢复默认"},
+    "env_unsaved_changes": {
+        "en": "You have unsaved changes. Save before continuing?",
+        "zh": "您有未保存的更改。是否在继续前保存？",
+    },
+    "env_hot_reload_success": {
+        "en": "Settings applied via hot reload",
+        "zh": "设置已通过热重载应用",
+    },
+    "env_hot_reload_warning": {
+        "en": "Proxy is running. Some settings require restart to take effect.",
+        "zh": "代理正在运行。部分设置需要重启才能生效。",
+    },
+    "env_hot_reload_confirm": {
+        "en": "Apply settings to running proxy? Some changes may require restart.",
+        "zh": "将设置应用到正在运行的代理？部分更改可能需要重启。",
+    },
+    "env_modified_indicator": {"en": "(modified)", "zh": "（已修改）"},
+    "env_file_not_found": {
+        "en": ".env file not found. Created from template.",
+        "zh": "未找到 .env 文件。已从模板创建。",
+    },
+    # Tooltips for settings
+    "tooltip_env_port": {
+        "en": "Main API server port (default: 2048)",
+        "zh": "主 API 服务器端口（默认：2048）",
+    },
+    "tooltip_env_stream_port": {
+        "en": "Streaming proxy port. Set to 0 to disable (default: 3120)",
+        "zh": "流代理端口。设置为 0 禁用（默认：3120）",
+    },
+    "tooltip_env_log_level": {
+        "en": "Server log verbosity level",
+        "zh": "服务器日志详细程度",
+    },
+    "tooltip_env_temperature": {
+        "en": "Default sampling temperature (0.0-2.0)",
+        "zh": "默认采样温度（0.0-2.0）",
+    },
+    "tooltip_env_max_tokens": {
+        "en": "Maximum output tokens per request",
+        "zh": "每次请求的最大输出令牌数",
+    },
+    "tooltip_env_auto_rotate": {
+        "en": "Automatically switch auth profile when quota exceeded",
+        "zh": "配额超限时自动切换认证配置文件",
+    },
+    "tooltip_env_quota_soft": {
+        "en": "Token count that triggers rotation pending state",
+        "zh": "触发待轮换状态的令牌计数",
+    },
+    "tooltip_env_quota_hard": {
+        "en": "Token count that triggers immediate rotation",
+        "zh": "触发立即轮换的令牌计数",
+    },
+    "tooltip_env_fc_mode": {
+        "en": "Function calling mode: auto (recommended), native, or emulated",
+        "zh": "函数调用模式：auto（推荐）、native 或 emulated",
+    },
+    "tooltip_env_hot_reload": {
+        "en": "Apply settings immediately without restart (some settings require restart)",
+        "zh": "立即应用设置无需重启（部分设置需要重启）",
+    },
+    # Log messages for advanced settings
+    "log_env_loaded": {
+        "en": "📁 Advanced settings loaded from .env",
+        "zh": "📁 高级设置已从 .env 加载",
+    },
+    "log_env_saved": {
+        "en": "💾 Advanced settings saved to .env",
+        "zh": "💾 高级设置已保存到 .env",
+    },
+    "log_env_hot_reload": {
+        "en": "🔥 Hot reload applied: {count} setting(s) updated",
+        "zh": "🔥 热重载已应用：{count} 个设置已更新",
+    },
+    "log_env_reset": {
+        "en": "⚙️ Advanced settings reset to defaults",
+        "zh": "⚙️ 高级设置已恢复默认",
+    },
 }
