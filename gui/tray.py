@@ -7,7 +7,7 @@ Cross-platform system tray support with AppIndicator3 (Linux/GNOME) and pystray 
 import threading
 from typing import TYPE_CHECKING, Optional
 
-from .config import COLORS
+from .config import get_current_color
 
 if TYPE_CHECKING:
     from .app import GUILauncher
@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 
 class TrayIcon:
     """Cross-platform system tray support"""
+
+    # Track if warning has already been shown (class-level to show only once)
+    _warning_shown = False
 
     def __init__(self, app: "GUILauncher"):
         self.app = app
@@ -32,7 +35,10 @@ class TrayIcon:
         if self._try_pystray():
             return
 
-        print("⚠️ System tray support not found. Tray disabled.")
+        # Only show warning once per session
+        if not TrayIcon._warning_shown:
+            TrayIcon._warning_shown = True
+            # Silent - the GUI still works without system tray
 
     def _try_appindicator(self) -> bool:
         """Try to create tray with AppIndicator3"""
@@ -100,11 +106,10 @@ class TrayIcon:
 
             self.supported = True
             self.backend = "appindicator"
-            print("✅ GNOME AppIndicator3 tray started (Wayland compatible)")
             return True
 
-        except Exception as e:
-            print(f"⚠️ AppIndicator3 could not be started: {e}")
+        except Exception:
+            # Silently fail - AppIndicator3 not available
             return False
 
     def _try_pystray(self) -> bool:
@@ -113,17 +118,20 @@ class TrayIcon:
             import pystray
             from PIL import Image, ImageDraw
 
+            # Get current colors (as hex strings)
+            accent_hex = get_current_color("accent")
+            bg_hex = get_current_color("bg_dark")
+
             # Create a simple icon
             size = 64
             image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
             draw = ImageDraw.Draw(image)
-            # Draw accent-colored circle
+
+            # Parse hex colors to RGB tuples
             accent_rgb = tuple(
-                int(COLORS["accent"].lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)
+                int(accent_hex.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)
             )
-            bg_rgb = tuple(
-                int(COLORS["bg_dark"].lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)
-            )
+            bg_rgb = tuple(int(bg_hex.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))
             draw.ellipse([4, 4, size - 4, size - 4], fill=accent_rgb)
             draw.ellipse([16, 16, size - 16, size - 16], fill=bg_rgb)
 
@@ -146,11 +154,10 @@ class TrayIcon:
 
             self.supported = True
             self.backend = "pystray"
-            print("✅ pystray tray started (X11)")
             return True
 
-        except Exception as e:
-            print(f"⚠️ pystray could not be started: {e}")
+        except Exception:
+            # Silently fail - pystray not available
             return False
 
     def _pystray_show(self, icon=None, item=None):
