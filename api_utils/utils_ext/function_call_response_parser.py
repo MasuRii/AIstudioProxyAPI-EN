@@ -1170,22 +1170,62 @@ class FunctionCallResponseParser:
         return {}
 
     def _deduplicate_calls(self, calls: List[Any]) -> List[Any]:
-        """Remove duplicate function calls.
+        """Remove duplicate function calls, preferring calls with arguments.
+
+        When the same function name appears multiple times with different argument
+        sets, this method prefers calls with non-empty arguments over empty ones.
+        This handles the case where AI Studio's DOM renders multiple chunks for
+        a single function call, where one chunk may be missing arguments.
 
         Args:
             calls: List of function calls.
 
         Returns:
-            Deduplicated list.
+            Deduplicated list with preference for calls that have arguments.
         """
-        seen: set = set()
-        unique: List[Any] = []
+        # First pass: collect all calls, tracking by (name, args) for exact dedup
+        # and by name alone to detect empty-vs-non-empty conflicts
+        seen_exact: set = set()
+        by_name: dict = {}  # name -> list of (args_json, call)
 
         for call in calls:
-            key = (call.name, json.dumps(call.arguments, sort_keys=True))
-            if key not in seen:
-                seen.add(key)
-                unique.append(call)
+            args_json = json.dumps(call.arguments, sort_keys=True)
+            exact_key = (call.name, args_json)
+
+            # Skip exact duplicates
+            if exact_key in seen_exact:
+                continue
+            seen_exact.add(exact_key)
+
+            # Track by function name for conflict resolution
+            if call.name not in by_name:
+                by_name[call.name] = []
+            by_name[call.name].append((args_json, call))
+
+        # Second pass: resolve conflicts where same function has empty and non-empty args
+        unique: List[Any] = []
+        for name, calls_list in by_name.items():
+            if len(calls_list) == 1:
+                # Only one call with this name, keep it
+                unique.append(calls_list[0][1])
+            else:
+                # Multiple calls with same name - filter out empty args if non-empty exists
+                non_empty = [(args, call) for args, call in calls_list if args != "{}"]
+                empty = [(args, call) for args, call in calls_list if args == "{}"]
+
+                if non_empty:
+                    # Keep all non-empty versions (could be legitimate parallel calls)
+                    for _, call in non_empty:
+                        unique.append(call)
+                    # Log if we're dropping empty duplicates
+                    if empty and FUNCTION_CALLING_DEBUG:
+                        self.logger.debug(
+                            f"[{self.req_id}] Dropped {len(empty)} empty-args duplicate(s) "
+                            f"for function '{name}' (kept {len(non_empty)} with args)"
+                        )
+                else:
+                    # All are empty, keep just one
+                    unique.append(calls_list[0][1])
 
         return unique
 
