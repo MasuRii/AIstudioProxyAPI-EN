@@ -125,8 +125,7 @@ jobs:
           )
             
             # Get commits between tags
-            COMMITS=$(git log --pretty=format:"- %s by @%an (%h)" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || echo "")
-            CONTRIBUTORS=$(git log --format='@%an' "$PREVIOUS_TAG..$VERSION" 2>/dev/null | sort -u | sed 's/^/- /')
+            COMMITS=$(git log --pretty=format:"- %s by %an (%h)" "$PREVIOUS_TAG..$VERSION" 2>/dev/null || echo "")
             
             if [ -n "$COMMITS" ]; then
               CHANGELOG="$CHANGELOG
@@ -136,12 +135,6 @@ jobs:
           - Various improvements and updates"
             fi
 
-            if [ -n "$CONTRIBUTORS" ]; then
-              echo "$CONTRIBUTORS" > CONTRIBUTORS.md
-            else
-              echo "- @github-actions[bot]" > CONTRIBUTORS.md
-            fi
-            
             CHANGELOG="$CHANGELOG
 
           **Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$VERSION"
@@ -153,12 +146,6 @@ jobs:
 
           See the commit history for details."
 
-            CONTRIBUTORS=$(git log --format='@%an' "$VERSION" 2>/dev/null | sort -u | sed 's/^/- /')
-            if [ -n "$CONTRIBUTORS" ]; then
-              echo "$CONTRIBUTORS" > CONTRIBUTORS.md
-            else
-              echo "- @github-actions[bot]" > CONTRIBUTORS.md
-            fi
           fi
           
           # Write to file for use in release
@@ -210,9 +197,9 @@ jobs:
           Source code archives (zip and tar.gz) are automatically attached below.
 
           ---
-          EOF
 
-          cat CONTRIBUTORS.md >> RELEASE_BODY.md
+          **Thank you to all contributors!**
+          EOF
           
           echo "Release body generated successfully"
 
@@ -280,15 +267,8 @@ jobs:
           # Get recent commits (last 10) for the release notes
           echo "## What's Changed" > NIGHTLY_CHANGES.md
           echo "" >> NIGHTLY_CHANGES.md
-          git log --oneline -10 --pretty=format:"- %s by @%an (%h)" >> NIGHTLY_CHANGES.md
+          git log --oneline -10 --pretty=format:"- %s by %an (%h)" >> NIGHTLY_CHANGES.md
           echo "" >> NIGHTLY_CHANGES.md
-
-          CONTRIBUTORS=$(git log --format='@%an' -10 | sort -u | sed 's/^/- /')
-          if [ -n "$CONTRIBUTORS" ]; then
-            echo "$CONTRIBUTORS" > NIGHTLY_CONTRIBUTORS.md
-          else
-            echo "- @github-actions[bot]" > NIGHTLY_CONTRIBUTORS.md
-          fi
           
           echo "Recent changes generated"
 
@@ -330,15 +310,10 @@ jobs:
           ```
           
           ---
-          EOF
-
-          cat NIGHTLY_CONTRIBUTORS.md >> NIGHTLY_BODY.md
-
-          cat >> NIGHTLY_BODY.md << 'EOF'
-
-          ---
 
           *This nightly release is automatically updated on every push to the main branch.*
+
+          **Thank you to all contributors!**
           EOF
           
           echo "Nightly release body generated"
