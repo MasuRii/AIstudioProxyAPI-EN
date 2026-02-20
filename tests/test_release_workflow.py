@@ -131,6 +131,75 @@ class TestReleaseWorkflow:
             "Nightly changes must not use direct git author formatting '- %s by %an (%h)'"
         )
 
+    def test_nightly_changelog_uses_latest_stable_tag_range(self) -> None:
+        """Happy path: nightly changelog should use latest stable tag range."""
+        # Arrange
+        content = _read_release_workflow()
+        nightly_step = _extract_step_block(content, "Generate recent changes")
+
+        # Act
+        has_latest_stable_tag_lookup = (
+            "git tag --sort=-v:refname | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$'"
+            in nightly_step
+        )
+        has_range_log = (
+            'git log --pretty=format:"%H" "${LATEST_STABLE_TAG}..HEAD"' in nightly_step
+        )
+        has_fixed_ten_commit_log = 'git log --pretty=format:"%H" -10' in nightly_step
+
+        # Assert
+        assert has_latest_stable_tag_lookup, (
+            "Nightly changelog must find latest stable tag using semantic version pattern"
+        )
+        assert has_range_log, (
+            "Nightly changelog must use git log ${LATEST_STABLE_TAG}..HEAD range"
+        )
+        assert not has_fixed_ten_commit_log, (
+            "Nightly changelog must not use a fixed -10 commit range"
+        )
+
+    def test_nightly_changelog_fallback_when_no_stable_tag(self) -> None:
+        """Null/empty: nightly changelog should fall back when no stable tag exists."""
+        # Arrange
+        content = _read_release_workflow()
+        nightly_step = _extract_step_block(content, "Generate recent changes")
+
+        # Act
+        has_fallback_log = 'git log --pretty=format:"%H" -20' in nightly_step
+        has_fallback_note = (
+            "_No stable release tag found. Showing last 20 commits (first release scenario)._"
+            in nightly_step
+        )
+
+        # Assert
+        assert has_fallback_log, (
+            "Nightly changelog must fall back to the last 20 commits when no stable tag exists"
+        )
+        assert has_fallback_note, (
+            "Nightly changelog must include a fallback note when no stable tag exists"
+        )
+
+    def test_nightly_changelog_includes_range_note(self) -> None:
+        """Boundary: nightly changelog should include range and fallback notes."""
+        # Arrange
+        content = _read_release_workflow()
+        nightly_step = _extract_step_block(content, "Generate recent changes")
+
+        # Act
+        has_range_note = "_Changes since ${LATEST_STABLE_TAG}_" in nightly_step
+        has_fallback_note = (
+            "_No stable release tag found. Showing last 20 commits (first release scenario)._"
+            in nightly_step
+        )
+
+        # Assert
+        assert has_range_note, (
+            "Nightly changelog must include a 'Changes since vX.Y.Z' note"
+        )
+        assert has_fallback_note, (
+            "Nightly changelog must include a fallback note when no stable tag exists"
+        )
+
     def test_docs_guides_links_are_not_broken(self) -> None:
         """Invalid/malformed: docs/guides links must resolve to files."""
         # Arrange
