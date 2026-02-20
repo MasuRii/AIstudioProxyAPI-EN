@@ -288,9 +288,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get recent commits (last 10) for the release notes
+          # Build nightly changelog from latest stable tag to HEAD
           echo "## What's Changed" > NIGHTLY_CHANGES.md
           echo "" >> NIGHTLY_CHANGES.md
+
+          LATEST_STABLE_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          if [ -n "$LATEST_STABLE_TAG" ]; then
+            echo "_Changes since ${LATEST_STABLE_TAG}_" >> NIGHTLY_CHANGES.md
+            echo "" >> NIGHTLY_CHANGES.md
+            echo "Using commit range: ${LATEST_STABLE_TAG}..HEAD"
+          else
+            echo "_No stable release tag found. Showing last 20 commits (first release scenario)._" >> NIGHTLY_CHANGES.md
+            echo "" >> NIGHTLY_CHANGES.md
+            echo "No stable tag found; falling back to last 20 commits"
+          fi
 
           TEMP_FILE=$(mktemp)
 
@@ -311,12 +323,22 @@ jobs:
             else
               echo "- ${commit_msg} by ${git_author} (${short_sha})" >> "$TEMP_FILE"
             fi
-          done < <(git log --pretty=format:"%H" -10 2>/dev/null || true)
+          done < <(
+            if [ -n "$LATEST_STABLE_TAG" ]; then
+              git log --pretty=format:"%H" "${LATEST_STABLE_TAG}..HEAD" 2>/dev/null || true
+            else
+              git log --pretty=format:"%H" -20 2>/dev/null || true
+            fi
+          )
 
           if [ -s "$TEMP_FILE" ]; then
             cat "$TEMP_FILE" >> NIGHTLY_CHANGES.md
           else
-            echo "- Various improvements and updates" >> NIGHTLY_CHANGES.md
+            if [ -n "$LATEST_STABLE_TAG" ]; then
+              echo "- No commits found since ${LATEST_STABLE_TAG}" >> NIGHTLY_CHANGES.md
+            else
+              echo "- Various improvements and updates" >> NIGHTLY_CHANGES.md
+            fi
           fi
 
           rm -f "$TEMP_FILE"
