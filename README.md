@@ -181,7 +181,7 @@ curl http://127.0.0.1:2048/v1/models
 # Test chat with thinking level (Gemini 3.x models support thinking levels)
  curl -X POST http://127.0.0.1:2048/v1/chat/completions \
    -H "Content-Type: application/json" \
-   -d '{"model":"gemini-3.1-flash","messages":[{"role":"user","content":"Explain quantum computing"}],"thinking_level":"medium"}'
+   -d '{"model":"gemini-3.1-pro","messages":[{"role":"user","content":"Explain quantum computing"}],"thinking_level":"high"}'
 
 # Test streaming chat
 curl -X POST http://127.0.0.1:2048/v1/chat/completions \
@@ -190,7 +190,6 @@ curl -X POST http://127.0.0.1:2048/v1/chat/completions \
 
 # Alternative models (all valid)
 # - gemini-3.1-pro-preview
-# - gemini-3.1-flash-preview
 # - gemini-3-pro-preview
 # - gemini-2.5-pro
 # - gemini-2.5-flash
@@ -319,7 +318,6 @@ nano .env  # or use other editor
 | Model | Context Window | Max Output | Thinking Levels | Description |
 |-------|---------------|------------|-----------------|-------------|
 | **Gemini 3.1 Pro Preview** | 1M tokens | 64K | `low`, `high` (2-level) | Latest Pro model with advanced reasoning |
-| **Gemini 3.1 Flash Preview** | 1M tokens | 64K | `minimal`, `low`, `medium`, `high` (4-level) | Fast, efficient with flexible thinking |
 | **Gemini 3 Pro Preview** | 1M tokens | 64K | `low`, `high` (2-level) | Advanced reasoning model |
 | **Gemini 2.5 Pro** | 1M tokens | 64K | N/A | High-performance reasoning |
 | **Gemini 2.5 Flash** | 1M tokens | 64K | N/A | Fast, cost-effective |

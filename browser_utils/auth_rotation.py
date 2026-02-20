@@ -65,8 +65,6 @@ def _normalize_model_id(model_id: str) -> str:
             return "gemini-2.5-pro"
         elif "gemini-3-1-pro" in normalized:
             return "gemini-3.1-pro"
-        elif "gemini-3-1-flash" in normalized:
-            return "gemini-3.1-flash"
         elif "gemini-3-pro-preview" in normalized:
             return "gemini-3-pro-preview"
         elif "gemini-pro" in normalized:

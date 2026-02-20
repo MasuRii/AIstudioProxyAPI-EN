@@ -2,7 +2,7 @@
 Unit tests for Gemini 3.1 model support.
 
 Required test categories coverage note:
-- Happy path: Covered via Gemini 3.1 Pro/Flash normalization + capability matching.
+- Happy path: Covered via Gemini 3.1 Pro normalization + capability matching.
 - Null/undefined/empty: Covered in tests/test_smart_rotation_fix.py; omitted here to avoid duplicate coverage.
 - Boundary values: N/A (string normalization does not have numeric boundaries).
 - Invalid type/malformed: N/A (function expects str; invalid types not used in production paths).
@@ -27,19 +27,11 @@ class TestNormalizeModelIdGemini31:
             ("gemini-3.1-pro", "gemini-3.1-pro"),
             ("gemini-3-1-pro", "gemini-3.1-pro"),
             ("gemini-3.1-pro-preview", "gemini-3.1-pro"),
-            ("gemini-3.1-flash", "gemini-3.1-flash"),
-            ("gemini-3-1-flash", "gemini-3.1-flash"),
-            ("gemini-3.1-flash-preview", "gemini-3.1-flash"),
-            ("GEMINI-3.1-FLASH", "gemini-3.1-flash"),
         ],
         ids=[
             "pro-dot",
             "pro-hyphen",
             "pro-preview",
-            "flash-dot",
-            "flash-hyphen",
-            "flash-preview",
-            "flash-case-insensitive",
         ],
     )
     def test_normalize_gemini31_variants(self, input_id, expected):
@@ -57,9 +49,8 @@ class TestNormalizeModelIdGemini31:
         "input_id,expected",
         [
             ("gemini3.1pro", "gemini3-1pro"),
-            ("gemini3.1flash", "gemini3-1flash"),
         ],
-        ids=["no-separators-pro", "no-separators-flash"],
+        ids=["no-separators-pro"],
     )
     def test_normalize_gemini31_edge_formats(self, input_id, expected):
         """Edge cases: Inputs without separators are normalized by dot replacement."""
@@ -109,30 +100,6 @@ class TestModelCapabilitiesGemini31:
         """Happy path: Gemini 3.1 Pro maps to gemini3Pro category."""
         # Arrange
         expected_levels = ["low", "high"]
-
-        # Act
-        result = _get_model_capabilities(model_id)
-
-        # Assert
-        assert result["thinkingType"] == "level"
-        assert result["levels"] == expected_levels
-        assert result["defaultLevel"] == "high"
-        assert result["supportsGoogleSearch"] is True
-
-    @pytest.mark.parametrize(
-        "model_id",
-        [
-            "gemini-3.1-flash",
-            "gemini-3.1-flash-preview",
-            "gemini3.1flash-exp",
-            "GEMINI-3.1-FLASH",
-        ],
-        ids=["flash", "flash-preview", "flash-compact", "flash-case-insensitive"],
-    )
-    def test_gemini31_flash_capabilities(self, model_id):
-        """Happy path: Gemini 3.1 Flash maps to gemini3Flash category."""
-        # Arrange
-        expected_levels = ["minimal", "low", "medium", "high"]
 
         # Act
         result = _get_model_capabilities(model_id)
