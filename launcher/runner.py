@@ -35,7 +35,7 @@ from launcher.utils import (
 try:
     from camoufox import DefaultAddons
     from camoufox.server import launch_server
-except ImportError:
+except Exception:
     launch_server = None
     DefaultAddons = None
 
