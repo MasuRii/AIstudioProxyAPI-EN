@@ -128,7 +128,7 @@ jobs:
             
             TEMP_FILE=$(mktemp)
 
-            while read -r commit_sha; do
+            while IFS= read -r commit_sha || [ -n "$commit_sha" ]; do
               if [ -z "$commit_sha" ]; then
                 continue
               fi
@@ -294,7 +294,7 @@ jobs:
 
           TEMP_FILE=$(mktemp)
 
-          while read -r commit_sha; do
+          while IFS= read -r commit_sha || [ -n "$commit_sha" ]; do
             if [ -z "$commit_sha" ]; then
               continue
             fi
