@@ -153,76 +153,14 @@ class PageController(
                 )
 
                 # Fill textarea using centralized logic (inherited from InputController if possible, or direct)
-                await textarea.evaluate(
-                    "(el, t) => { el.value = t; el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); }",
-                    prompt,
-                )
+                # Playwright fill + keyboard submit (patched)
+                await textarea.click()
+                await textarea.fill(prompt)
+                await asyncio.sleep(0.3)
+                await textarea.press("Meta+Enter")
                 await self._check_disconnect(
-                    check_client_disconnected, "After Input Fill"
+                    check_client_disconnected, "After Submit"
                 )
-
-                if image_list:
-                    await self._open_upload_menu_and_choose_file(image_list)
-
-                # Wait for submit button to be enabled
-                submit = self.page.locator(SUBMIT_BUTTON_SELECTOR)
-                button_clicked = False
-                is_btn_enabled = False
-                try:
-                    await expect_async(submit).to_be_enabled(timeout=10000)
-                    is_btn_enabled = True
-                except Exception:
-                    self.logger.warning(
-                        f"[{self.req_id}] Submit button not enabled within timeout, trying keyboard fallback."
-                    )
-
-                await self._check_disconnect(
-                    check_client_disconnected, "After Submit Button Check"
-                )
-
-                if is_btn_enabled:
-                    try:
-                        # Defensive workarounds before click: handle dialogs, backdrops and tooltips
-                        await self._handle_post_upload_dialog()
-                        await self._dismiss_backdrops()
-                        if hasattr(self, "_dismiss_tooltip_overlays"):
-                            await self._dismiss_tooltip_overlays()
-
-                        await submit.click(timeout=5000)
-                        button_clicked = True
-                        self.logger.info(f"[{self.req_id}] Submit button clicked.")
-                        await check_quota_limit(self.page, self.req_id)
-                    except QuotaExceededError:
-                        raise
-                    except Exception as click_err:
-                        self.logger.warning(
-                            f"[{self.req_id}] Button click failed: {click_err}. Trying keyboard fallback."
-                        )
-
-                if not button_clicked:
-                    # Keyboard fallbacks (using logic inherited from InputController)
-                    self.logger.info(
-                        f"[{self.req_id}] Attempting Enter key submission..."
-                    )
-                    if await self._try_enter_submit(
-                        textarea, check_client_disconnected
-                    ):
-                        button_clicked = True
-                    else:
-                        self.logger.info(
-                            f"[{self.req_id}] Attempting Combo key submission..."
-                        )
-                        if await self._try_combo_submit(
-                            textarea, check_client_disconnected
-                        ):
-                            button_clicked = True
-
-                if not button_clicked:
-                    raise Exception(
-                        "Failed to submit prompt via button or keyboard shortcuts."
-                    )
-
-                await self._check_disconnect(check_client_disconnected, "After Submit")
                 return
             except QuotaExceededError:
                 raise
