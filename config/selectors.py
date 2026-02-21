@@ -296,3 +296,11 @@ FUNCTION_DECLARATIONS_CLOSE_BUTTON_SELECTOR = (
     'mat-dialog-container button:has-text("Cancel"), '
     'mat-mdc-dialog-container button:has-text("Cancel")'
 )
+
+# Patched: add new AI Studio submit button class
+SUBMIT_BUTTON_SELECTOR = (
+    "button.ctrl-enter-submits, "
+    "ms-run-button button[type=\"submit\"].ms-button-primary, "
+    "ms-run-button button[type=\"submit\"], "
+    'button[aria-label="Run"][type="submit"]'
+)
