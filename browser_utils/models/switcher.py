@@ -157,64 +157,69 @@ async def switch_ai_studio_model(page: AsyncPage, model_id: str, req_id: str) ->
                     f"Error reading displayed model ID: {e_disp}. Cannot verify page display."
                 )
 
-            if page_display_match:
-                try:
-                    logger.debug("[Model] Re-enabling temporary chat mode...")
-                    incognito_button_locator = page.locator(
-                        'button[aria-label="Temporary chat toggle"]'
-                    )
+            # The displayed model name (data-test-id="model-name") is only a
+            # diagnostic; that selector may be absent on newer AI Studio layouts.
+            # localStorage acceptance is the authoritative signal that the model
+            # switch succeeded, so continue with the success path either way.
+            if not page_display_match:
+                logger.warning(
+                    "Displayed model name could not be verified (selector may be outdated); "
+                    "continuing based on localStorage acceptance."
+                )
 
-                    await incognito_button_locator.wait_for(
-                        state="visible", timeout=5000
-                    )
+            try:
+                logger.debug("[Model] Re-enabling temporary chat mode...")
+                incognito_button_locator = page.locator(
+                    'button[aria-label="Temporary chat toggle"]'
+                )
 
-                    button_classes = await incognito_button_locator.get_attribute(
+                await incognito_button_locator.wait_for(
+                    state="visible", timeout=5000
+                )
+
+                button_classes = await incognito_button_locator.get_attribute(
+                    "class"
+                )
+
+                if button_classes and "ms-button-active" in button_classes:
+                    logger.debug("[Model] Temporary chat mode already active")
+                else:
+                    logger.debug("[Model] Clicking to open temporary chat mode...")
+                    await incognito_button_locator.click(timeout=3000)
+                    await asyncio.sleep(0.5)
+
+                    updated_classes = await incognito_button_locator.get_attribute(
                         "class"
                     )
-
-                    if button_classes and "ms-button-active" in button_classes:
-                        logger.debug("[Model] Temporary chat mode already active")
+                    if updated_classes and "ms-button-active" in updated_classes:
+                        logger.debug("[Model] Temporary chat mode enabled")
                     else:
-                        logger.debug("[Model] Clicking to open temporary chat mode...")
-                        await incognito_button_locator.click(timeout=3000)
-                        await asyncio.sleep(0.5)
-
-                        updated_classes = await incognito_button_locator.get_attribute(
-                            "class"
+                        logger.warning(
+                            "Temporary chat mode state verification failed after click, may not have opened successfully."
                         )
-                        if updated_classes and "ms-button-active" in updated_classes:
-                            logger.debug("[Model] Temporary chat mode enabled")
-                        else:
-                            logger.warning(
-                                "Temporary chat mode state verification failed after click, may not have opened successfully."
-                            )
 
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to re-enable temporary chat mode after model switching: {e}"
-                    )
-
-                # Invalidate function calling cache on model switch
-                try:
-                    from api_utils.utils_ext.function_calling_cache import (
-                        FunctionCallingCache,
-                    )
-
-                    FunctionCallingCache.get_instance().invalidate(
-                        reason=f"model_switch:{model_id}", req_id=req_id
-                    )
-                except ImportError:
-                    pass  # Cache module not available
-                except Exception as e_cache:
-                    logger.debug(f"[Model] Failed to invalidate FC cache: {e_cache}")
-
-                return True
-            else:
-                logger.error(
-                    "Model switching failed because page displayed model does not match expectation (even if localStorage may have changed)."
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Failed to re-enable temporary chat mode after model switching: {e}"
                 )
+
+            # Invalidate function calling cache on model switch
+            try:
+                from api_utils.utils_ext.function_calling_cache import (
+                    FunctionCallingCache,
+                )
+
+                FunctionCallingCache.get_instance().invalidate(
+                    reason=f"model_switch:{model_id}", req_id=req_id
+                )
+            except ImportError:
+                pass  # Cache module not available
+            except Exception as e_cache:
+                logger.debug(f"[Model] Failed to invalidate FC cache: {e_cache}")
+
+            return True
         else:
             logger.error(
                 f"AI Studio did not accept model change (localStorage). Expected='{full_model_path}', Actual='{final_prompt_model_in_storage or 'not set or invalid'}'."
