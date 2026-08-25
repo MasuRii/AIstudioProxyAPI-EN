@@ -437,8 +437,13 @@ async def initialize_page_logic(  # pragma: no cover
                     timeout=5000
                 )
             except PlaywrightAsyncError as e:
-                logger.error(f"Error getting model name (model_name_locator): {e}")
-                raise
+                # The model-name element may not be present on newer/older AI Studio
+                # layouts. It is only used for logging/display, so do NOT abort
+                # initialization if it cannot be read.
+                logger.warning(
+                    f"Could not read model name (model_name_locator); continuing: {e}"
+                )
+                model_name_on_page = ""
 
             result_page_instance = found_page
             result_page_ready = True
